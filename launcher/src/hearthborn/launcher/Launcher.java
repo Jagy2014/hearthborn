@@ -15,6 +15,7 @@ public final class Launcher {
     private final JLabel amount = new JLabel(" "); // under the bar: text painted on the bar overlaps it
     private final JButton retry = new JButton(tr("Retry", "Повторить"));
     private final JButton versions = new JButton(tr("Versions…", "Версии…"));
+    private final JButton newLauncher = new JButton(tr("New launcher…", "Новый лаунчер…"));
     /** True while the player is choosing a version; the start of the client waits. */
     private volatile boolean choosing, waiting;
     private volatile Updater.Installed picked;
@@ -44,9 +45,10 @@ public final class Launcher {
         content.add(title, BorderLayout.NORTH);
         JPanel middle = new JPanel(new BorderLayout(0, 12)); middle.add(status, BorderLayout.NORTH); middle.add(progress, BorderLayout.CENTER); middle.add(amount, BorderLayout.SOUTH);
         content.add(middle, BorderLayout.CENTER);
-        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT)); buttons.add(folder); buttons.add(versions); buttons.add(retry);
+        JPanel buttons = new JPanel(new FlowLayout(FlowLayout.RIGHT)); buttons.add(newLauncher); buttons.add(folder); buttons.add(versions); buttons.add(retry);
         JButton close = new JButton(tr("Close", "Закрыть")); buttons.add(close); close.addActionListener(e -> System.exit(0));
         JLabel version = new JLabel(tr("Version ", "Версия ") + version()); version.setForeground(Color.GRAY);
+        newLauncher.setVisible(false); newLauncher.addActionListener(e -> openLauncherPage());
         retry.setVisible(false); retry.addActionListener(e -> start());
         versions.setVisible(false); versions.addActionListener(e -> versionsClicked());
         folder.addActionListener(e -> { try { Files.createDirectories(home); Desktop.getDesktop().open(home.toFile()); } catch (IOException error) { fail(error); } });
@@ -77,6 +79,7 @@ public final class Launcher {
             launch(installed, true); return;
         }
         latestTag = latest.tag();
+        noteLauncher();
         boolean declined = installed != null && latest.tag().equals(updater.declined());
         if (!Updater.same(installed, latest) && !declined) {
             if (installed != null) {
@@ -110,6 +113,26 @@ public final class Launcher {
             launch(installed, false); return;
         }
         launch(installed, true);
+    }
+    /** A newer launcher is named by the release manifest: say so once per version, and keep a button for it. */
+    private void noteLauncher() throws Exception {
+        String newest = updater.launcherLatest();
+        if (!Updater.newerLauncher(newest, version())) return;
+        SwingUtilities.invokeLater(() -> newLauncher.setVisible(true));
+        if (newest.equals(updater.launcherNoticed())) return;
+        updater.launcherNoticed(newest);
+        String message = tr("A new version of the launcher is available: ", "Доступна новая версия лаунчера: ") + newest
+                + "\n" + tr("Installed: ", "Установлена: ") + version()
+                + "\n" + tr("The launcher is not updated by itself: download it and replace the old one.",
+                        "Лаунчер сам не обновляется: скачайте его и замените старый.");
+        int[] answer = {1};
+        SwingUtilities.invokeAndWait(() -> answer[0] = JOptionPane.showOptionDialog(frame, message, "Hearthborn",
+                JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE, null,
+                new String[]{tr("Open download page", "Открыть страницу загрузки"), tr("Later", "Позже")}, null));
+        if (answer[0] == 0) openLauncherPage();
+    }
+    private void openLauncherPage() {
+        try { Desktop.getDesktop().browse(updater.launcherPage()); } catch (IOException | UnsupportedOperationException error) { fail(error instanceof IOException io ? io : new IOException(updater.launcherPage().toString())); }
     }
     private boolean yes(String message) throws Exception {
         boolean[] yes = {false};

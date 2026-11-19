@@ -116,14 +116,54 @@ public final class Updater {
             if (bytes.length > 65536) throw new IOException("Release manifest too large");
             Properties properties = new Properties();
             properties.load(new StringReader(new String(bytes, StandardCharsets.UTF_8)));
-            return parse(properties);
-        } catch (IllegalArgumentException error) { throw new IOException("Invalid release manifest", error); }
+            Release release = parse(properties);
+            launcherLatest = launcherVersion(properties.getProperty("launcher.latest"));
+            return release;
+        } catch (IllegalArgumentException error) {
+            String message = error.getMessage() != null && error.getMessage().startsWith(NEEDS_NEWER)
+                    ? NEEDS_NEWER + ". Download it from " + launcherPage() : "Invalid release manifest";
+            throw new IOException(message, error);
+        }
         finally { connection.disconnect(); }
+    }
+    static final String NEEDS_NEWER = "This release needs a newer launcher";
+    /** The newest launcher version the last manifest named ({@code launcher.latest}, optional), or null. */
+    private volatile String launcherLatest;
+    public String launcherLatest() { return launcherLatest; }
+    /** Where the launcher is downloaded: the page of the latest release, which carries the launcher archives. */
+    public URI launcherPage() { return repository.resolve("releases/latest"); }
+    /** A launcher version such as 1.2.0, or null when the text is not one. */
+    static String launcherVersion(String text) {
+        return text != null && text.trim().matches("\\d{1,4}(\\.\\d{1,4}){1,3}") ? text.trim() : null;
+    }
+    /** Whether {@code latest} is a newer launcher than {@code current}; false when either is not a plain number version (a development build). */
+    public static boolean newerLauncher(String latest, String current) {
+        String a = launcherVersion(latest), b = launcherVersion(current);
+        if (a == null || b == null) return false;
+        String[] x = a.split("\\."), y = b.split("\\.");
+        for (int i = 0; i < Math.max(x.length, y.length); i++) {
+            int left = i < x.length ? Integer.parseInt(x[i]) : 0, right = i < y.length ? Integer.parseInt(y[i]) : 0;
+            if (left != right) return left > right;
+        }
+        return false;
+    }
+    /** The launcher version the player was already told about, or null. */
+    public String launcherNoticed() {
+        Path file = home.resolve("launcher-notice.properties");
+        if (!Files.isRegularFile(file)) return null;
+        Properties properties = new Properties();
+        try (Reader reader = Files.newBufferedReader(file)) { properties.load(reader); return properties.getProperty("noticed"); }
+        catch (IOException error) { return null; }
+    }
+    public void launcherNoticed(String version) throws IOException {
+        Files.createDirectories(home);
+        Properties properties = new Properties(); properties.setProperty("noticed", version);
+        try (Writer writer = Files.newBufferedWriter(home.resolve("launcher-notice.properties"))) { properties.store(writer, "launcher update notice"); }
     }
     static Release parse(Properties properties) {
         if (!"1".equals(properties.getProperty("format"))) throw new IllegalArgumentException("Unsupported release manifest");
         int launcher = Integer.parseInt(properties.getProperty("launcher.min", "1"));
-        if (launcher > FORMAT) throw new IllegalArgumentException("This release needs a newer launcher");
+        if (launcher > FORMAT) throw new IllegalArgumentException(NEEDS_NEWER);
         if (!"22".equals(properties.getProperty("java.major"))) throw new IllegalArgumentException("Unsupported Java runtime");
         return new Release(properties.getProperty("version"), properties.getProperty("tag"),
                 properties.getProperty("asset", ""), properties.getProperty("sha256", ""), Long.parseLong(properties.getProperty("size", "0")));
