@@ -165,13 +165,13 @@ public class GSettings extends State implements Serializable {
     }
 
     public BoolSetting lshadow = new BoolSetting("sdw") {
-	    public Boolean defval() {return(true);}
+	    public Boolean defval() {return(hearthborn.ui.VideoDefaults.shadows());}
 	};
     public IntSetting shadowres = new IntSetting("sres") {
 	    public Integer defval() {return(0);}
 	};
     public BoolSetting vsync = new BoolSetting("vsync") {
-	    public Boolean defval() {return(true);}
+	    public Boolean defval() {return(hearthborn.ui.VideoDefaults.vsync());}
 	};
     public abstract class HertzSetting extends FloatSetting {
 	public HertzSetting(String nm) {super(nm);}
@@ -191,10 +191,10 @@ public class GSettings extends State implements Serializable {
 	}
     }
     public FloatSetting hz = new HertzSetting("hz") {
-	    public Float defval() {return(Float.POSITIVE_INFINITY);}
+	    public Float defval() {return(hearthborn.ui.VideoDefaults.limit());}
 	};
     public FloatSetting bghz = new HertzSetting("bghz") {
-	    public Float defval() {return(5f);}
+	    public Float defval() {return(hearthborn.ui.VideoDefaults.background());}
 	};
     public FloatSetting rscale = new FloatSetting("rscale") {
 	    public Float defval() {return(1.0f);}
@@ -219,7 +219,7 @@ public class GSettings extends State implements Serializable {
 	SIMPLE, ZONED
     }
     public EnumSetting<LightMode> lightmode = new EnumSetting<LightMode>("lighting", LightMode.class) {
-	    public LightMode defval() {return(LightMode.ZONED);}
+	    public LightMode defval() {return(hearthborn.ui.VideoDefaults.lighting());}
 	};
     public IntSetting maxlights = new IntSetting("maxlights") {
 	    public Integer defval() {return(0);}

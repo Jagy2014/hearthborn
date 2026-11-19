@@ -8,7 +8,7 @@ The **Map Display Settings** have been redesigned, and the map includes a dedica
 
 ## Open the map on a second monitor
 
-You can open the map in a **separate Java window** and move that window to a **second monitor**. The detached map remains **fully interactive**, so you can use it independently of the main game window rather than keeping the map inside the game interface.
+You can open the map in a **separate window** and move it to a **second monitor**. See [Map in a separate window](map-window.md).
 
 The map tools also include mine-support ranges and configurable object radii.
 

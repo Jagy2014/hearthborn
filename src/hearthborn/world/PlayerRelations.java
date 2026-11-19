@@ -35,7 +35,14 @@ public final class PlayerRelations {
         Info(Kind kind,String name,boolean pending){this.kind=kind;this.name=name;this.pending=pending;}
     }
     public static boolean player(Gob gob){
-        if(!"gfx/borka/body".equals(GameObjects.resourceName(gob)))return false;
+        /* Asked for every object several times a frame; what an object is does not change, so look at its resource once. */
+        byte kind=gob.bodyKind;
+        if(kind==0){
+            String name=GameObjects.resourceName(gob);
+            if(name==null)return false;
+            gob.bodyKind=kind=(byte)("gfx/borka/body".equals(name)?1:2);
+        }
+        if(kind!=1)return false;
         GobIcon icon=gob.getattr(GobIcon.class);
         return icon==null||icon.sdt.length==0||icon.sdt[0]==0||!icon.res.get().name.equals("gfx/hud/mmap/plo");
     }

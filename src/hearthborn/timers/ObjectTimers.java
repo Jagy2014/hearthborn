@@ -102,9 +102,7 @@ public final class ObjectTimers {
         double time=Utils.rtime();
         if(time>=watchAt){
             watchAt=time+0.25;
-            List<Gob> copy=new ArrayList<>();
-            OCache oc = map.ui.sess.glob.oc;
-            synchronized(oc) { for(Gob gob : oc) copy.add(gob); }
+            List<Gob> copy=map.ui.sess.glob.oc.snapshot();
             List<Gob> found=new ArrayList<>();
             for(Gob gob:copy) if(key(gob)!=null) found.add(gob);
             watched.clear();watched.addAll(found);

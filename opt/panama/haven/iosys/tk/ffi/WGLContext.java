@@ -353,7 +353,17 @@ public class WGLContext implements Providers.Factory<Toolkit> {
 		    while(win.PeekMessage(msg, null, 0, 0, Win32.PM_REMOVE))
 			dispatchmsg(msg);
 		    if(task == null) {
-			if(win.GetMessage(msg, null, 0, 0))
+			/* A task may have been queued after the poll above, with its wake-up
+			 * message already swallowed by the PeekMessage loop. Blocking in
+			 * GetMessage then would leave the task (and the frame waiting on
+			 * it) stuck until some unrelated window message arrives. A task
+			 * queued after this check posts its wake-up after the loop above
+			 * has finished, so GetMessage will still see it. */
+			boolean pending;
+			synchronized(mtmon) {
+			    pending = !mtasks.isEmpty();
+			}
+			if(!pending && win.GetMessage(msg, null, 0, 0))
 			    dispatchmsg(msg);
 		    }
 		}

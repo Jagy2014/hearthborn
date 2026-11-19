@@ -35,6 +35,7 @@ Hearthborn создан на основе оригинального (vanilla) �
 ### 🗺️ Навигация и исследование
 
 - [**Улучшенный поиск пути**](https://jagy2014.github.io/hearthborn/ru/features/pathfinding/) — включён по умолчанию, с дополнительной возможностью навигации верхом.
+- [**Карта в отдельном окне**](https://jagy2014.github.io/hearthborn/ru/features/map-window/) — живая карта в собственном окне, которое можно перенести на второй монитор.
 - [**Карта и экспорт**](https://jagy2014.github.io/hearthborn/ru/features/mapping/) — перенос карт между клиентами, экспорт изображений и отдельных тайлов.
 - [**Маршрут сессии**](https://jagy2014.github.io/hearthborn/ru/features/session-trail/) — отображение маршрута текущей сессии без его записи на диск.
 - [**Значки и настройки карты**](https://jagy2014.github.io/hearthborn/ru/features/map-icons/) — дополнительные значки, звуки животных и переработанные элементы управления картой.
@@ -47,7 +48,14 @@ Hearthborn создан на основе оригинального (vanilla) �
 
 ## Начало работы {#getting-started}
 
-Hearthborn — неофициальный пользовательский клиент для Haven & Hearth. Инструкции по установке и запуску появятся здесь, когда будет доступен проверенный дистрибутив.
+Hearthborn — неофициальный пользовательский клиент для Haven & Hearth. Он устанавливается через свой **лаунчер**: в нём уже есть Java 22, он скачивает и проверяет клиент и предлагает обновления.
+
+1. Откройте [последний релиз](https://github.com/Jagy2014/hearthborn/releases/latest) и скачайте архив лаунчера для своей системы: `hearthborn-launcher-windows-x86_64.zip`, `hearthborn-launcher-macos-aarch64.zip` (Apple Silicon), `hearthborn-launcher-macos-x86_64.zip` (Mac на Intel) или `hearthborn-launcher-linux-x86_64.zip`.
+2. Распакуйте **весь архив** в папку и запустите `Hearthborn.exe` (Windows), `Hearthborn.app` (macOS) или `Hearthborn/bin/Hearthborn` (Linux). При первом запуске лаунчер скачает клиент, около 100 МБ.
+
+Лаунчер пока **не подписан**, поэтому при первом запуске система предупредит. В Windows нажмите **Подробнее → Выполнить в любом случае**. В macOS нажмите на приложение правой кнопкой (или с Control), выберите **Открыть** и ещё раз **Открыть**; если macOS всё равно отказывает, один раз выполните в Терминале `xattr -dr com.apple.quarantine Hearthborn.app`.
+
+Лаунчер сам не обновляется: когда выходит новый, он один раз сообщает об этом, а кнопка **Новый лаунчер…** открывает страницу загрузки. Версии клиента и данные игры лежат отдельно (`%LOCALAPPDATA%\Hearthborn` в Windows, `~/Library/Application Support/Hearthborn` в macOS, `~/.local/share/hearthborn` в Linux) и сохраняются при замене лаунчера.
 
 Чтобы познакомиться с доступными возможностями и управлением, начните с [руководства по интерфейсу](https://jagy2014.github.io/hearthborn/ru/features/interface/) и [руководства по автоматизации](https://jagy2014.github.io/hearthborn/ru/features/scripts/).
 

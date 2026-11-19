@@ -16,7 +16,7 @@ import java.io.*;
 import java.util.Properties;
 
 /**
- * Build time comes from the packaged metadata, never from the launch clock.
+ * The window title: the client name and the release number from the packaged metadata. The build time is not shown.
  *
  * @author Jagy2014
  */
@@ -25,13 +25,12 @@ public final class BuildTitle {
     private static String load(){
         Properties info=new Properties();
         try(InputStream in=BuildTitle.class.getResourceAsStream("/buildinfo")){if(in!=null)info.load(in);}catch(IOException ignored){}
-        return format(info.getProperty("version"),info.getProperty("build-time-eet"));
+        return format(info.getProperty("version"));
     }
-    /** "Haven & Hearth - Hearthborn client v1.0 (build 2026-11-16 22:37 EET)"; either part is left out when unknown. */
-    static String format(String version,String built){
+    /** "Haven & Hearth - Hearthborn client v1.0.1"; the number is left out when unknown. */
+    static String format(String version){
         String number=version==null||version.trim().isEmpty()||version.contains("${")?null:version.trim();
-        String time=built==null||built.trim().isEmpty()||built.contains("${")?null:built.trim();
-        return "Haven & Hearth - Hearthborn client"+(number==null?"":" "+number)+(time==null?"":" (build "+time+" EET)");
+        return "Haven & Hearth - Hearthborn client"+(number==null?"":" "+number);
     }
     public static String title(){return TITLE;}
     private BuildTitle(){}

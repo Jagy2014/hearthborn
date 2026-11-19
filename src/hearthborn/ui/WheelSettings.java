@@ -64,6 +64,12 @@ public final class WheelSettings {
     public static void inverted(Platform p, boolean v) {Utils.setprefb(key(p, "invert"), v);}
     /** +1 normally, -1 when the user inverted the wheel on this system. */
     public static int direction() {return(inverted(platform()) ? -1 : 1);}
+    /**
+     * The same direction for a wheel event that came from Swing, as in the separate map window. On macOS Swing
+     * reports the opposite sign to the game window's own toolkit (seen on a real Mac), so it is turned back
+     * here; the user's inversion is applied on top. Windows and Linux are not known to differ.
+     */
+    public static int swingDirection() {return(platform() == Platform.MAC ? -direction() : direction());}
 
     /** A camera zoom step from the wheel, in the units the camera expects. */
     public static double camera(double step) {return(step * cameraPercent(platform()) / 100.0);}

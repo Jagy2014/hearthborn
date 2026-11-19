@@ -444,8 +444,31 @@ public class Utils {
 
     /** The saved value, or else the value the client ships for a first start; null when neither exists. */
     private static String stored(String prefname) {
-	String val = prefs().get(prefname, null);
+	String val = savedpref(prefname);
 	return((val != null) ? val : hearthborn.io.DefaultSettings.value(prefname));
+    }
+
+    /*
+     * Reading a saved value is a registry call on Windows, and the client reads settings in the middle of its
+     * per-object work thousands of times a frame. Every value read once is remembered here; writing it forgets it.
+     */
+    private static final Map<String, String> prefcache = new java.util.concurrent.ConcurrentHashMap<>();
+    private static final String NOPREF = new String("\0none");
+    private static String savedpref(String prefname) {
+	String val = prefcache.get(prefname);
+	if(val == null) {
+	    val = prefs().get(prefname, null);
+	    prefcache.put(prefname, (val == null) ? NOPREF : val);
+	    return(val);
+	}
+	return((val == NOPREF) ? null : val);
+    }
+    private static void forgetpref(String prefname) {
+	prefcache.remove(prefname);
+    }
+    /** Forget everything remembered, after settings were changed without going through the setters. */
+    public static void forgetprefs() {
+	prefcache.clear();
     }
 
     public static void setpref(String prefname, String val) {
@@ -454,6 +477,7 @@ public class Utils {
 		prefs().remove(prefname);
 	    else
 		prefs().put(prefname, val);
+	    forgetpref(prefname);
 	} catch(SecurityException e) {
 	}
     }
@@ -476,6 +500,7 @@ public class Utils {
     public static void setprefi(String prefname, int val) {
 	try {
 	    prefs().putInt(prefname, val);
+	    forgetpref(prefname);
 	} catch(SecurityException e) {
 	}
     }
@@ -498,6 +523,7 @@ public class Utils {
     public static void setprefd(String prefname, double val) {
 	try {
 	    prefs().putDouble(prefname, val);
+	    forgetpref(prefname);
 	} catch(SecurityException e) {
 	}
     }
@@ -520,6 +546,7 @@ public class Utils {
     public static void setprefb(String prefname, boolean val) {
 	try {
 	    prefs().putBoolean(prefname, val);
+	    forgetpref(prefname);
 	} catch(SecurityException e) {
 	}
     }
@@ -542,6 +569,7 @@ public class Utils {
 	try {
 	    String enc = (val == null) ? "" : val.x + "x" + val.y;
 	    prefs().put(prefname, enc);
+	    forgetpref(prefname);
 	} catch(SecurityException e) {
 	}
     }
@@ -564,6 +592,7 @@ public class Utils {
     public static void setprefb(String prefname, byte[] val) {
 	try {
 	    prefs().putByteArray(prefname, val);
+	    forgetpref(prefname);
 	} catch(SecurityException e) {
 	}
     }

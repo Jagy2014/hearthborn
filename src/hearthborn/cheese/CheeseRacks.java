@@ -146,11 +146,6 @@ public final class CheeseRacks {
     }
 
     private static List<Gob> copy(OCache oc) {
-        List<Gob> gobs = new ArrayList<>();
-        synchronized(oc) {
-            for(Gob gob : oc)
-                gobs.add(gob);
-        }
-        return gobs;
+        return oc.snapshot();
     }
 }

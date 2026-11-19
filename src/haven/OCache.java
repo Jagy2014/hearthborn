@@ -86,6 +86,7 @@ public class OCache implements Iterable<Gob> {
 	    synchronized(this) {
 		cbs = new ArrayList<>(this.cbs);
 		objs.put(ob.id, ob);
+		snapshot = null;
 	    }
 	    for(ChangeCallback cb : cbs)
 		cb.added(ob);
@@ -97,6 +98,8 @@ public class OCache implements Iterable<Gob> {
 	Collection<ChangeCallback> cbs;
 	synchronized(this) {
 	    old = objs.remove(ob.id, ob);
+	    if(old != null)
+		snapshot = null;   // a call that removed nothing (virtual objects ask on every tick) must not throw the list away
 	    if((old != null) && (old != ob))
 		throw(new RuntimeException(String.format("object %d removed wrong object", ob.id)));
 	    cbs = new ArrayList<>(this.cbs);
@@ -111,11 +114,7 @@ public class OCache implements Iterable<Gob> {
     }
 
     public void ctick(double dt) {
-	ArrayList<Gob> copy = new ArrayList<Gob>();
-	synchronized(this) {
-	    for(Gob g : this)
-		copy.add(g);
-	}
+	List<Gob> copy = snapshot();
 	Consumer<Gob> task = g -> {
 	    synchronized(g) {
 		g.ctick(dt);
@@ -128,11 +127,7 @@ public class OCache implements Iterable<Gob> {
     }
 
     public void gtick(Render g) {
-	ArrayList<Gob> copy = new ArrayList<Gob>();
-	synchronized(this) {
-	    for(Gob ob : this)
-		copy.add(ob);
-	}
+	List<Gob> copy = snapshot();
 	if(!Config.par.get()) {
 	    copy.forEach(ob -> {
 		    synchronized(ob) {
@@ -160,6 +155,31 @@ public class OCache implements Iterable<Gob> {
 	}
     }
 
+    private volatile List<Gob> snapshot;
+
+    /**
+     * Every object in the cache as a list nobody may change. Walking the cache's own iterator is slow and several
+     * parts of the client do it on every frame; the list is rebuilt only when an object arrives or leaves. While
+     * locally added objects exist (their collections change without telling the cache) every call builds a fresh one.
+     */
+    public List<Gob> snapshot() {
+	List<Gob> ret = snapshot;
+	if(ret != null)
+	    return(ret);
+	synchronized(this) {
+	    boolean cacheable = local.isEmpty();
+	    if(cacheable && ((ret = snapshot) != null))
+		return(ret);
+	    ArrayList<Gob> copy = new ArrayList<Gob>();
+	    for(Gob g : this)
+		copy.add(g);
+	    ret = Collections.unmodifiableList(copy);
+	    if(cacheable)
+		snapshot = ret;
+	    return(ret);
+	}
+    }
+
     @SuppressWarnings("unchecked")
     public Iterator<Gob> iterator() {
 	Collection<Iterator<Gob>> is = new LinkedList<Iterator<Gob>>();
@@ -173,6 +193,7 @@ public class OCache implements Iterable<Gob> {
 	synchronized(this) {
 	    cbs = new ArrayList<>(this.cbs);
 	    local.add(gob);
+	    snapshot = null;
 	}
 	for(Gob g : gob) {
 	    synchronized(g) {
@@ -187,6 +208,7 @@ public class OCache implements Iterable<Gob> {
 	synchronized(this) {
 	    cbs = new ArrayList<>(this.cbs);
 	    local.remove(gob);
+	    snapshot = null;
 	}
 	for(Gob g : gob) {
 	    synchronized(g) {

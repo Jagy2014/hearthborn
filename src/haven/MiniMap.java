@@ -436,7 +436,14 @@ public class MiniMap extends Widget {
 	    }
 	}
         if(preserveOutsideMap()&&!indoors&&roomPlan.locationKnown())rememberOutside();
-	icons = findicons(icons);
+	/* Looking at every object in view is the slowest thing the map does; a new or vanished object shows up a fifth of a second late, positions follow every tick. */
+	double scanned = Utils.rtime();
+	if(scanned >= nextIconScan) {
+	    icons = findicons(icons);
+	    nextIconScan = scanned + ICON_SCAN;
+	} else {
+	    icons = movedicons(icons);
+	}
         if(!retainedOutside)extra.tick();
 	if(tvisible() || loadHidden) {
 	    Location loc = this.curloc;
@@ -859,6 +866,21 @@ public class MiniMap extends Widget {
 	}
     }
 
+    private static final double ICON_SCAN = 0.2;
+    private double nextIconScan = 0;
+    /** The icons of the last scan, without those whose object has gone, at the objects' present places. */
+    private List<DisplayIcon> movedicons(List<DisplayIcon> prev) {
+	if(prev.isEmpty())
+	    return(prev);
+	List<DisplayIcon> ret = new ArrayList<>(prev.size());
+	for(DisplayIcon disp : prev) {
+	    if(disp.gob.removed)
+		continue;
+	    disp.update(disp.gob.rc, disp.gob.a);
+	    ret.add(disp);
+	}
+	return(ret);
+    }
     private final Map<Long,GobIcon> radarIcons=new HashMap<>();
     public List<DisplayIcon> findicons(Collection<? extends DisplayIcon> prev) {
 	if((ui.sess == null) || (iconconf == null))
@@ -872,8 +894,7 @@ public class MiniMap extends Widget {
 	List<DisplayIcon> ret = new ArrayList<>();
 	OCache oc = ui.sess.glob.oc;
         Set<Long> localSeen=new HashSet<>();
-        List<Gob> objects=new ArrayList<>();
-        synchronized(oc){for(Gob gob:oc)objects.add(gob);}
+        List<Gob> objects=oc.snapshot();
 	    for(Gob gob : objects) {
 		try {
                     if(hearthborn.world.PlayerRelations.player(gob))continue;

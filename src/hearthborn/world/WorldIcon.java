@@ -54,7 +54,7 @@ public final class WorldIcon implements RenderTree.Node,Rendered,Disposable {
     private final boolean centered;
     private final BooleanSupplier visible;
     private TexI image;
-    private Model model;
+    private volatile Model model;
     public WorldIcon(float height,double coverage,boolean centered,BooleanSupplier visible){
         style=new Style(height,coverage,null);this.centered=centered;this.visible=visible;
     }
@@ -148,31 +148,41 @@ public final class WorldIcon implements RenderTree.Node,Rendered,Disposable {
     /** Parent slot to the slot this icon holds under it, or null while hidden. */
     private final Map<RenderTree.Slot,RenderTree.Slot> hosts=new LinkedHashMap<>();
     /** Take a place under each of the object's slots only while the icon is shown: a hidden icon costs nothing per frame. */
-    public synchronized void host(RenderTree.Slot parent){hosts.putIfAbsent(parent,null);sync();}
+    public synchronized void host(RenderTree.Slot parent){hosts.putIfAbsent(parent,null);syncSlots();}
+    /** True while some slot holds the icon. Without a picture and without a held slot, {@link #sync} has nothing to do. */
+    private volatile boolean live;
     /** Attach or detach the icon after its visibility changed; cheap enough to call every tick. */
-    public synchronized void sync(){
+    public void sync(){
+        if(model==null&&!live)return;   // most objects never get a picture: skip the lock and the walk over the slots
+        syncSlots();
+    }
+    private synchronized void syncSlots(){
         /* Without a picture there is nothing to draw, and every attached icon costs per-instance uniform work whenever the camera moves. */
         boolean want=!hosts.isEmpty()&&model!=null&&visible.getAsBoolean();
+        boolean held=false;
         for(Iterator<Map.Entry<RenderTree.Slot,RenderTree.Slot>> it=hosts.entrySet().iterator();it.hasNext();){
             Map.Entry<RenderTree.Slot,RenderTree.Slot> entry=it.next();
             RenderTree.Slot own=entry.getValue();
             if(want&&own==null){
                 try{entry.setValue(entry.getKey().add(this));}
-                catch(RenderTree.SlotRemoved gone){it.remove();}   // the object left the scene between the callbacks
+                catch(RenderTree.SlotRemoved gone){it.remove();continue;}   // the object left the scene between the callbacks
             }else if(!want&&own!=null){
                 entry.setValue(null);
                 try{own.remove();}catch(RuntimeException gone){}
             }
+            if(entry.getValue()!=null)held=true;
         }
+        live=held;
     }
     /** The object's slot is going away: forget it and its icon slot, which the tree removes with the parent. */
     public synchronized void unhost(RenderTree.Slot parent){
         RenderTree.Slot own=hosts.remove(parent);
         if(own!=null)try{own.remove();}catch(RuntimeException gone){}
+        live=hosts.values().stream().anyMatch(java.util.Objects::nonNull);
     }
     public synchronized void unhost(){
         for(RenderTree.Slot own:hosts.values())if(own!=null)try{own.remove();}catch(RuntimeException gone){}
-        hosts.clear();
+        hosts.clear();live=false;
     }
     public synchronized void added(RenderTree.Slot slot){slot.ostate(state());slots.add(slot);}
     public synchronized void removed(RenderTree.Slot slot){slots.remove(slot);}

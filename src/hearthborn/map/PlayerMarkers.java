@@ -47,15 +47,25 @@ public final class PlayerMarkers implements Disposable {
         }
         g.aimage(text,at.add(0,UI.scale(12)),.5,0);
     }
+    private java.util.List<Gob> candidates=java.util.Collections.emptyList();
+    private OCache scanned;private double nextScan;
+    /** The objects that are players. Going through everything in view is costly, so it is done a few times a second; positions are read every frame. */
+    private java.util.List<Gob> players(OCache cache){
+        double now=Utils.rtime();
+        if(cache==scanned&&now<nextScan)return candidates;
+        java.util.List<Gob> found=new ArrayList<>();boolean pending=false;
+        for(Gob gob:cache.snapshot())try{if(!gob.virtual&&PlayerRelations.player(gob))found.add(gob);}catch(Loading loading){pending=true;}
+        candidates=found;scanned=cache;nextScan=now+(pending?0.05:0.2);
+        return found;
+    }
     public void draw(GOut g){
         hits.clear();
         GameUI gui=map.getparent(GameUI.class);
         if(gui==null||map.ui==null||map.ui.sess==null||map.sessloc==null||map.displayLocation()==null||map.displayLocation().seg!=map.sessloc.seg)return;
-        Glob glob=map.ui.sess.glob;java.util.List<Gob> objects=new ArrayList<>();
-        synchronized(glob.oc){for(Gob gob:glob.oc)objects.add(gob);}
+        Glob glob=map.ui.sess.glob;java.util.List<Gob> objects=players(glob.oc);
         Map<Long,Party.Member> party=glob.party.memb;
         for(Gob gob:objects)try{
-            if(gob.id==gui.plid||gob.removed||gob.virtual||party.containsKey(gob.id)||!PlayerRelations.player(gob)||PlayerRelations.fixture(gob))continue;
+            if(gob.id==gui.plid||gob.removed||gob.virtual||party.containsKey(gob.id)||PlayerRelations.fixture(gob))continue;
             PlayerRelations.Info info=PlayerRelations.info(gui,gob);
             if(shown(info.kind)){Coord at=map.p2c(gob.rc);draw(g,at,gob.a,info.kind);hits.put(gob,at);}
         }catch(Loading pending){}

@@ -37,7 +37,7 @@ public final class SettingsReset {
                 if(!match||keep(key))continue;
                 prefs.remove(key);removed++;
             }
-            prefs.flush();
+            prefs.flush();Utils.forgetprefs();
         }catch(BackingStoreException|SecurityException e){
             System.err.println("could not reset settings: "+e);
         }

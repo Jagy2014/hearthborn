@@ -27,11 +27,17 @@ public final class DepthLabel implements RenderTree.Node,Rendered,Disposable {
         new VertexArray.Layout.Input(OFFSET,new VectorFormat(2,NumberFormat.FLOAT32),0,20,28));
     /** View-space distance (map units, a tile is 11) the label is moved toward the camera before the depth test. */
     static final float CLEARANCE=20;
+    /**
+     * The render scale of the world view. The label is sized in screen pixels, but the frame it is drawn into has
+     * {@code rscale} times as many, so its offset in that frame is multiplied by it: at a scale of 2 the label would
+     * otherwise be half its size on the screen, and at 0.7 about one and a half times.
+     */
+    private static final Uniform RSCALE=new Uniform(Type.FLOAT,"growth_rscale",p->p.get(GSettings.slot).rscale.val,GSettings.slot);
     private static final Uniform PROJECTION=new Uniform(Type.MAT4,"growth_projection",Homo3D::prjxf,Homo3D.prj);
     private static final State.StandAlone BILLBOARD=new State.StandAlone(State.Slot.Type.DRAW) {
         private final ShaderMacro shader=prog -> {
             Homo3D.get(prog);
-            prog.vctx.posv.mod(in -> add(in,vec4(mul(div(mul(OFFSET.ref(),l(2.0)),FrameConfig.u_screensize.ref()),pick(in,"w")),l(0.0),l(0.0))),100);
+            prog.vctx.posv.mod(in -> add(in,vec4(mul(div(mul(OFFSET.ref(),RSCALE.ref(),l(2.0)),FrameConfig.u_screensize.ref()),pick(in,"w")),l(0.0),l(0.0))),100);
             /* Moving the point toward the viewer by CLEARANCE changes clip z by the projection's z column times it. */
             prog.vctx.posv.mod(in -> add(in,vec4(l(0.0),l(0.0),pick(mul(PROJECTION.ref(),vec4(l(0.0),l(0.0),l(CLEARANCE),l(0.0))),"z"),l(0.0))),110);
         };

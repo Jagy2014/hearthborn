@@ -2,7 +2,7 @@
 
 All notable changes to **Hearthborn Client** are listed here, newest first.
 
-## v1.0.0 — Initial Release
+## v1.0.1
 
 The first public release of **Hearthborn Client**, a modified Haven & Hearth vanilla client inspired by Amber, Ender, and Hurricane.
 
@@ -81,6 +81,11 @@ The client notifies you when production is complete. Steel production also inclu
 - Other stockpiles, including flowers, intestines, and entrails, display content icons.
 - Hold **Space** to display rock names on stockpiles.
 - Meteorite tracking assistant.
+
+### Map in a Separate Window
+
+- Open the live map in its own window and move it to a **second monitor**.
+- The separate map stays fully interactive, shares its markers with the map inside the game, and remembers its size and place.
 
 ### Pathfinding & Movement
 

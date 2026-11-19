@@ -275,7 +275,7 @@ public class OptWnd extends Window {
 		    }, prev.pos("bl").adds(0, 2));
 		profile.change(hearthborn.ui.EconomyMode.Profile.of(prefs));
 		profile.settip("Standard: the default graphics values. Economy mode is for laptops with integrated graphics whose fans run at full speed: " +
-			       "no shadows, 30 FPS limit, reduced render scale and simple lighting. Every value can still be changed below.");
+			       "no shadows, 30 FPS limit and simple lighting. The picture keeps its sharpness. Every value can still be changed below.");
 		prev = profile;
 		prev = add(new CheckBox("Render shadows") {
 			{a = prefs.lshadow.val;}
@@ -295,11 +295,11 @@ public class OptWnd extends Window {
                 ui.wnd.state(on?Windeye.State.EXCLUSIVE:Windeye.State.NORMAL);
                 Utils.setprefb("mainwnd/fullscreen",on);
             }),prev.pos("bl").adds(0,5));
-            prev = add(new CheckBox("Smooth text (on Mac enable, on Windows disable)").state(hearthborn.UiFonts::smooth).set(value -> {
+            prev = add(new CheckBox("Smooth text").state(hearthborn.UiFonts::smooth).set(value -> {
                 hearthborn.UiFonts.smooth(value);
                 ui.msg(hearthborn.L10n.tr("Text smoothing applies after you close the client window completely and start it again (logging out to the character screen is not enough)."));
             }), prev.pos("bl").adds(0, 5));
-            prev.settip("Antialiases text so it looks less jagged. Turn it on for macOS and off for Windows. Applies after you close the client window completely and start it again; logging out to the character screen is not enough. Speech bubbles over characters are always smoothed.");
+            prev.settip("Smooths the edges of text so it looks less jagged. On by default on Windows and Linux, where text looks rough without it; off by default on macOS, where the hinted text is crisper. Applies after you close the client window completely and start it again; logging out to the character screen is not enough. Speech bubbles over characters are always smoothed.");
             prev = add(new Label("Render scale"), prev.pos("bl").adds(0, 5));
 		{
 		    Label dpy = new Label("");

@@ -35,6 +35,7 @@ Explore each feature in its own illustrated guide.
 ### 🗺️ Navigation & exploration
 
 - [**Improved Pathfinding**](https://jagy2014.github.io/hearthborn/features/pathfinding/) — On by default, with optional horseback navigation.
+- [**Map in a separate window**](https://jagy2014.github.io/hearthborn/features/map-window/) — Open the live map in its own window and move it to a second monitor.
 - [**Mapping & Exports**](https://jagy2014.github.io/hearthborn/features/mapping/) — Transfer maps between clients or export images and tiles.
 - [**Session Trail**](https://jagy2014.github.io/hearthborn/features/session-trail/) — View your route for the current session without recording it.
 - [**Map Icons & Display Settings**](https://jagy2014.github.io/hearthborn/features/map-icons/) — More icons, animal sounds, and redesigned map controls.
@@ -47,7 +48,14 @@ Explore each feature in its own illustrated guide.
 
 ## Getting started
 
-Hearthborn is an unofficial custom client for Haven & Hearth. Installation and launcher instructions will be linked here when a verified distribution is available.
+Hearthborn is an unofficial custom client for Haven & Hearth. It is installed with its **launcher**, which has Java 22 built in, downloads and checks the client, and offers updates.
+
+1. Open the [latest release](https://github.com/Jagy2014/hearthborn/releases/latest) and download the launcher archive for your system: `hearthborn-launcher-windows-x86_64.zip`, `hearthborn-launcher-macos-aarch64.zip` (Apple Silicon), `hearthborn-launcher-macos-x86_64.zip` (Intel Mac) or `hearthborn-launcher-linux-x86_64.zip`.
+2. Unpack the **whole archive** into a folder and start `Hearthborn.exe` (Windows), `Hearthborn.app` (macOS) or `Hearthborn/bin/Hearthborn` (Linux). The first start downloads the client, about 100 MB.
+
+The launcher is **not code-signed yet**, so the system warns you the first time. On Windows click **More info → Run anyway**. On macOS Control-click the app, choose **Open**, then **Open** again; if macOS still refuses, run `xattr -dr com.apple.quarantine Hearthborn.app` in Terminal once.
+
+The launcher does not update itself: when a newer launcher exists, it tells you once and its **New launcher…** button opens the download page. Client versions and game data are stored separately (`%LOCALAPPDATA%\Hearthborn` on Windows, `~/Library/Application Support/Hearthborn` on macOS, `~/.local/share/hearthborn` on Linux) and stay when you replace the launcher.
 
 To explore the available features and controls, start with the [interface guide](https://jagy2014.github.io/hearthborn/features/interface/) and [automation guide](https://jagy2014.github.io/hearthborn/features/scripts/).
 

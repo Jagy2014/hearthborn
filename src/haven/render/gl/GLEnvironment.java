@@ -318,6 +318,19 @@ public abstract class GLEnvironment implements Environment {
 	}
 
 	public void accept(GL gl) {
+	    if(!GLTrace.active()) {
+		accept0(gl);
+		return;
+	    }
+	    GLTrace.begin();
+	    try {
+		accept0(gl);
+	    } finally {
+		GLTrace.end();
+	    }
+	}
+
+	private void accept0(GL gl) {
 	    GLEnvironment env = GLEnvironment.this;
 	    GLRender prep;
 	    synchronized(prepmon) {

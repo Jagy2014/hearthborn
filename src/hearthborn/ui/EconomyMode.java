@@ -21,34 +21,30 @@ import haven.*;
  */
 public final class EconomyMode {
     public static final float FPS = 30f;
-    /** Two steps down on the render-scale slider (a quarter of a power of two per step). */
-    public static final float RENDER_SCALE = (float)Math.pow(2, -2 / 4.0);
 
     public static GSettings apply(GSettings prefs) {
 	return(prefs.update(null, prefs.lshadow, false)
 	       .update(null, prefs.hz, FPS)
-	       .update(null, prefs.rscale, RENDER_SCALE)
 	       .update(null, prefs.lightmode, GSettings.LightMode.SIMPLE)
 	       .update(null, prefs.maxlights, 0));
     }
 
     public static boolean active(GSettings prefs) {
-	return(!prefs.lshadow.val && prefs.hz.val <= FPS && prefs.rscale.val <= RENDER_SCALE + 1e-4f);
+	return(!prefs.lshadow.val && prefs.hz.val <= FPS);
     }
 
-    /** The values economy mode changes, back at their defaults. Other video settings are left alone. */
+    /** The values economy mode changes, back at their defaults. Other video settings, the render scale among them, are left alone. */
     public static GSettings standard(GSettings prefs) {
 	GSettings def = GSettings.defaults();
 	return(prefs.update(null, prefs.lshadow, def.lshadow.val)
 	       .update(null, prefs.hz, def.hz.val)
-	       .update(null, prefs.rscale, def.rscale.val)
 	       .update(null, prefs.lightmode, def.lightmode.val)
 	       .update(null, prefs.maxlights, def.maxlights.val));
     }
 
     private static boolean isStandard(GSettings prefs) {
 	GSettings def = GSettings.defaults();
-	return(prefs.lshadow.val == def.lshadow.val && prefs.hz.val.equals(def.hz.val) && prefs.rscale.val.equals(def.rscale.val)
+	return(prefs.lshadow.val == def.lshadow.val && prefs.hz.val.equals(def.hz.val)
 	       && prefs.lightmode.val == def.lightmode.val && prefs.maxlights.val.equals(def.maxlights.val));
     }
 

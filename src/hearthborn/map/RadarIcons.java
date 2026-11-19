@@ -114,6 +114,8 @@ public final class RadarIcons {
         return any?metal?"metal":"wood":null;
     }
     public static synchronized void learn(Gob gob,GobIcon icon){load();String id=identity(gob);if(id==null)return;String path=icon.res.get().name;if(!path.equals(learned.put(id,path))){dirty=true;paths.clear();}}
+    /** The icons of tame livestock (the mare, the cow, the tame reindeer): they are off until the player turns them on. */
+    public static boolean tameIcon(String icon){return icon!=null&&(icon.startsWith("radar/tame/")||icon.contains("teimdeer"));}
     public static void configure(GobIcon.Settings.Loader loader){
         java.util.Map<String,Boolean> icons=new java.util.LinkedHashMap<>();
         java.util.Properties world=hearthborn.l10n.Catalog.load("/hearthborn/map/world-icons.properties");
@@ -123,6 +125,7 @@ public final class RadarIcons {
         for(String key:configured.stringPropertyNames()){String[] value=configured.getProperty(key).split("\\|",2);icons.put(value[0],value.length<2||Boolean.parseBoolean(value[1]));}
         for(String path:new String[]{"paginae/bld/bram","gfx/kritter/cattle/icon-aurochs","gfx/kritter/sheep/icon-mouflon","gfx/kritter/boar/icon","gfx/kritter/goat/icon"})icons.putIfAbsent(path,true);
         for(String path:aliases.keySet())icons.put(path,true);
+        icons.replaceAll((path,show)->tameIcon(path)?false:show);
         for(java.util.Map.Entry<String,Boolean> entry:icons.entrySet()){
             Resource.Saved resource=new Resource.Saved(Resource.remote(),entry.getKey(),-1);GobIcon.Settings.ResID id=new GobIcon.Settings.ResID(resource,new byte[0]);GobIcon.Setting setting=new GobIcon.Setting(resource,GobIcon.Icon.nilid);setting.show=setting.defshow=entry.getValue();loader.load.add(id);loader.defaults.put(id,setting);
         }
@@ -156,8 +159,14 @@ public final class RadarIcons {
         return known;
     }
     public static String domestic(Gob gob){
-        String base=GameObjects.resourceName(gob);
-        if(base==null||!livestock(base))return null;
+        /* Every object is asked on every scan of the map; a resource's kind of animal does not change, so look once. */
+        byte kind=gob.livestockKind;
+        if(kind==0){
+            String base=GameObjects.resourceName(gob);
+            if(base==null)return null;
+            gob.livestockKind=kind=(byte)(livestock(base)?1:2);
+        }
+        if(kind!=1)return null;
         return domestic(identity(gob));
     }
     /** Cached per resource; learning a new picture drops the cache. */
@@ -204,7 +213,7 @@ public final class RadarIcons {
         if(setting==null){
             Resource.Saved resource=new Resource.Saved(Resource.remote(),image.res.name,image.res.ver);
             setting=new GobIcon.Setting(image,new GobIcon.Settings.ResID(resource,new byte[0]));
-            setting.show=setting.defshow=true;settings.settings.put(setting.id,setting);settings.dsave();
+            setting.show=setting.defshow=!tameIcon(image.res.name);settings.settings.put(setting.id,setting);settings.dsave();
         }
         return setting;}
     }

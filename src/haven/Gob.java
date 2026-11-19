@@ -34,6 +34,10 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
     public Coord2d rc;
     public double a;
     public boolean virtual = false;
+    /** What the resource says about this object: 0 not known yet, 1 a player's body, 2 anything else (see PlayerRelations). */
+    public byte bodyKind = 0;
+    /** The same for livestock on the map: 0 not known yet, 1 a tame animal's resource, 2 anything else (see RadarIcons). */
+    public byte livestockKind = 0;
     int clprio = 0;
     public long id;
     public boolean removed = false;
@@ -437,6 +441,13 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 	this.id = id;
 	if(id < 0)
 	    virtual = true;
+	/* Ground scenery (grass, flowers, pebbles) fills a village with thousands of objects. None of the Hearthborn
+	 * features applies to them, and each extra attribute is ticked for every one of them on every frame. */
+	if(!(this instanceof Tileset.Flavor.Obj))
+	    hearthbornAttributes();
+    }
+
+    private void hearthbornAttributes() {
 	setattr(new hearthborn.world.GobMarks(this));
 	setattr(new hearthborn.world.PlayerWarnings(this));
 	setattr(new hearthborn.combat.FighterMark(this));
@@ -614,13 +625,20 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 	return(tile.drawstate(glob, pc));
     }
 
-    private Class<? extends GAttrib> attrclass(Class<? extends GAttrib> cl) {
-	while(true) {
-	    Class<?> p = cl.getSuperclass();
-	    if(p == GAttrib.class)
-		return(cl);
-	    cl = p.asSubclass(GAttrib.class);
+    /* Asked for on every getattr, thousands of times a frame, and the answer never changes for a class. */
+    private static final ClassValue<Class<? extends GAttrib>> attrclasses = new ClassValue<Class<? extends GAttrib>>() {
+	protected Class<? extends GAttrib> computeValue(Class<?> type) {
+	    Class<? extends GAttrib> cl = type.asSubclass(GAttrib.class);
+	    while(true) {
+		Class<?> p = cl.getSuperclass();
+		if(p == GAttrib.class)
+		    return(cl);
+		cl = p.asSubclass(GAttrib.class);
+	    }
 	}
+    };
+    private Class<? extends GAttrib> attrclass(Class<? extends GAttrib> cl) {
+	return(attrclasses.get(cl));
     }
 
     /** Snapshot under the same monitor as OCache's attribute updates. */

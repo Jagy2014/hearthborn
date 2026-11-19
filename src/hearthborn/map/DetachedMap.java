@@ -217,8 +217,8 @@ public final class DetachedMap {
             });
             addMouseWheelListener(e -> {
                 Coord c = at(e.getX(), e.getY());
-                int amount = e.getWheelRotation() * hearthborn.ui.WheelSettings.direction();
-                double sub = e.getPreciseWheelRotation() * hearthborn.ui.WheelSettings.direction();
+                int amount = e.getWheelRotation() * hearthborn.ui.WheelSettings.swingDirection();
+                double sub = e.getPreciseWheelRotation() * hearthborn.ui.WheelSettings.swingDirection();
                 tasks.add(() -> {if(host != null) new Widget.MouseWheelEvent(c, amount, sub).dispatch(host);});
             });
             addComponentListener(new ComponentAdapter() {

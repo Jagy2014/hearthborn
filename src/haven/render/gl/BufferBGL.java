@@ -54,7 +54,12 @@ public class BufferBGL extends BGL {
 		curprof.register(list[i]);
 	    try {
 		try {
-		    list[i].run(gl);
+		    if(GLTrace.active()) {
+			final Command cmd = list[i];
+			GLTrace.time(cmd, () -> cmd.run(gl));
+		    } else {
+			list[i].run(gl);
+		    }
 		    if(DEBUG)
 			GLException.checkfor(gl, null);
 		} catch(RuntimeException exc) {

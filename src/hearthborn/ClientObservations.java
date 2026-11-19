@@ -61,11 +61,7 @@ public final class ClientObservations {
                 ContainerContents.observe(window, gui);
             } catch(Loading ignored) {}
         }
-        List<Gob> objects = new ArrayList<>();
-        synchronized(gui.ui.sess.glob.oc) {
-            for(Gob gob : gui.ui.sess.glob.oc)
-                objects.add(gob);
-        }
+        List<Gob> objects = gui.ui.sess.glob.oc.snapshot();
         ObjectNames.discover(objects);
         ClaimSurvey.observe(gui);
         ClaimTimers.observe(gui, objects);

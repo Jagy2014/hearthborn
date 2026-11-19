@@ -661,6 +661,12 @@ public abstract class UILoop implements Console.Directory {
 	cmdmap.put("profile", (cons, args) -> {
 	    profile.set(Utils.parsebool(args[1]));
 	});
+	cmdmap.put("gltrace", (cons, args) -> {
+	    boolean on = (args.length > 1) ? Utils.parsebool(args[1]) : !haven.render.gl.GLTrace.enabled();
+	    long limit = (args.length > 2) ? Long.parseLong(args[2]) : 40;
+	    haven.render.gl.GLTrace.enable(on, limit);
+	    cons.out.printf("gltrace %s (slower than %d ms goes to logs/gltrace.log)\n", on ? "on" : "off", limit);
+	});
 	cmdmap.put("renderer", (cons, args) -> {
 	    cons.out.printf("Toolkit: %s\n", UILoop.this.wnd.toolkit().description());
 	    if(env != null) {

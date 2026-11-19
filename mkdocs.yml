@@ -58,6 +58,7 @@ plugins:
             Automation & Xtensions: Автоматизация и Xtensions
             Navigation & exploration: Навигация и исследование
             Improved Pathfinding: Поиск пути
+            Map in a separate window: Карта в отдельном окне
             Mapping & Exports: Карта и экспорт
             Session Trail: Маршрут сессии
             Map Icons & Settings: Значки и настройки карты
@@ -89,6 +90,7 @@ nav:
       - Automation & Xtensions: features/scripts.md
   - Navigation & exploration:
       - Improved Pathfinding: features/pathfinding.md
+      - Map in a separate window: features/map-window.md
       - Mapping & Exports: features/mapping.md
       - Session Trail: features/session-trail.md
       - Map Icons & Settings: features/map-icons.md
