@@ -258,6 +258,10 @@ public class HashDirCache implements ResCache {
 	return(list(true));
     }
 
+    public Iterator<String> names() throws IOException {
+	return(list(true));
+    }
+
     public OutputStream store(String name) throws IOException {
 	Path path;
 	try(CacheFile cf = lookup(name, true)) {
@@ -319,6 +323,31 @@ public class HashDirCache implements ResCache {
 		    clean.run();
 		}
 	    });
+    }
+
+    public java.util.List<byte[]> bodies(String name) throws IOException {
+	long h = namehash(idhash, name);
+	java.util.List<byte[]> found = new java.util.ArrayList<byte[]>();
+	for(int idx = 0; ; idx++) {
+	    Path path = pj(base, String.format("%016x.%d", h, idx));
+	    if(!Files.exists(path))
+		break;
+	    try(FileChannel fp = open2(path, StandardOpenOption.READ)) {
+		Header head = readhead(fp);
+		if(head == null)
+		    continue;
+		if(!head.cid.equals(id.toString()) || !head.name.equals(name))
+		    continue;
+		java.io.ByteArrayOutputStream buf = new java.io.ByteArrayOutputStream();
+		byte[] tmp = new byte[8192];
+		int n;
+		InputStream in = Channels.newInputStream(fp);
+		while((n = in.read(tmp)) >= 0)
+		    buf.write(tmp, 0, n);
+		found.add(buf.toByteArray());
+	    }
+	}
+	return(found);
     }
 
     public InputStream fetch(String name) throws IOException {

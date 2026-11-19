@@ -84,7 +84,19 @@ public abstract class KeyMatch {
 	    char evc = keychar((KeyDownEvent)ev);
 	    if(!casematch)
 		evc = Character.toUpperCase(evc);
-	    return(evc == chr);
+	    if(evc == chr)
+		return(true);
+	    char want = casematch ? chr : Character.toUpperCase(chr);
+	    char latin = hearthborn.input.LayoutKeys.latin(evc);
+	    if((latin != 0) && (latin == want))
+		return(true);
+	    Sym sym = ev.key().primary();
+	    if(sym instanceof Key.Std) {
+		char physical = ((Key.Std)sym).ch;
+		if((physical != 0) && (Character.toUpperCase(physical) == Character.toUpperCase(want)))
+		    return(true);
+	    }
+	    return(false);
 	}
 
 	private boolean equals(CharMatch that) {
@@ -430,10 +442,10 @@ public abstract class KeyMatch {
 	    Character.toUpperCase(keychar((KeyDownEvent)ev)) :
 	    0;
 	/* In due time, switch to use PriSymMatch */
-	int code = AWTCompat.revawt.getOrDefault(ev.key().primary(AWTCompat.revawt.keySet()), VK_UNDEFINED);
+	Sym sym = ev.key().primary(AWTCompat.revawt.keySet());
+	int code = (sym == null) ? VK_UNDEFINED : AWTCompat.revawt.getOrDefault(sym, VK_UNDEFINED);
 	if(code != VK_UNDEFINED) {
-	    String nm = ev.key().primary().nm();
-	    return(new CodeMatch(code, true, nm, modmask, mod));
+	    return(new CodeMatch(code, true, sym.nm(), modmask, mod));
 	}
 	if(!Character.isISOControl(chr))
 	    return(new CharMatch(chr, false, Character.toString(chr), modmask, mod));
@@ -486,6 +498,16 @@ public abstract class KeyMatch {
 	return(null);
     }
 
+    static void traceCapture(Widget.KbdEvent event){
+        if(!hearthborn.io.DeveloperMode.enabled("debug-logs"))return;
+        try{
+            Toolkit.KeyEvent nativeEvent=event.tkev();
+            String line=java.time.Instant.now()+" type="+nativeEvent.getClass().getSimpleName()+" key="+nativeEvent.key().id()
+                +" physical="+nativeEvent.key().primary()+" mods="+nativeEvent.mods()+" code="+event.code+" flags="+event.mods+"\n";
+            hearthborn.io.Logs.append("keybind.log",line);
+        }catch(java.io.IOException failure){System.err.println("Cannot record key capture: "+failure);}
+    }
+
     public static class Capture extends Button {
 	public KeyMatch key;
 	private UI.Grab grab = null;
@@ -523,7 +545,10 @@ public abstract class KeyMatch {
 
 	protected boolean handle(KeyDownEvent kev) {
 	    Toolkit.KeyDownEvent ev = kev.tkev();
-	    if(ev.key().primary(Std.MODKEYS) != null)
+            // Cocoa IME text commits are not physical key presses and carry no modifiers.
+            // Capturing them would replace Ctrl/Option combinations with plain text.
+            if(ev.key()==Key.nil)return false;
+	    if(Std.MODKEYS.contains(ev.key().primary()))
 		return(false);
 	    if(ev.sym() == Std.ESCAPE) {
 		change(namefor(this.key));
@@ -534,10 +559,9 @@ public abstract class KeyMatch {
 		return(true);
 	    }
 	    KeyMatch key = mkmatch(kev);
-	    if(key != null)
-		set(key);
-	    else
-		change(namefor(this.key));
+	    if(key == null)
+		return(false);
+	    set(key);
 	    return(true);
 	}
 

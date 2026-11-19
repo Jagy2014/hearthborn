@@ -156,6 +156,8 @@ public abstract class SListBox<I, W extends Widget> extends SListWidget<I, W> im
     }
 
     protected void drawbg(GOut g) {
+        if(hearthborn.ui.UiTheme.onPanel(this))
+            hearthborn.ui.UiTheme.panel(g, sz);
     }
 
     protected void drawbg(GOut g, I item, int idx, Area area) {

@@ -855,6 +855,8 @@ public class MCache implements MapSource {
 	this.sess = sess;
     }
 
+    public Collection<Grid> loadedGrids() {synchronized(grids){return new ArrayList<>(grids.values());}}
+
     public void ctick(double dt) {
 	Collection<Grid> copy;
 	synchronized(grids) {
@@ -1059,16 +1061,15 @@ public class MCache implements MapSource {
 	Coord c = msg.coord();
 	synchronized(grids) {
 	    synchronized(req) {
-		if(req.containsKey(c)) {
-		    Grid g = grids.get(c);
-		    if(g == null)
-			grids.put(c, g = new Grid(c));
-		    g.fill(msg);
-		    req.remove(c);
-		    olseq++;
-		    chseq++;
-		    gridwait.wnotify();
-		}
+		// Travel and doors clear the request list before the reply arrives.
+		Grid g = grids.get(c);
+		if(g == null)
+		    grids.put(c, g = new Grid(c));
+		g.fill(msg);
+		req.remove(c);
+		olseq++;
+		chseq++;
+		gridwait.wnotify();
 	    }
 	}
     }

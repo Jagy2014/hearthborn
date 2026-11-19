@@ -31,23 +31,27 @@ import java.awt.Color;
 
 public class Bufflist extends Widget {
     public static final int margin = UI.scale(2);
-    public static final int num = 5;
+    public static final int num = 8;
 
     public interface Managed {
 	public void move(Coord c, double off);
+        public default int layoutOrder(){return 0;}
     }
 
     public Bufflist() {
         super(Buff.cframe.sz());
     }
 
+    protected int columns(){return num;}
+
     private void arrange(Widget imm) {
 	int i = 0, rn = 0, x = 0, y = 0, maxh = 0;
 	Coord br = new Coord();
 	Collection<Pair<Managed, Coord>> mv = new ArrayList<>();
-	for(Widget wdg = child; wdg != null; wdg = wdg.next) {
-	    if(!(wdg instanceof Managed))
-		continue;
+        List<Widget> ordered=new ArrayList<>();
+        for(Widget wdg=child;wdg!=null;wdg=wdg.next)if(wdg instanceof Managed)ordered.add(wdg);
+        ordered.sort(Comparator.comparingInt(wdg->((Managed)wdg).layoutOrder()));
+	for(Widget wdg : ordered) {
 	    Managed ch = (Managed)wdg;
 	    Coord c = new Coord(x, y);
 	    if(ch == imm)
@@ -57,7 +61,7 @@ public class Bufflist extends Widget {
 	    i++;
 	    x += wdg.sz.x + margin;
 	    maxh = Math.max(maxh, wdg.sz.y);
-	    if(++rn >= num) {
+	    if(++rn >= columns()) {
 		x = 0;
 		y += maxh + margin;
 		maxh = 0;
@@ -66,6 +70,16 @@ public class Bufflist extends Widget {
 	    if(c.x + wdg.sz.x > br.x) br.x = c.x + wdg.sz.x;
 	    if(c.y + wdg.sz.y > br.y) br.y = c.y + wdg.sz.y;
 	}
+	if(growLeft() && br.x > 0){
+	    int span = br.x;
+	    if(imm != null) imm.c = Coord.of(span - imm.c.x - imm.sz.x, imm.c.y);
+	    Collection<Pair<Managed, Coord>> flipped = new ArrayList<>();
+	    for(Pair<Managed, Coord> p : mv){
+		Widget wdg = (Widget)p.a;
+		flipped.add(new Pair<>(p.a, Coord.of(span - p.b.x - wdg.sz.x, p.b.y)));
+	    }
+	    mv = flipped;
+	}
 	resize(br);
 	double off = 1.0 / mv.size(), coff = 0.0;
 	for(Pair<Managed, Coord> p : mv) {
@@ -73,6 +87,10 @@ public class Bufflist extends Widget {
 	    coff += off;
 	}
     }
+
+    /** The portrait cluster uses this so effect widgets grow toward the screen when it sits on the right. */
+    protected boolean growLeft(){return false;}
+    public void relayout(){arrange(null);}
 
     public void addchild(Widget child, Object... args) {
 	add(child);

@@ -49,8 +49,19 @@ public class Button extends SIWidget {
     public BufferedImage cont;
     public Runnable action = null;
     static Text.Foundry tf = new Text.Foundry(Text.serif.deriveFont(Font.BOLD, UI.scale(12f))).aa(true);
-    static Text.Furnace nf = new PUtils.BlurFurn(new PUtils.TexFurn(tf, Window.ctex), UI.rscale(0.75), UI.rscale(0.75), new Color(80, 40, 0));
-    private boolean a = false, dis = false;
+    private static final Text.Foundry settingsTf = new Text.Foundry(Text.serif.deriveFont(Font.BOLD, UI.scale(14f))).aa(true);
+    /** Settings windows show all their text one step larger; this button follows. */
+    private boolean settings;
+    /** The caption as given, drawn in the ink of the current theme; null when the caption came ready-made. */
+    private String caption;
+    private Color ink;
+    private boolean inkLight;
+    private Text shade;
+    /** How the button is drawn: the default graphite pill, or one of the flat faces of the settings window. */
+    public enum Look {PILL, MENU, OUTLINE, PRIMARY, DANGER, QUIET}
+    private Look look = Look.PILL;
+    private Color lookInk;
+    private boolean a = false, dis = false, hover = false, selected = false;
     private UI.Grab d = null;
 	
     @RName("btn")
@@ -70,7 +81,7 @@ public class Button extends SIWidget {
     }
 	
     public static Button wrapped(int w, String text) {
-	Button ret = new Button(w, tf.renderwrap(text, w - margin));
+	Button ret = new Button(w, tf.renderwrap(hearthborn.L10n.text("button", text), w - margin));
 	return(ret);
     }
         
@@ -85,9 +96,8 @@ public class Button extends SIWidget {
 
     public Button(int w, String text, boolean lg, Runnable action) {
 	this(w, lg);
-	this.text = nf.render(text);
-	this.cont = this.text.img;
 	this.action = action;
+	caption(hearthborn.L10n.text("button", text), null);
     }
 
     public Button(int w, String text, boolean lg) {
@@ -114,44 +124,131 @@ public class Button extends SIWidget {
 	this.cont = cont;
     }
 	
+    /** Renders the caption in the ink of the current theme, or in the colour the server asked for. */
+    private void caption(String shown, Color custom) {
+	if(text != null) text.dispose();
+	if(shade != null) {shade.dispose(); shade = null;}
+	caption = shown;
+	lookInk = null;
+	ink = custom;
+	inkLight = hearthborn.ui.UiTheme.light();
+	Text.Foundry foundry = settings ? settingsTf : tf;
+	text = foundry.render(shown, custom != null ? custom : hearthborn.ui.PillSkin.ink(inkLight));
+	cont = text.img;
+	/* A caption that does not fit grows its button instead of running over the ends; a roomy button keeps its width. */
+	int pad = UI.scale(8);
+	int need = Utils.imgsz(cont).x + pad * 2;
+	if(need > sz.x) resize(new Coord(need, sz.y));
+	Color dark = custom != null ? null : hearthborn.ui.PillSkin.shade(inkLight);
+	if(dark != null) shade = foundry.render(shown, dark);
+    }
+
     public Button action(Runnable action) {
 	this.action = action;
 	return(this);
     }
 
-    public void draw(BufferedImage img) {
+    /** Draws the button in one of the flat looks; the default is the pill. */
+    public Button look(Look look) {
+	if(this.look != look) {
+	    this.look = look;
+	    lookInk = null;
+	    redraw();
+	}
+	return(this);
+    }
+
+    public Look look() {return(look);}
+
+    private void drawLook(BufferedImage img) {
+	Color want = hearthborn.ui.ButtonLook.ink(look, hover || a, selected);
+	if(caption != null && !want.equals(lookInk)) {
+	    if(text != null) text.dispose();
+	    if(shade != null) {shade.dispose(); shade = null;}
+	    text = (settings ? settingsTf : tf).render(caption, want);
+	    cont = text.img;
+	    lookInk = want;
+	}
+	hearthborn.ui.ButtonLook.paint(img, look, hover, a, selected);
 	Graphics g = img.getGraphics();
-	int yo = lg?((hl - hs) / 2):0;
-
-	g.drawImage(a?dt:ut, UI.scale(4), yo + UI.scale(4), sz.x - UI.scale(8), hs - UI.scale(8), null);
-
 	Coord tc = sz.sub(Utils.imgsz(cont)).div(2);
-	if(a)
+	if(look == Look.MENU)
+	    tc = new Coord(hearthborn.ui.ButtonLook.menuPad(), tc.y);
+	if(a && look != Look.MENU)
 	    tc = tc.add(UI.scale(1), UI.scale(1));
 	g.drawImage(cont, tc.x, tc.y, null);
+	g.dispose();
+	if(dis)
+	    PUtils.monochromize(img, Color.LIGHT_GRAY);
+    }
 
-	g.drawImage(bl, 0, yo, null);
-	g.drawImage(br, sz.x - br.getWidth(), yo, null);
-	g.drawImage(bt, bl.getWidth(), yo, sz.x - bl.getWidth() - br.getWidth(), bt.getHeight(), null);
-	g.drawImage(bb, bl.getWidth(), yo + hs - bb.getHeight(), sz.x - bl.getWidth() - br.getWidth(), bb.getHeight(), null);
-	if(lg)
-	    g.drawImage(bm, (sz.x - bm.getWidth()) / 2, 0, null);
+    private int themeGeneration = hearthborn.ui.UiTheme.generation();
 
+    /** A change of theme or accent draws the face again, without waiting for the pointer to touch it. */
+    public void draw(GOut g) {
+	if(themeGeneration != hearthborn.ui.UiTheme.generation()) {
+	    themeGeneration = hearthborn.ui.UiTheme.generation();
+	    redraw();
+	}
+	super.draw(g);
+    }
+
+    public void draw(BufferedImage img) {
+	if(look != Look.PILL) {
+	    drawLook(img);
+	    return;
+	}
+	boolean light = hearthborn.ui.UiTheme.light();
+	if(caption != null && ink == null && light != inkLight) caption(caption, null);
+	int yo = lg?((hl - hs) / 2):0;
+	hearthborn.ui.PillSkin.paint(img, yo, hs, a || selected, hover || a || selected, light);
+	Graphics g = img.getGraphics();
+	Coord tc = sz.sub(Utils.imgsz(cont)).div(2);
+	if(a || selected)
+	    tc = tc.add(UI.scale(1), UI.scale(1));
+	if(shade != null)
+	    g.drawImage(shade.img, tc.x + UI.scale(1), tc.y + UI.scale(1), null);
+	g.drawImage(cont, tc.x, tc.y, null);
 	g.dispose();
 
 	if(dis)
 	    PUtils.monochromize(img, Color.LIGHT_GRAY);
     }
-	
+
+    public boolean mousehover(MouseHoverEvent ev, boolean hovering) {
+	if(hovering != hover) {
+	    hover = hovering;
+	    redraw();
+	}
+	return(super.mousehover(ev, hovering));
+    }
+
+    /** Marks the button as the one whose section is open: it stays pressed in. */
+    public void selected(boolean selected) {
+	if(this.selected == selected) return;
+	this.selected = selected;
+	redraw();
+    }
+
+    public boolean selected() {return(selected);}
+
+    public boolean disabled() {return(dis);}
+
+    /** Settings buttons keep the same face, one step larger than the other buttons. */
+    public void settingsFace() {
+	if(settings || text == null) return;
+	settings = true;
+	if(caption != null) caption(caption, ink);
+	redraw();
+    }
+
     public void change(String text, Color col) {
-	this.text = tf.render(text, col);
-	this.cont = this.text.img;
+	caption(hearthborn.L10n.text("button", text), col);
 	redraw();
     }
     
     public void change(String text) {
-	this.text = nf.render(text);
-	this.cont = this.text.img;
+	caption(hearthborn.L10n.text("button", text), null);
 	redraw();
     }
 

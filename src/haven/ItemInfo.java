@@ -166,7 +166,7 @@ public abstract class ItemInfo {
 
 	public AdHoc(Owner owner, String str) {
 	    super(owner);
-	    this.str = Text.render(str);
+	    this.str = Text.render(hearthborn.L10n.text("label", str));
 	}
 
 	public BufferedImage tipimg() {
@@ -183,10 +183,16 @@ public abstract class ItemInfo {
 	}
 
 	public Name(Owner owner, String str) {
-	    this(owner, Text.render(str));
+	    this(owner, hearthborn.l10n.LocalizedText.item(owner, str));
 	}
 
 	public BufferedImage tipimg() {
+            if(str instanceof hearthborn.l10n.LocalizedText &&
+               !str.text.equals(((hearthborn.l10n.LocalizedText)str).displayText)) {
+                BufferedImage original = hearthborn.l10n.TooltipText.literal(() ->
+                    Text.render(str.text, new java.awt.Color(160, 160, 160)).img);
+                return catimgs(0, str.img, original);
+            }
 	    return(str.img);
 	}
 
@@ -219,7 +225,7 @@ public abstract class ItemInfo {
 		Resource.Tooltip tt = res.layer(Resource.tooltip);
 		if(tt == null)
 		    throw(new RuntimeException("Item resource " + res + " is missing default tooltip"));
-		return(tt.t);
+		return(tt.original);
 	    }
 
 	    public ItemInfo build(Owner owner, Raw raw, Object... args) {
@@ -237,7 +243,7 @@ public abstract class ItemInfo {
 	    this.doc = doc;
 	}
 	public Pagina(Owner owner, String str) {
-	    this(owner, new RichText.Document(str));
+	    this(owner, new RichText.Document(hearthborn.L10n.text("label", str)));
 	}
 
 	public BufferedImage tipimg(int w) {

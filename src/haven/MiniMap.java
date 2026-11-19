@@ -46,10 +46,11 @@ import static haven.OCache.posres;
 public class MiniMap extends Widget {
     public static final Tex bg = Resource.loadtex("gfx/hud/mmap/ptex");
     public static final Tex nomap = Resource.loadtex("gfx/hud/mmap/nomap");
-    public static final Tex plp = ((TexI)Resource.loadtex("gfx/hud/mmap/plp")).filter(Texture.Filter.LINEAR);
     public final MapFile file;
     public Markers markers = new Markers(this);
     public Location curloc;
+    /** Keep building the map even while the widget is hidden, for the detached window. */
+    public boolean loadHidden;
     public Location sessloc;
     public GobIcon.Settings iconconf;
     public List<DisplayIcon> icons = Collections.emptyList();
@@ -62,6 +63,14 @@ public class MiniMap extends Widget {
     protected int dlvl, dmag;
     protected Location dloc;
 
+    private final hearthborn.map.MapIconTrace iconTrace=new hearthborn.map.MapIconTrace();
+    private final hearthborn.world.SiegePointers siegePins=new hearthborn.world.SiegePointers();
+    private final hearthborn.planner.RoomPlan roomPlan=new hearthborn.planner.RoomPlan(this);
+    private final hearthborn.map.MapDisplay extra = new hearthborn.map.MapDisplay(this);
+    private final hearthborn.map.PlayerMarkers playerMarkers = new hearthborn.map.PlayerMarkers(this);
+    public Location displayLocation() {return dloc;}
+    public int displayZoom() {return zoomlevel;}
+    public void dispose() {siegePins.dispose();extra.dispose();playerMarkers.dispose();super.dispose();}
     public MiniMap(Coord sz, MapFile file) {
 	super(sz);
 	this.file = file;
@@ -137,6 +146,19 @@ public class MiniMap extends Widget {
 	    }
 	    throw(new Loading("No mapped grids found."));
 	}
+    }
+
+    /** Session transform must use the player's grid, not an arbitrary cached layer. */
+    public static class PlayerSessionLocator implements Locator {
+        private final MapView map;
+        public PlayerSessionLocator(MapView map){this.map=map;}
+        public Location locate(MapFile file){
+            Gob player=map.player();if(player==null)throw new Loading("Waiting for player");
+            MCache.Grid grid=map.ui.sess.glob.map.getgridt(player.rc.floor(tilesz));
+            MapFile.GridInfo info=file.gridinfo.get(grid.id);if(info==null)throw new Loading("Waiting for player grid mapping");
+            MapFile.Segment segment=file.segments.get(info.seg);if(segment==null)throw new Loading("Waiting for player map segment");
+            return new Location(segment,info.sc.sub(grid.gc).mul(cmaps));
+        }
     }
 
     public static class MapLocator implements Locator {
@@ -364,9 +386,39 @@ public class MiniMap extends Widget {
 	return(new Location(dloc.seg, tc));
     }
 
+    /** Corner map keeps the last external view while a detached map shows the room. */
+    protected boolean preserveOutsideMap(){return false;}
+    private boolean retainedOutside;
+    private Location outsideLocation;
+    private boolean outsideLoaded;
+    private String outsideKey(){return "hearthborn/map/corner-outside-"+Integer.toHexString(file.filename.hashCode());}
+    private void retainOutside(){
+        if(file==null)return;
+        if(!outsideLoaded){
+            try{
+                String saved=Utils.getpref(outsideKey(),"");
+                if(!saved.isEmpty()){String[] parts=saved.split(",");if(parts.length!=3){outsideLoaded=true;return;}outsideLocation=resolve(new SpecLocator(Long.parseLong(parts[0]),Coord.of(Integer.parseInt(parts[1]),Integer.parseInt(parts[2]))));if(outsideLocation==null)return;}
+                outsideLoaded=true;
+            }catch(Loading wait){return;}catch(IllegalArgumentException invalid){outsideLoaded=true;}
+        }
+        if(outsideLocation!=null)center(outsideLocation);
+    }
+    private void rememberOutside(){
+        if(file==null||curloc==null)return;
+        if(outsideLocation==null||outsideLocation.seg.id!=curloc.seg.id||!outsideLocation.tc.equals(curloc.tc)){
+            outsideLocation=curloc;Utils.setpref(outsideKey(),curloc.seg.id+","+curloc.tc.x+","+curloc.tc.y);
+        }
+        outsideLoaded=true;
+    }
     private Locator sesslocator;
     public void tick(double dt) {
-	if(setloc != null) {
+        GameUI owner=getparent(GameUI.class);if(owner!=null&&owner.iconconf!=null)iconconf=owner.iconconf;
+        boolean indoors=preserveOutsideMap()&&roomPlan.indoors();
+        boolean hold=preserveOutsideMap()&&indoors;
+        if(hold)retainOutside();
+        // A new installation/session may have no external map yet. Never freeze an empty view.
+        retainedOutside=hold&&outsideLocation!=null;
+	if(setloc != null&&!retainedOutside) {
 	    try {
 		Location loc = resolve(setloc);
 		center(loc);
@@ -379,15 +431,18 @@ public class MiniMap extends Widget {
 	    sesslocator = new SessionLocator(ui.sess);
 	if(sesslocator != null) {
 	    try {
-		sessloc = resolve(sesslocator);
+                sessloc=resolve(owner!=null&&owner.map!=null&&owner.map.player()!=null?new PlayerSessionLocator(owner.map):sesslocator);
 	    } catch(Loading l) {
 	    }
 	}
+        if(preserveOutsideMap()&&!indoors&&roomPlan.locationKnown())rememberOutside();
 	icons = findicons(icons);
-	if(tvisible()) {
+        if(!retainedOutside)extra.tick();
+	if(tvisible() || loadHidden) {
 	    Location loc = this.curloc;
 	    if(loc != null)
 		redisplay(loc);
+            iconTrace.sample(this);
 	}
     }
 
@@ -440,7 +495,9 @@ public class MiniMap extends Widget {
 	    this.z = icon.z();
 	    this.stime = ui.lasttick;
 	    this.conf = conf;
-	    if(this.notify = conf.notify)
+	    if(this.notify = conf.notify && (hearthborn.world.GobMarks.corpse(icon.id()) || !hearthborn.world.GobMarks.hasDedicatedIconSound(conf.res.name))
+                && !hearthborn.world.PlayerWarnings.ownsIconSound(gob)
+                && !hearthborn.ui.NearbySiegeCheck.ownsIconSound(hearthborn.util.GameObjects.resourceName(gob)))
 		this.snotify = conf.notification();
 	}
 
@@ -575,13 +632,18 @@ public class MiniMap extends Widget {
 	    } catch(Loading l) {}
 	}
 
-	private int tseq = -1;
+	private int tseq = -1, caveSeq = -1;
 	private BufferedImage tooltip = null;
 	public BufferedImage tooltip() {
 	    MarkerIcon minf = mm.markers.get(m);
-	    if((tooltip == null) || (minf.iseq != tseq)) {
+	    int caves = hearthborn.map.CaveLevels.generation();
+	    if((tooltip == null) || (minf.iseq != tseq) || (caves != caveSeq)) {
 		tooltip = ItemInfo.longtip(minf.info());
+		java.awt.image.BufferedImage level = hearthborn.map.CaveLevels.tip(m.seg);
+		if(level != null)
+		    tooltip = (tooltip == null) ? level : ItemInfo.catimgs(3, tooltip, level);
 		tseq = minf.iseq;
+		caveSeq = caves;
 	    }
 	    return(tooltip);
 	}
@@ -639,7 +701,7 @@ public class MiniMap extends Widget {
 	    if(img_c == null) {
 		img_c = new CachedImage(grid -> {
 			if(grid instanceof MapFile.ZoomGrid) {
-			    return(Defer.later(() -> new TexI(grid.render(sc.mul(cmaps)))));
+			    return(Defer.later(() -> new TexI(grid.render(sc.mul(cmaps))).filter(Texture.Filter.NEAREST)));
 			} else {
 			    return(Defer.later(new Defer.Callable<Tex>() {
 				    MapFile.View view = new MapFile.View(seg);
@@ -652,7 +714,7 @@ public class MiniMap extends Widget {
 						}
 					    }
 					    view.fin();
-					    return(new TexI(MapSource.drawmap(view, Area.sized(sc.mul(cmaps), cmaps))));
+					    return(new TexI(MapSource.drawmap(view, Area.sized(sc.mul(cmaps), cmaps))).filter(Texture.Filter.NEAREST));
 					}
 				    }
 				}));
@@ -707,6 +769,13 @@ public class MiniMap extends Widget {
 	return(l2dscale(tc.add(sessloc.tc).sub(dloc.tc)).add(sz.div(2)));
     }
 
+    /** Map-file tile to the map view. Unlike {@link #st2c}, this does not use the session offset. */
+    public Coord tc2c(Coord tc) {
+	if(dloc == null)
+	    return(null);
+	return(l2dscale(tc.sub(dloc.tc)).add(sz.div(2)));
+    }
+
     public Coord p2c(Coord2d pc) {
 	return(st2c(pc.floor(tilesz)));
     }
@@ -759,6 +828,7 @@ public class MiniMap extends Widget {
 	    Tex img = disp.img();
 	    if(img != null)
 		g.image(img, ul, img.sz().mul(dmag));
+            extra.grid(g,ul,disp);
 	} catch(Loading l) {
 	}
     }
@@ -784,10 +854,12 @@ public class MiniMap extends Widget {
 		if((mark.sc == null) || filter(mark))
 		    continue;
 		mark.draw(g, mark.sc);
+                extra.marker(g,mark);
 	    }
 	}
     }
 
+    private final Map<Long,GobIcon> radarIcons=new HashMap<>();
     public List<DisplayIcon> findicons(Collection<? extends DisplayIcon> prev) {
 	if((ui.sess == null) || (iconconf == null))
 	    return(Collections.emptyList());
@@ -799,12 +871,21 @@ public class MiniMap extends Widget {
 	}
 	List<DisplayIcon> ret = new ArrayList<>();
 	OCache oc = ui.sess.glob.oc;
-	synchronized(oc) {
-	    for(Gob gob : oc) {
+        Set<Long> localSeen=new HashSet<>();
+        List<Gob> objects=new ArrayList<>();
+        synchronized(oc){for(Gob gob:oc)objects.add(gob);}
+	    for(Gob gob : objects) {
 		try {
+                    if(hearthborn.world.PlayerRelations.player(gob))continue;
+		    String tame=hearthborn.map.RadarIcons.domestic(gob);
 		    GobIcon icon = gob.getattr(GobIcon.class);
+                    String have=icon==null?null:icon.res.get().name;
+                    boolean replace=tame!=null&&!tame.equals(have);
+                    boolean local=icon==null||replace;
+                    if(icon!=null&&!replace)hearthborn.map.RadarIcons.learn(gob,icon);
+                    if(local){localSeen.add(gob.id);icon=tame!=null?hearthborn.map.RadarIcons.pinned(gob,tame,radarIcons.get(gob.id)):hearthborn.map.RadarIcons.icon(gob,radarIcons.get(gob.id));if(icon!=null){radarIcons.put(gob.id,icon);localSeen.add(gob.id);}}
 		    if(icon != null) {
-			GobIcon.Setting conf = iconconf.get(icon.icon());
+			GobIcon.Setting conf = local?hearthborn.map.RadarIcons.setting(iconconf,icon):iconconf.get(icon.icon());
 			if((conf != null) && conf.show) {
 			    DisplayIcon disp = pmap.remove(icon);
 			    if(disp == null)
@@ -812,12 +893,14 @@ public class MiniMap extends Widget {
 			    ret.add(disp);
 			}
 		    }
-		} catch(Loading l) {}
+		} catch(Loading l) {
+		} catch(Resource.NoSuchResourceException missing) {
+		    hearthborn.map.RadarIcons.absent(missing.name);
+		}
 	    }
-	}
+        radarIcons.keySet().retainAll(localSeen);
 	for(DisplayIcon disp : pmap.values()) {
-	    if(disp.force())
-		ret.add(disp);
+	    try{if(disp.force()&&!hearthborn.world.PlayerRelations.player(disp.gob))ret.add(disp);}catch(Loading pending){}
 	}
 	for(DisplayIcon disp : ret)
 	    disp.update(disp.gob.rc, disp.gob.a);
@@ -825,6 +908,68 @@ public class MiniMap extends Widget {
 	if(ret.size() == 0)
 	    return(Collections.emptyList());
 	return(ret);
+    }
+
+    /** Cave mouths stay on the saved map. They are ridge tiles, not nearby objects. */
+    private void drawPassages(GOut g) {
+	if(dloc == null || iconconf == null || dgext == null)
+	    return;
+	if(!shown("gfx/hud/mmap/cave"))
+	    return;
+	GobIcon.Image mark = hearthborn.map.RadarIcons.passageImage(false);
+	if(mark == null)
+	    return;
+	for(Coord gc : dgext) {
+	    DisplayGrid dgrid = display[dgext.ri(gc)];
+	    if(dgrid == null || dgrid.mapext == null)
+		continue;
+	    DataGrid grid;
+	    try {
+		grid = dgrid.gref.get();
+	    } catch(Loading pending) {
+		continue;
+	    }
+	    if(grid == null || grid.tiles == null || grid.tilesets == null)
+		continue;
+	    int side = (int)Math.sqrt(grid.tiles.length);
+	    int span = dgrid.mapext.sz().x;
+	    if(side < 1 || side * side != grid.tiles.length || span % side != 0)
+		continue;
+	    int step = span / side;
+	    int[] kind = new int[grid.tilesets.length];
+	    boolean any = false;
+	    for(int i = 0; i < grid.tilesets.length; i++) {
+		kind[i] = hearthborn.map.RadarIcons.passage(grid.tilesets[i].res.name);
+		if(kind[i] != 0)
+		    any = true;
+	    }
+	    if(!any)
+		continue;
+	    Coord origin = dgrid.mapext.ul;
+	    for(int y = 0; y < side; y++) {
+		for(int x = 0; x < side; x++) {
+		    int tile = grid.gettile(new Coord(x, y));
+		    if(tile < 0 || tile >= kind.length)
+			continue;
+		    int which = kind[tile];
+		    if(which == 0)
+			continue;
+		    if(x > 0 && kind[grid.gettile(new Coord(x - 1, y))] == which)
+			continue;
+		    if(y > 0 && kind[grid.gettile(new Coord(x, y - 1))] == which)
+			continue;
+		    GobIcon.Image image = mark;
+		    Coord tc = origin.add(x * step + step / 2, y * step + step / 2);
+		    Coord sc = l2dscale(tc.sub(dloc.tc)).add(sz.div(2));
+		    g.image(image.tex, sc.sub(image.cc));
+		}
+	    }
+	}
+    }
+
+    private boolean shown(String name) {
+	GobIcon.Setting setting = iconconf.settings.get(new GobIcon.Setting.ID(name, GobIcon.Icon.nilid));
+	return setting == null || setting.show;
     }
 
     public void drawicons(GOut g) {
@@ -840,14 +985,7 @@ public class MiniMap extends Widget {
 
     public void remparty() {
 	Map<Long, Party.Member> memb = ui.sess.glob.party.memb;
-	if(memb.isEmpty()) {
-	    /* XXX: This is a bit of a hack to avoid unknown-player
-	     * notifications only before initial party information has
-	     * been received. Not sure if there's a better
-	     * solution. */
-	    icons.clear();
-	    return;
-	}
+	if(memb.isEmpty())return;
 	for(Iterator<DisplayIcon> it = icons.iterator(); it.hasNext();) {
 	    DisplayIcon icon = it.next();
 	    if(memb.containsKey(icon.gob.id))
@@ -856,31 +994,43 @@ public class MiniMap extends Widget {
     }
 
     public void drawparty(GOut g) {
+	if(sessloc==null||displayLocation()==null||displayLocation().seg!=sessloc.seg)return;
 	for(Party.Member m : ui.sess.glob.party.memb.values()) {
 	    try {
 		Coord2d ppc = m.getc();
 		if(ppc == null)
 		    continue;
-		g.chcolor(m.col.getRed(), m.col.getGreen(), m.col.getBlue(), 255);
-		g.rotimage(plp, p2c(ppc), plp.sz().div(2), -m.geta() - (Math.PI / 2));
+                Coord at=p2c(ppc);
+                GameUI gui=getparent(GameUI.class);
+                boolean own=gui!=null&&m.gobid==gui.plid;
+                Tex marker=own?hearthborn.map.MapToolbar.playerMarker():hearthborn.map.MapToolbar.playerMarker(m.col);
+		g.chcolor();
+                g.rotimage(marker,at,marker.sz().div(2),-m.geta()-(Math.PI/2));
 		g.chcolor();
 	    } catch(Loading l) {}
 	}
     }
 
     public void drawparts(GOut g){
+        if((!preserveOutsideMap()||outsideLocation==null)&&roomPlan.draw(g))return;
+        if(retainedOutside){drawmap(g);extra.under(g);drawmarkers(g);return;}
 	drawmap(g);
+        extra.under(g);
 	drawmarkers(g);
-	if(dlvl == 0)
-	    drawicons(g);
+        drawicons(g);
+        drawPassages(g);
 	drawparty(g);
+        playerMarkers.draw(g);
+        siegePins.drawMap(this,g);
+        extra.over(g);
     }
 
     public void draw(GOut g) {
-	if(dloc == null)
-	    return;
-	remparty();
-	drawparts(g);
+        if(dloc != null) {
+            remparty();
+            drawparts(g);
+        }
+        super.draw(g);
     }
 
     private static boolean hascomplete(DisplayGrid[] disp, Area dext, Coord c) {
@@ -1011,8 +1161,16 @@ public class MiniMap extends Widget {
 
     public boolean filter(DisplayIcon icon) {
 	MarkerID iattr = icon.gob.getattr(MarkerID.class);
-	if((iattr != null) && (findmarker(iattr.mark) != null))
-	    return(true);
+        DisplayMarker marker=iattr==null?null:findmarker(iattr.mark);
+        if(marker!=null&&marker.sc!=null&&!filter(marker)){
+            // A saved marker must actually be drawable before replacing a live icon.
+            try{
+                GobIcon.Icon saved=marker.icon();
+                if(hearthborn.map.RadarIcons.transition(hearthborn.util.GameObjects.resourceName(icon.gob))&&!saved.res.name.equals(icon.icon.res.name))return false;
+                return true;
+            }catch(Loading pending){return false;}
+            catch(Resource.BadResourceException failed){return false;}
+        }
 	return(false);
     }
 
@@ -1042,9 +1200,19 @@ public class MiniMap extends Widget {
     private Location dsloc;
     private DisplayIcon dsicon;
     private DisplayMarker dsmark;
+    private Gob dsplayer;
     public boolean mousedown(MouseDownEvent ev) {
+        dsplayer=null;
+        if(ev.propagate(this))
+            return(true);
+	if(retainedOutside)return true;
+	if((!preserveOutsideMap()||outsideLocation==null)&&roomPlan.click(ev.c,ev.b)){dsloc=null;dsicon=null;dsmark=null;return true;}
+        if(extra.meteorClick(ev.c,ev.b)){dsloc=null;dsicon=null;dsmark=null;return true;}
+	if(hearthborn.map.CaveLevels.click(this, ev.c, ev.b))
+	    return(true);
 	dsloc = xlate(ev.c);
 	if(dsloc != null) {
+	    dsplayer = playerMarkers.hit(ev.c);
 	    dsicon = iconat(ev.c);
 	    dsmark = markerat(dsloc.tc);
 	    if((dsicon != null) && clickicon(dsicon, dsloc, ev.b, true))
@@ -1072,6 +1240,7 @@ public class MiniMap extends Widget {
     }
 
     public void mousemove(MouseMoveEvent ev) {
+        extra.hover(ev.c);
 	if(drag != null) {
 	    if(dragging) {
 		setloc = null;
@@ -1090,6 +1259,8 @@ public class MiniMap extends Widget {
 	    drag = null;
 	}
 	release: if(!dragging && (dsloc != null)) {
+            GameUI gui=getparent(GameUI.class);
+            if(dsplayer!=null&&!dsplayer.removed&&gui!=null&&gui.map!=null){mvclick(gui.map,null,dsloc,dsplayer,ev.b);break release;}
 	    if((dsicon != null) && clickicon(dsicon, dsloc, ev.b, false))
 		break release;
 	    if((dsmark != null) && clickmarker(dsmark, dsloc, ev.b, false))
@@ -1100,19 +1271,40 @@ public class MiniMap extends Widget {
 	dsloc = null;
 	dsicon = null;
 	dsmark = null;
+	dsplayer = null;
 	dragging = false;
 	return(super.mouseup(ev));
     }
 
+    private double zoomacc = 0;
+    private double zoomt = 0;
+
     public boolean mousewheel(MouseWheelEvent ev) {
-	if(ev.a > 0) {
+        if((!preserveOutsideMap()||outsideLocation==null)&&roomPlan.active())return true;
+	double step = ev.step();
+	if(step == 0)
+	    return(true);
+	double now = Utils.rtime();
+	if((now - zoomt) < hearthborn.ui.WheelSettings.mapDelay())
+	    return(true);
+	if(Math.abs(step) < 1) {
+	    zoomacc += step;
+	    if(Math.abs(zoomacc) < 1)
+		return(true);
+	    step = zoomacc;
+	    zoomacc = 0;
+	} else {
+	    zoomacc = 0;
+	}
+	zoomt = now;
+	if(step > 0) {
 	    if(maglevel > 1) {
 		maglevel >>= 1;
 	    } else {
 		if(allowzoomout())
 		    zoomlevel = Math.min(zoomlevel + 1, dlvl + 1);
 	    }
-	} else if(ev.a < 0) {
+	} else {
 	    if(zoomlevel > 0) {
 		zoomlevel--;
 	    } else {
@@ -1159,10 +1351,15 @@ public class MiniMap extends Widget {
     private Object lastobjid = null;
     private Tex lasttip = null;
     public Object tooltip(Coord c, Widget prev) {
+        Object meteorTip=extra.meteorTooltip(c);if(meteorTip!=null)return meteorTip;
+        Object pointerTip=extra.pointerTooltip(c);if(pointerTip!=null)return pointerTip;
+        Object roomTip=preserveOutsideMap()&&outsideLocation!=null?null:roomPlan.tooltip(c);if(roomTip!=null)return roomTip;
+        Object playerTip=playerMarkers.tooltip(c);if(playerTip!=null)return playerTip;
 	DisplayGrid grid = gridat(c);
 	String tname = null;
 	Object objid = null;
 	Supplier<BufferedImage> objtip = null;
+	if(Utils.getprefb("hearthborn/map/biome-tooltip",true)) {
 	try {
 	    if((grid != null) && (grid.dc != null)) {
 		DataGrid dgrid = grid.gref.get();
@@ -1174,12 +1371,13 @@ public class MiniMap extends Widget {
 			Resource tres = tile.res.get();
 			Resource.Tooltip tt = tres.layer(Resource.tooltip);
 			if(tt != null)
-			    tname = tt.t;
+			    tname = hearthborn.map.TerrainHighlight.annotate(tt.t,tres.name);
 		    }
 		}
 	    }
 	} catch(Loading l) {
 	    tname = "...";
+	}
 	}
 	Location mloc = xlate(c);
 	if(mloc != null) {
@@ -1188,7 +1386,7 @@ public class MiniMap extends Widget {
 	    if(icon != null) {
 		if(icon.icon != null) {
 		    objid = icon.icon;
-		    objtip = () -> Text.render(icon.icon.name()).img;
+		    objtip = () -> Text.render(hearthborn.map.TerrainHighlight.annotate(hearthborn.L10n.text("tooltip",icon.icon.name()),icon.icon.res.name)).img;
 		}
 	    } else if(mark != null) {
 		objid = mark;
@@ -1199,7 +1397,7 @@ public class MiniMap extends Widget {
 	    if((tname != lasttname) || (objid != lastobjid)) {
 		BufferedImage tip = ItemInfo.catimgs(0,
 		    (objid == null) ? null : objtip.get(),
-		    (tname == null) ? null : RichText.render("Terrain: $col[255,255,128]{" + RichText.Parser.quote(tname) + "}", 0).img);
+		    (tname == null) ? null : RichText.render(hearthborn.L10n.tr("Terrain:")+" $col[255,255,128]{" + RichText.Parser.quote(tname) + "}", 0).img);
 		lasttip = new TexI(tip);
 		lasttname = tname; lastobjid = objid;
 	    }
@@ -1214,6 +1412,8 @@ public class MiniMap extends Widget {
     public void mvclick(MapView mv, Coord mc, Location loc, Gob gob, int button) {
 	if(mc == null) mc = ui.mc;
 	if((sessloc != null) && (sessloc.seg == loc.seg)) {
+	    hearthborn.navigation.Walking.cancel(mv);
+	    hearthborn.combat.BootSwitch.map(mv.getparent(GameUI.class), gob, button);
 	    if(gob == null)
 		mv.wdgmsg("click", mc,
 			  loc.tc.sub(sessloc.tc).mul(tilesz).add(tilesz.div(2)).floor(posres),

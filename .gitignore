@@ -2,5 +2,24 @@
 /bin
 /local-config.properties
 /local-boot.properties
+/developer.properties
 /build.properties
 *~
+
+# Local macOS metadata and runtime diagnostics
+.DS_Store
+/logs/
+
+# Generated launcher applications and release archives
+/output/
+__pycache__/
+
+# Local player data written by Hearthborn
+/data/
+
+# Private working notes and instructions for the owner and AI agents
+/AGENTS/
+/AGENTS.md
+
+# Owner's local speech generator
+/tools/generate_speech.py

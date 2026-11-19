@@ -46,6 +46,8 @@ public abstract class SDropBox<I, W extends Widget> extends SListWidget<I, W> {
 	    display();
 	}
 
+        protected boolean autoscroll() { return SDropBox.this.listautoscroll(); }
+
 	public class Item extends SListWidget.ItemWidget<I> {
 	    private Item(I item, W child) {
 		super(SDropList.this, child.sz, item);
@@ -78,6 +80,9 @@ public abstract class SDropBox<I, W extends Widget> extends SListWidget<I, W> {
 
 	protected void drawbg(GOut g) {
 	    ldrawbg(g, Area.sized(sz));
+	    g.chcolor(hearthborn.ui.UiPalette.accent());
+	    g.rect(Coord.z, sz);
+	    g.chcolor();
 	}
 
 	protected void drawslot(GOut g, I item, int idx, Area area) {
@@ -104,8 +109,25 @@ public abstract class SDropBox<I, W extends Widget> extends SListWidget<I, W> {
 	drop = adda(makedrop().state(() -> dl != null).set(this::drop), Coord.of(sz.x, sz.y / 2), 1.0, 0.5);
     }
 
+    protected boolean listautoscroll() { return true; }
+
+    /** The little arrow at the right end: a small chevron in the quiet text colour. */
     protected ACheckBox makedrop() {
-	return(new ICheckBox(dropimg, dropimg));
+	return(new ACheckBox(Coord.of(UI.scale(22), itemh)) {
+		public void draw(GOut g) {
+		    g.chcolor(hearthborn.ui.UiPalette.text2());
+		    int w = Math.max(3, UI.scale(4)), cx = sz.x / 2, cy = sz.y / 2;
+		    g.line(Coord.of(cx - w, cy - w / 2), Coord.of(cx, cy + w / 2), Math.max(1, UI.scale(1)));
+		    g.line(Coord.of(cx, cy + w / 2), Coord.of(cx + w, cy - w / 2), Math.max(1, UI.scale(1)));
+		    g.chcolor();
+		}
+		public boolean mousedown(MouseDownEvent ev) {
+		    if(ev.b != 1)
+			return(super.mousedown(ev));
+		    click();
+		    return(true);
+		}
+	    });
     }
 
     public void change(I item) {
@@ -128,14 +150,17 @@ public abstract class SDropBox<I, W extends Widget> extends SListWidget<I, W> {
 	}
     }
 
+    /** A neutral frame on a dark field; the frame turns to the accent colour while the list is open. */
     protected void drawbg(GOut g) {
-	g.chcolor(Color.BLACK);
+	g.chcolor(hearthborn.ui.UiPalette.field());
 	g.frect(Coord.z, sz);
+	g.chcolor(dl != null ? hearthborn.ui.UiPalette.accent() : hearthborn.ui.UiPalette.border());
+	g.rect(Coord.z, sz);
 	g.chcolor();
     }
 
     protected void ldrawbg(GOut g, Area area) {
-	g.chcolor(Color.BLACK);
+	g.chcolor(hearthborn.ui.UiPalette.field());
 	g.frect2(area.ul, area.br);
 	g.chcolor();
     }
@@ -144,7 +169,7 @@ public abstract class SDropBox<I, W extends Widget> extends SListWidget<I, W> {
     }
 
     protected void ldrawsel(GOut g, I item, int idx, Area area) {
-	g.chcolor(255, 255, 0, 128);
+	g.chcolor(hearthborn.ui.UiPalette.accentFill());
 	g.frect2(area.ul, area.br);
 	g.chcolor();
     }

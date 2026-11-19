@@ -29,7 +29,7 @@ package haven;
 import java.awt.Color;
 
 public class ISBox extends Widget implements DTarget {
-    public static final Color bgcol = new Color(43, 51, 44, 127);
+    public static final Color bgcol = new Color(0, 0, 0, 127);
     public static final IBox box = new IBox.Scaled("gfx/hud/bosq", "tl", "tr", "bl", "br", "el", "er", "et", "eb") {
 	    public void draw(GOut g, Coord tl, Coord sz) {
 		super.draw(g, tl, sz);
@@ -42,6 +42,11 @@ public class ISBox extends Widget implements DTarget {
     public static final Text.Foundry lf = new Text.Foundry(Text.fraktur, 22, Color.WHITE).aa(true);
     private final Indir<Resource> res;
     private Text label;
+    private int remaining,capacity;
+    private TextEntry takeAmount;
+    public Resource resource(){return res.get();}
+    public int remaining(){return remaining;}
+    public int capacity(){return capacity;}
 
     @RName("isbox")
     public static class $_ implements Factory {
@@ -56,10 +61,31 @@ public class ISBox extends Widget implements DTarget {
     }
 
     private void setlabel(int rem, int av, int bi) {
+        remaining=rem;capacity=av;
 	if(bi < 0)
 	    label = lf.renderf("%d/%d", rem, av);
 	else
 	    label = lf.renderf("%d/%d/%d", rem, av, bi);
+    }
+
+    protected void added(){
+        super.added();
+        Window window=getparent(Window.class);
+        if(window==null||!("Stockpile".equals(window.cap)||hearthborn.L10n.text("window","Stockpile").equals(window.cap)))return;
+        takeAmount=add(new TextEntry(UI.scale(75),""){
+            public void activate(String text){takeRequested();}
+        },UI.scale(5,45));
+        takeAmount.settip("Amount to take; empty or zero takes all.");
+        add(new Button(UI.scale(55),"Take",this::takeRequested),UI.scale(85,44));
+        resize(Coord.of(defsz.x,UI.scale(72)));
+    }
+    private void takeRequested(){
+        String text=takeAmount.text().trim();int amount;
+        try{amount=text.isEmpty()?remaining:Integer.parseInt(text);}
+        catch(NumberFormatException invalid){ui.error(hearthborn.L10n.tr("Enter a non-negative whole number."));return;}
+        if(amount<0){ui.error(hearthborn.L10n.tr("Enter a non-negative whole number."));return;}
+        if(amount==0||amount>remaining)amount=remaining;
+        for(int i=0;i<amount;i++)wdgmsg("xfer2",-1,UI.MOD_SHIFT);
     }
 
     public ISBox(Indir<Resource> res, int rem, int av, int bi) {
@@ -73,13 +99,15 @@ public class ISBox extends Widget implements DTarget {
 	box.draw(g, Coord.z, sz);
 	try {
             Tex t = res.get().flayer(Resource.imgc).tex();
-            Coord dc = Coord.of(UI.scale(6), (sz.y - t.sz().y) / 2);
+            Coord dc = Coord.of(UI.scale(6), (defsz.y - t.sz().y) / 2);
             g.image(t, dc);
         } catch(Loading e) {}
-        g.image(label.tex(), new Coord(UI.scale(40), (sz.y - label.sz().y) / 2));
+        g.image(label.tex(), new Coord(UI.scale(40), (defsz.y - label.sz().y) / 2));
+        super.draw(g);
     }
 
     public boolean mousedown(MouseDownEvent ev) {
+        if(ev.propagate(this))return true;
         if(ev.b == 1) {
             if(ui.modshift)
                 wdgmsg("xfer");

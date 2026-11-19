@@ -67,6 +67,7 @@ public class RemoteUI implements UI.Receiver, UI.Runner {
     }
 
     public void ret(Session sess) {
+        hearthborn.ui.WorldIdentity.transfer(this.sess,sess);
 	this.sess.postuimsg(new Return(sess));
     }
 
@@ -129,6 +130,7 @@ public class RemoteUI implements UI.Receiver, UI.Runner {
 
     public void init(UI ui) {
 	ui.sess = sess;
+        ui.root.beginCharacterSession();
     }
 
     public String title() {

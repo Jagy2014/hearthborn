@@ -35,6 +35,8 @@ import static haven.CharWnd.*;
 import static haven.PUtils.*;
 
 public class BAttrWnd extends Widget {
+    private Frame attributeFrame, consFrame;
+    private final hearthborn.ui.AttributeColumns columns = new hearthborn.ui.AttributeColumns();
     public final List<Attr> attrs;
     public final FoodMeter feps;
     public final Constipations cons;
@@ -49,10 +51,12 @@ public class BAttrWnd extends Widget {
 
     public static class Attr extends CharWnd.AttrWdg {
 	public final Text rnm;
+	private Text inkName;
+	private int inkGeneration = -1;
 	public final Tex img;
 	public final Color bg;
 	private double lvlt = 0.0;
-	private Text ct;
+        private final hearthborn.ui.AttributeValues summary = new hearthborn.ui.AttributeValues();
 	private int cbv = -1, ccv = -1;
 
 	private Attr(Glob glob, String attr, Color bg) {
@@ -72,24 +76,44 @@ public class BAttrWnd extends Widget {
 		} else if(ccv < cbv) {
 		    c = debuff;
 		}
-		ct = attrf.render(Integer.toString(ccv), c);
+
 	    }
+            summary.update(this, 0, dt);
 	    if((lvlt > 0.0) && ((lvlt -= dt) < 0))
 		lvlt = 0.0;
 	}
 
 	public void draw(GOut g) {
+	    Color row = hearthborn.ui.UiTheme.row(bg);
 	    if(lvlt != 0.0)
-		g.chcolor(Utils.blendcol(bg, new Color(128, 255, 128, 128), lvlt));
+		g.chcolor(Utils.blendcol(row, hearthborn.ui.UiTheme.BONUS, lvlt));
 	    else
-		g.chcolor(bg);
+		g.chcolor(row);
 	    g.frect(Coord.z, sz);
 	    g.chcolor();
 	    Coord cn = new Coord(0, sz.y / 2);
 	    g.aimage(img, cn.add(5, 0), 0, 0.5);
-	    g.aimage(rnm.tex(), cn.add(img.sz().x + UI.scale(10), 1), 0, 0.5);
-	    if(ct != null)
-		g.aimage(ct.tex(), cn.add(sz.x - UI.scale(7), 1), 1, 0.5);
+	    g.aimage(name().tex(), cn.add(img.sz().x + UI.scale(10), 1), 0, 0.5);
+            summary.draw(g, cn.y + UI.scale(1));
+	}
+
+	private Text name() {
+	    if(!hearthborn.ui.UiTheme.light())
+		return(rnm);
+	    if((inkName == null) || (inkGeneration != hearthborn.ui.UiTheme.generation())) {
+		if(inkName != null)
+		    inkName.dispose();
+		inkName = attrf.render(rnm.text, hearthborn.ui.UiTheme.INK);
+		inkGeneration = hearthborn.ui.UiTheme.generation();
+	    }
+	    return(inkName);
+	}
+
+        public void dispose() {
+	    if(inkName != null)
+		inkName.dispose();
+	    summary.dispose();
+	    super.dispose();
 	}
 
 	public void lvlup() {
@@ -122,6 +146,9 @@ public class BAttrWnd extends Widget {
 	public Constipations(Coord sz) {
 	    super(sz, attrf.height() + UI.scale(2));
 	}
+
+	private Text empty;
+	private int emptyGeneration = -1;
 
 	public static class Reordered<T> extends AbstractList<T> {
 	    private final List<T> back;
@@ -165,7 +192,7 @@ public class BAttrWnd extends Widget {
 	    }
 
 	    protected BufferedImage img() {return(spec.image());}
-	    protected String text() {return(spec.name());}
+	    protected String text() {return(hearthborn.L10n.resource("tooltip", spec.resource().name, spec.name()));}
 	    protected PUtils.Convolution filter() {return(tflt);}
 	}
 
@@ -186,7 +213,7 @@ public class BAttrWnd extends Widget {
 		    if( a != null) { a.reqdestroy();  a = null;}
 		    Label a = adda(new Label(String.format("%d%%", Math.max((int)Math.round((1.0 - el.a) * 100), 1)), attrf),
 				   sz.x - UI.scale(1), sz.y / 2, 1.0, 0.5);
-		    a.setcolor((el.a > 1.0) ? buffed : Utils.blendcol(none, full, el.a));
+		    a.setcolor(hearthborn.ui.UiTheme.readable((el.a > 1.0) ? buffed : Utils.blendcol(none, full, el.a)));
 		    nm = adda(new ItemIcon(Coord.of(a.c.x - UI.scale(5), sz.y), new ItemSpec(OwnerContext.uictx.curry(Constipations.this.ui), el.t, null)),
 			      0, sz.y / 2, 0.0, 0.5);
 		    this.a = a;
@@ -217,6 +244,16 @@ public class BAttrWnd extends Widget {
 		lasttip = tip;
 	    }
 	    super.draw(g);
+	    if(!els.isEmpty())
+		return;
+	    /* A list with nothing in it says so quietly instead of showing a bare box. */
+	    if((empty == null) || (emptyGeneration != hearthborn.ui.UiTheme.generation())) {
+		if(empty != null)
+		    empty.dispose();
+		empty = attrf.render(hearthborn.L10n.text("label", "No data"), hearthborn.ui.UiPalette.hint());
+		emptyGeneration = hearthborn.ui.UiTheme.generation();
+	    }
+	    g.aimage(empty.tex(), sz.div(2), 0.5, 0.5);
 	}
 
 	protected void drawslot(GOut g, El el, int idx, Area area) {
@@ -350,7 +387,7 @@ public class BAttrWnd extends Widget {
 	    if(trev != null) {
 		try {
 		    Collections.sort(etr, dcmp);
-		    ui.loader.defer(() -> ui.msg(String.format("You gained " + trev.get().flayer(Event.class).nm), Color.WHITE, null), null);
+		    ui.loader.defer(() -> ui.msg(hearthborn.L10n.format("You gained %s", hearthborn.L10n.tr(trev.get().flayer(Event.class).nm)), Color.WHITE, null), null);
 		    trol = new TexI(mktrol(etr, trev));
 		    trtm = Utils.rtime();
 		    this.trev = null;
@@ -360,13 +397,22 @@ public class BAttrWnd extends Widget {
 
 	public void draw(GOut g) {
 	    double d = (trtm > 0)?(Utils.rtime() - trtm):Double.POSITIVE_INFINITY;
-	    g.chcolor(0, 0, 0, 255);
-	    g.frect(marg, sz.sub(marg.mul(2)));
+	    boolean light = hearthborn.ui.UiTheme.light();
+	    if(light) {
+		/* On parchment the bar is a pale track with a thin frame, not the gold ornament. */
+		hearthborn.ui.LightSkin.barTrack(g, marg, sz.sub(marg.mul(2)));
+	    } else {
+		g.chcolor(hearthborn.ui.UiTheme.meterTrack());
+		g.frect(marg, sz.sub(marg.mul(2)));
+	    }
 	    drawels(g, els, 255);
 	    if(d < 1.0)
 		drawels(g, etr, (int)(255 - (d * 255)));
 	    g.chcolor();
-	    g.image(frame, Coord.z);
+	    if(light)
+		hearthborn.ui.LightSkin.barFrame(g, marg, sz.sub(marg.mul(2)));
+	    else
+		g.image(frame, Coord.z);
 	    if(d < 2.5) {
 		GOut g2 = g.reclipl(trmg.inv(), sz.add(trmg.mul(2)));
 		g2.chcolor(255, 255, 255, (int)(255 - ((d * 255) * (1.0 / 2.5))));
@@ -402,14 +448,14 @@ public class BAttrWnd extends Widget {
 		for(El el : els) {
 		    Event ev = el.res.get().flayer(Event.class);
 		    Color col = Utils.blendcol(ev.col, Color.WHITE, 0.5);
-		    BufferedImage ln = Text.render(String.format("%s: %s", ev.nm, Utils.odformat2(el.a, 2)), col).img;
+		    BufferedImage ln = Text.render(String.format("%s: %s", hearthborn.L10n.tr(ev.nm), Utils.odformat2(el.a, 2)), col).img;
 		    Resource.Image icon = el.res.get().layer(Resource.imgc);
 		    if(icon != null)
 			ln = ItemInfo.catimgsh(5, convolve(icon.img, new Coord(ln.getHeight(), ln.getHeight()), iconfilter), ln);
 		    cur = ItemInfo.catimgs(0, cur, ln);
 		    sum += el.a;
 		}
-		cur = ItemInfo.catimgs(0, cur, Text.render(String.format("Total: %s/%s", Utils.odformat2(sum, 2), Utils.odformat(cap, 2))).img);
+		cur = ItemInfo.catimgs(0, cur, Text.render(hearthborn.L10n.format("Food Event Points: %s/%s", Utils.odformat2(sum, 2), Utils.odformat(cap, 2))).img);
 		rtip = new TexI(cur);
 	    }
 	    return(rtip);
@@ -429,12 +475,20 @@ public class BAttrWnd extends Widget {
 
 	public void draw(GOut g) {
 	    Coord isz = sz.sub(marg.mul(2));
-	    g.chcolor(bg);
-	    g.frect(marg, isz);
+	    boolean light = hearthborn.ui.UiTheme.light();
+	    if(light)
+		hearthborn.ui.LightSkin.barTrack(g, marg, isz);
+	    else {
+		g.chcolor(bg);
+		g.frect(marg, isz);
+	    }
 	    g.chcolor(fg);
 	    g.frect(marg, new Coord((int)Math.round(isz.x * (glut - Math.floor(glut))), isz.y));
 	    g.chcolor();
-	    g.image(frame, Coord.z);
+	    if(light)
+		hearthborn.ui.LightSkin.barFrame(g, marg, isz);
+	    else
+		g.image(frame, Coord.z);
 	}
 
 	public void update(Object... args) {
@@ -451,18 +505,74 @@ public class BAttrWnd extends Widget {
 	private Tex rtip = null;
 	public Object tooltip(Coord c, Widget prev) {
 	    if(rtip == null) {
-		rtip = RichText.render(String.format("%s: %.1f\u2030\nFood efficacy: %d%%", lbl, glut * 1000, Math.round(gmod * 100)), -1).tex();
+		rtip = RichText.render(hearthborn.L10n.tr("Hunger") + "\n" + hearthborn.L10n.format("%s: %.1f\u2030\nFood efficacy: %d%%", RichText.Parser.quote(hearthborn.L10n.tr(lbl)), glut * 1000, Math.round(gmod * 100)), -1).tex();
 	    }
 	    return(rtip);
 	}
     }
 
+    private static final Text.Foundry HEAD = new Text.Foundry(Text.sans, 10).aa(true);
+    private Text[] heads;
+    private int headsGeneration = -1;
+    /** Small captions over the four number columns, so that a "+27" is known to be a bonus and a "-14" a penalty. */
+    public void draw(GOut g) {
+	super.draw(g);
+	int[] ends = columns.ends();
+	if((ends == null) || attrs.isEmpty())
+	    return;
+	if((heads == null) || (headsGeneration != hearthborn.ui.UiTheme.generation())) {
+	    if(heads != null)
+		for(Text t : heads)
+		    t.dispose();
+	    Color ink = hearthborn.ui.UiPalette.text2();
+	    heads = new Text[] {
+		HEAD.render(hearthborn.L10n.text("label", "Base"), ink), HEAD.render(hearthborn.L10n.text("label", "Bonus"), ink),
+		HEAD.render(hearthborn.L10n.text("label", "Penalty"), ink), HEAD.render(hearthborn.L10n.text("label", "Total"), ink)};
+	    headsGeneration = hearthborn.ui.UiTheme.generation();
+	}
+	Attr first = attrs.get(0);
+	for(int i = 0; i < 4; i++)
+	    g.aimage(heads[i].tex(), Coord.of(first.c.x + ends[i], first.c.y - wbox.btloff().y - UI.scale(1)), 1, 1);
+    }
+
+    public void tick(double dt) {
+        super.tick(dt);
+        java.util.List<hearthborn.ui.AttributeValues> values = new ArrayList<>();
+        int nameWidth = 0;
+        for(Attr row : attrs) {
+            values.add(row.summary);
+            nameWidth = Math.max(nameWidth, row.img.sz().x + UI.scale(10) + row.rnm.sz().x);
+        }
+        int delta = columns.fit(this, attrs, attributeFrame, values, nameWidth, UI.scale(5));
+        /* The right column moved aside for wider attribute rows: take that room from the stretch, not from the window. */
+        int give = Math.min(stretch, Math.max(0, delta));
+        if(give > 0)
+            stretch(-give);
+    }
+
+    /** Stretch the satiation list and its frame so the tab fills a wider character window. */
+    public void fitWidth(int width) {
+	int extra = width - sz.x;
+	if(extra > 0)
+	    stretch(extra);
+    }
+
+    private int stretch = 0;
+
+    private void stretch(int extra) {
+	Coord grow = Coord.of(extra, 0);
+	cons.resize(cons.sz.add(grow));
+	consFrame.resize(consFrame.sz.add(grow));
+	resize(sz.add(grow));
+	stretch += extra;
+    }
+
     public BAttrWnd(Glob glob) {
 	Widget prev;
-	prev = add(CharWnd.settip(new Img(catf.render("Base Attributes").tex()), "gfx/hud/chr/tips/base"), Coord.z);
+	prev = add(CharWnd.settip(hearthborn.ui.UiTheme.heading(hearthborn.L10n.text("label", "Base Attributes")), "gfx/hud/chr/tips/base"), Coord.z);
 	attrs = new ArrayList<>();
 	Attr aw;
-	attrs.add(aw = add(new Attr(glob, "str", every), prev.pos("bl").adds(5, 0).add(wbox.btloff())));
+	attrs.add(aw = add(new Attr(glob, "str", every), prev.pos("bl").adds(5, UI.scale(14)).add(wbox.btloff())));
 	attrs.add(aw = add(new Attr(glob, "agi", other), aw.pos("bl")));
 	attrs.add(aw = add(new Attr(glob, "int", every), aw.pos("bl")));
 	attrs.add(aw = add(new Attr(glob, "con", other), aw.pos("bl")));
@@ -471,15 +581,15 @@ public class BAttrWnd extends Widget {
 	attrs.add(aw = add(new Attr(glob, "dex", every), aw.pos("bl")));
 	attrs.add(aw = add(new Attr(glob, "wil", other), aw.pos("bl")));
 	attrs.add(aw = add(new Attr(glob, "psy", every), aw.pos("bl")));
-	prev = Frame.around(this, attrs);
-	prev = add(CharWnd.settip(new Img(catf.render("Food Event Points").tex()), "gfx/hud/chr/tips/fep"), prev.pos("bl").x(0).adds(0, 10));
+	prev = attributeFrame = Frame.around(this, attrs);
+	prev = add(CharWnd.settip(hearthborn.ui.UiTheme.heading(hearthborn.L10n.text("label", "Food Event Points")), "gfx/hud/chr/tips/fep"), prev.pos("bl").x(0).adds(0, 2));
 	feps = add(new FoodMeter(), prev.pos("bl").adds(5, 2));
 
 	int ah = attrs.get(attrs.size() - 1).pos("bl").y - attrs.get(0).pos("ul").y;
-	prev = add(CharWnd.settip(new Img(catf.render("Food Satiations").tex()), "gfx/hud/chr/tips/constip"), width, 0);
-	cons = add(new Constipations(Coord.of(attrw, ah)), prev.pos("bl").adds(5, 0).add(wbox.btloff()));
-	prev = Frame.around(this, Collections.singletonList(cons));
-	prev = add(CharWnd.settip(new Img(catf.render("Hunger Level").tex()), "gfx/hud/chr/tips/hunger"), prev.pos("bl").x(width).adds(0, 10));
+	prev = add(CharWnd.settip(hearthborn.ui.UiTheme.heading(hearthborn.L10n.text("label", "Food Satiations")), "gfx/hud/chr/tips/constip"), width, 0);
+	cons = add(new Constipations(Coord.of(attrw, ah)), prev.pos("bl").adds(5, UI.scale(14)).add(wbox.btloff()));
+	prev = consFrame = Frame.around(this, Collections.singletonList(cons));
+	prev = add(CharWnd.settip(hearthborn.ui.UiTheme.heading(hearthborn.L10n.text("label", "Hunger Level")), "gfx/hud/chr/tips/hunger"), prev.pos("bl").x(width).adds(0, 2));
 	glut = add(new GlutMeter(), prev.pos("bl").adds(5, 2));
 	pack();
     }

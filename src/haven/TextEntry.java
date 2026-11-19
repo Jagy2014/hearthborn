@@ -41,12 +41,16 @@ public class TextEntry extends Widget implements ReadLine.Owner {
     public static final Coord coff = UI.scale(new Coord(-2, 0));
     public static final int wmarg = lcap.sz().x + rcap.sz().x + UI.scale(1);
     public boolean dshow = false;
+    public Color background = null;
+    protected Color textColor() {return plain ? ((dshow && dirty) ? dirtycol : defcol) : hearthborn.ui.UiTheme.entryText(dshow && dirty);}
+    public boolean plain = false;
     public ReadLine buf;
     public int sx;
     public boolean pw = false;
     private boolean dirty = false;
     private double focusstart;
     private Text.Line tcache = null;
+    private Color tcacheColor;
     private UI.Grab d = null;
 
     @RName("text")
@@ -112,12 +116,31 @@ public class TextEntry extends Widget implements ReadLine.Owner {
 	}
     }
 
+    protected void drawBackground(GOut g) {
+	if(!plain)hearthborn.ui.UiTheme.panel(g,sz);
+    }
+
+    protected void drawFrame(GOut g) {
+	if(!plain)hearthborn.ui.UiTheme.entryFrame(g,sz,hasfocus);
+        else {g.chcolor(160,120,40,150);g.frect(Coord.of(0,sz.y-UI.scale(1)),Coord.of(sz.x,UI.scale(1)));g.chcolor();}
+    }
+
     public void draw(GOut g) {
+	Color color = textColor();
+	if(tcache != null && !color.equals(tcacheColor))redraw();
 	Text.Line tcache = this.tcache;
-	if(tcache == null)
-	    this.tcache = tcache = fnd.render(dtext(), (dshow && dirty) ? dirtycol : defcol);
+	if(tcache == null) {
+	    this.tcache = tcache = fnd.render(dtext(), color);
+	    tcacheColor = color;
+	}
 	int point = buf.point(), mark = buf.mark();
-	g.image(mext, Coord.z, sz);
+	drawBackground(g);
+        if(background != null) {
+            int inset=UI.scale(2);
+            g.chcolor(background);
+            g.frect(Coord.of(inset,inset),sz.sub(inset*2,inset*2));
+            g.chcolor();
+        }
 	if(mark >= 0) {
 	    int px = tcache.advance(point) - sx, mx = tcache.advance(mark) - sx;
 	    g.chcolor(selcol);
@@ -126,8 +149,7 @@ public class TextEntry extends Widget implements ReadLine.Owner {
 	    g.chcolor();
 	}
 	g.image(tcache.tex(), Coord.of(toffx - sx, (sz.y - tcache.sz().y) / 2));
-	g.image(lcap, Coord.z);
-	g.image(rcap, Coord.of(sz.x - rcap.sz().x, 0));
+	drawFrame(g);
 	if(hasfocus) {
 	    int cx = tcache.advance(point);
 	    if(cx < sx) {sx = cx;}

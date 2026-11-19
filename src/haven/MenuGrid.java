@@ -39,11 +39,15 @@ import haven.ItemInfo.AttrCache;
 public class MenuGrid extends Widget implements KeyBinding.Bindable {
     public final static Tex bg = Inventory.invsq;
     public final static Coord bgsz = Inventory.sqsz;
-    public final static RichText.Foundry ttfnd = new RichText.Foundry(TextAttribute.FAMILY, "SansSerif", TextAttribute.SIZE, UI.scale(10f));
+    public final static RichText.Foundry ttfnd = new RichText.Foundry(TextAttribute.FAMILY, hearthborn.UiFonts.family("SansSerif"), TextAttribute.SIZE, UI.scale(10f));
     private static Coord gsz = new Coord(4, 4);
+    private Coord currentGrid=gsz;
+    public Coord gridSize(){return currentGrid==null?gsz:currentGrid;}
+    public Coord contentSize(){return bgsz.mul(gridSize()).add(1,1);}
     public final Set<Pagina> paginae = new HashSet<Pagina>();
     public Pagina cur;
     public int pagseq = 0;
+    public final hearthborn.ui.ActionShortcuts shortcuts;
     private final Map<Object, Pagina> pmap = new CacheMap<>(CacheMap.RefType.WEAK);
     private Pagina dragging;
     private Collection<PagButton> curbtns = Collections.emptyList();
@@ -167,6 +171,11 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 	    return(KeyBinding.get("scm/" + res.name, hotkey()));
 	}
 	public void use(Interaction iact) {
+            hearthborn.ui.GlobalCommands.recipe(pag);
+            if(hearthborn.navigation.Walking.hearthAction(act().ad) || (res != null && res.name.equals("paginae/act/travel-hearth"))) {
+                GameUI gui = pag.scm.getparent(GameUI.class);
+                if(gui != null) hearthborn.navigation.Walking.abandon(gui.map);
+            }
 	    Object[] eact = new Object[] {pag.scm.ui.modflags()};
 	    if(iact.mc != null) {
 		eact = Utils.extend(eact, iact.mc.floor(OCache.posres));
@@ -177,6 +186,7 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 		pag.scm.wdgmsg("act", Utils.extend(Utils.extend(new Object[0], act().ad), eact));
 	    else
 		pag.scm.wdgmsg("use", Utils.extend(new Object[] {pag.id}, eact));
+            hearthborn.ui.ActionBrowser.used(pag.scm,this);
 	}
 	public void tick(double dt) {
 	    if(spr != null)
@@ -218,6 +228,7 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 		return(() -> ret);
 	});
 	public final AttrCache<Double> meter = new AttrCache<>(this::info, AttrCache.map1(GItem.MeterInfo.class, minf -> minf::meter));
+	private final hearthborn.ui.MeterPercent progress = new hearthborn.ui.MeterPercent();
 
 	public void drawmain(GOut g, GSprite spr) {
 	    spr.draw(g);
@@ -233,12 +244,7 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 		    ol.draw(g);
 	    }
 	    Double meter = this.meter.get();
-	    if((meter != null) && (meter > 0)) {
-		g.chcolor(255, 255, 255, 64);
-		Coord half = spr.sz().div(2);
-		g.prect(half, half.inv(), half, meter * Math.PI * 2);
-		g.chcolor();
-	    }
+	    progress.draw(g, spr.sz().div(2), meter == null ? 0 : meter);
 	}
 
 	public String sortkey() {
@@ -292,7 +298,9 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 	public Resource getres() {return(res);}
 
 	public BufferedImage rendertt(boolean withpg) {
-	    String tt = name();
+	    String english = name();
+	    String shown = hearthborn.L10n.resource("action", res.name, english);
+	    String tt = shown;
 	    KeyMatch key = bind.key();
 	    int pos = -1;
 	    char vkey = bindchr(key);
@@ -303,6 +311,8 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 	    else if(key != KeyMatch.nil)
 		tt += " [$b{$col[255,128,0]{" + key.name() + "}}]";
 	    BufferedImage ret = ttfnd.render(tt, UI.scale(300)).img;
+	    if(!shown.equals(english))
+		ret = ItemInfo.catimgs(0, ret, hearthborn.l10n.TooltipText.literal(()->Text.std.render(english, new Color(160, 160, 160))).img);
 	    if(withpg) {
 		List<ItemInfo> info = info();
 		info.removeIf(el -> el instanceof ItemInfo.Name);
@@ -333,6 +343,7 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 	    {pag.button = this;}
 
 	    public void use(Interaction iact) {
+		Coord gsz=gridSize();
 		int step = (gsz.x * gsz.y) - 2;
 		if((curoff + step) >= curbtns.size())
 		    curoff = 0;
@@ -350,13 +361,20 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 	    {pag.button = this;}
 
 	    public void use(Interaction iact) {
-		pag.scm.change(pag.scm.cur.parent());
+		if(iact.btn == 3)
+		    pag.scm.change(null);
+		else if(pag.scm.cur != null)
+		    pag.scm.change(pag.scm.cur.parent());
 		curoff = 0;
 	    }
 
 	    public String name() {return("Back");}
 
 	    public KeyBinding binding() {return(kb_back);}
+
+	    public BufferedImage rendertt(boolean withpg) {
+		return ttfnd.render(hearthborn.L10n.tr("Left click: Back\nRight click: Home"), UI.scale(300)).img;
+	    }
 	};
 
     public Pagina paginafor(Indir<Resource> res) {
@@ -379,17 +397,14 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 	}
     }
 
-    private boolean cons(Pagina p, Collection<PagButton> buf) {
-	Pagina[] cp = new Pagina[0];
-	Collection<Pagina> open, close = new HashSet<Pagina>();
+    /** Refresh the native discovery marks without navigating either menu. */
+    public void refreshNewPages() {
 	synchronized(pmap) {
 	    for(Pagina pag : pmap.values())
 		pag.tnew = 0;
 	}
 	synchronized(paginae) {
-	    open = new LinkedList<Pagina>();
 	    for(Pagina pag : paginae) {
-		open.add(pag);
 		if(pag.anew > 0) {
 		    try {
 			for(Pagina npag = pag; npag != null; npag = npag.parent())
@@ -399,6 +414,12 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 		}
 	    }
 	}
+    }
+
+    private boolean cons(Pagina p, Collection<PagButton> buf) {
+        refreshNewPages();
+	Collection<Pagina> open, close = new HashSet<Pagina>();
+        synchronized(paginae) {open = new LinkedList<Pagina>(paginae);}
 	boolean ret = true;
 	while(!open.isEmpty()) {
 	    Iterator<Pagina> iter = open.iterator();
@@ -419,18 +440,47 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
     }
 
     private void announce(Pagina pag) {
-	ui.loader.defer(() -> ui.msg("New discovery: " + pag.button().name(), Color.WHITE, null), null);
+	ui.loader.defer(() -> ui.msg("New discovery: " + hearthborn.L10n.resource("action",pag.res().name,pag.button().name()), Color.WHITE, null), null);
     }
 
     public MenuGrid() {
-	super(bgsz.mul(gsz).add(1, 1));
+	super(hearthborn.ui.ActionMenuFrame.scaledSize(bgsz.mul(gsz).add(1, 1)));
+	hearthborn.ui.XtensionsMenu.install(this);
+        shortcuts = new hearthborn.ui.ActionShortcuts(this);
     }
 
     private void updlayout() {
+        Coord target=hearthborn.ui.XtensionsMenu.gridSize(cur);
+        if(!target.equals(gridSize())){
+            currentGrid=target;
+            curoff=0;
+            layout=new PagButton[target.x][target.y];
+            hearthborn.ui.ActionMenuFrame frame=parent==null?null:parent.getchild(hearthborn.ui.ActionMenuFrame.class);
+            if(frame!=null)frame.fit();
+            else resize(hearthborn.ui.ActionMenuFrame.size(contentSize(),displayScale()));
+        }
+        Coord gsz=gridSize();
+	if(shortcuts != null && shortcuts.handles(this.cur)) {
+            List<PagButton> buttons = shortcuts.buttons(this.cur);
+            curbtns = new ArrayList<>();
+            for(int y = 0; y < gsz.y; y++) for(int x = 0; x < gsz.x; x++) {
+                int index = x + y * gsz.x;
+                PagButton button = index == gsz.x * gsz.y - 1 ? bk : index < buttons.size() ? buttons.get(index) : null;
+                layout[x][y] = button;
+                if(button != null) curbtns.add(button);
+            }
+            recons = shortcuts.loading();
+            fstart = Utils.rtime();
+            return;
+        }
 	synchronized(paginae) {
 	    List<PagButton> cur = new ArrayList<>();
-	    recons = !cons(this.cur, cur);
-	    Collections.sort(cur, Comparator.comparing(PagButton::sortkey));
+            if(hearthborn.ui.XtensionsMenu.expanded(this.cur)){
+                cur.addAll(hearthborn.ui.XtensionsMenu.allCommands(this));recons=false;
+            }else{
+	        recons = !cons(this.cur, cur);
+	        Collections.sort(cur, Comparator.comparing(PagButton::sortkey));
+            }
 	    this.curbtns = cur;
 	    int i = curoff;
 	    for(int y = 0; y < gsz.y; y++) {
@@ -451,11 +501,13 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
     }
 
     public void draw(GOut g) {
+        Coord gsz=gridSize();
+        g = hearthborn.ui.ActionMenuFrame.graphics(g,bgsz.mul(gsz).add(1,1),displayScale());
 	double now = Utils.rtime();
 	for(int y = 0; y < gsz.y; y++) {
 	    for(int x = 0; x < gsz.x; x++) {
 		Coord p = bgsz.mul(new Coord(x, y));
-		g.image(bg, p);
+		hearthborn.ui.ActionMenuFrame.slot(g,p,bgsz.add(1,1));
 		PagButton btn = layout[x][y];
 		if(btn != null) {
 		    GSprite spr;
@@ -465,24 +517,13 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 			continue;
 		    }
 		    GOut g2 = g.reclip(p.add(1, 1), spr.sz());
-		    Pagina info = btn.pag;
-		    if(info.tnew != 0) {
-			info.anew = 1;
-			double a = 0.25;
-			if(info.tnew == 2) {
-			    double ph = (now - fstart) - (((x + (y * gsz.x)) * 0.15) % 1.0);
-			    a = (ph < 1.25) ? (Math.cos(ph * Math.PI * 2) * -0.25) + 0.25 : 0.25;
-			}
-			g2.usestate(new ColorMask(new FColor(0.125f, 1.0f, 0.125f, (float)a)));
-		    }
-		    btn.draw(g2, spr);
-		    g2.defstate();
+                    hearthborn.ui.ActionDiscovery.draw(g2,btn,spr,now-fstart,x+y*gsz.x);
 		    if(showkeys) {
 			Tex ki = btn.keyrend();
 			if(ki != null)
 			    g2.aimage(ki, Coord.of(bgsz.x - UI.scale(2), UI.scale(1)), 1.0, 0.0);
 		    }
-		    if(btn == pressed) {
+		    if(hearthborn.ui.ActionPress.same(pressed, btn)) {
 			g.chcolor(new Color(0, 0, 0, 128));
 			g.frect(p.add(1, 1), bgsz.sub(1, 1));
 			g.chcolor();
@@ -511,7 +552,7 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 	if(pag != null) {
 	    if(prev != this)
 		hoverstart = now;
-	    boolean ttl = (now - hoverstart) > 0.5;
+	    boolean ttl = hearthborn.ui.XtensionsMenu.isScript(pag.res.name) || (now - hoverstart) > 0.5;
 	    if((pag != curttp) || (ttl != curttl)) {
 		BufferedImage ti = pag.rendertt(ttl);
 		curtt = (ti == null) ? null : new TexI(ti);
@@ -526,6 +567,9 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
     }
 
     private PagButton bhit(Coord c) {
+        Coord gsz=gridSize();
+        c = hearthborn.ui.ActionMenuFrame.logical(c,displayScale());
+        if(c.x < 0 || c.y < 0)return null;
 	Coord bc = c.div(bgsz);
 	if((bc.x >= 0) && (bc.y >= 0) && (bc.x < gsz.x) && (bc.y < gsz.y))
 	    return(layout[bc.x][bc.y]);
@@ -535,6 +579,15 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 
     public boolean mousedown(MouseDownEvent ev) {
 	PagButton h = bhit(ev.c);
+        if(ev.b==3 && h!=null && h.res.name.equals("hearthborn/claim-plan")){
+            boolean close=hearthborn.ui.XtensionsMenu.expanded(cur);
+            h.use(new Interaction(3,ui.modflags()));if(close)change(null);return true;
+        }
+        if(ev.b==3 && h==bk){
+            h.use(new Interaction(3,ui.modflags()));return true;
+        }
+        if(ev.b==3 && h!=null && shortcuts!=null && shortcuts.favoriteMenu(h,this,ev.c))return true;
+        if(ev.b==3 && h==null && shortcuts!=null && shortcuts.handles(cur)){change(null);return true;}
 	if((ev.b == 1) && (h != null)) {
 	    pressed = h;
 	    grab = ui.grabmouse(this);
@@ -545,7 +598,7 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
     public void mousemove(MouseMoveEvent ev) {
 	if((dragging == null) && (pressed != null)) {
 	    PagButton h = bhit(ev.c);
-	    if(h != pressed)
+	    if(!hearthborn.ui.ActionPress.same(pressed, h))
 		dragging = pressed.pag;
 	}
     }
@@ -559,6 +612,8 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
     }
 
     public void use(PagButton r, Interaction iact, boolean reset) {
+	if(shortcuts != null && shortcuts.handles(r.pag)) {change(r.pag);return;}
+	boolean close=hearthborn.ui.XtensionsMenu.expanded(cur)&&r!=next&&r!=bk;
 	Collection<PagButton> sub = new ArrayList<>();
 	cons(r.pag, sub);
 	if(sub.size() > 0) {
@@ -566,20 +621,55 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 	} else {
 	    r.pag.anew = r.pag.tnew = 0;
 	    r.use(iact);
-	    if(reset)
+            hearthborn.ui.ActionBrowser.used(this,r);
+	    if(reset||close)
 		change(null);
 	}
     }
 
     public void tick(double dt) {
-	if(recons)
+	if(recons || shortcuts != null && shortcuts.changed() || !hearthborn.ui.XtensionsMenu.gridSize(cur).equals(gridSize()))
 	    updlayout();
+        Coord gsz=gridSize();
 	for(int y = 0; y < gsz.y; y++) {
 	    for(int x = 0; x < gsz.x; x++) {
 		if(layout[x][y] != null)
 		    layout[x][y].tick(dt);
 	    }
 	}
+    }
+
+    public boolean hasChildren(Pagina page) {
+        Collection<Pagina> all;
+        synchronized(paginae) {all = new ArrayList<>(paginae);}
+        for(Pagina pag : all) {
+            try {
+                if(pag.parent() == page) {
+                    pag.button();
+                    return true;
+                }
+            } catch(Loading e) {
+            }
+        }
+        return false;
+    }
+
+    /** Every page that has at least one action under it, found in one pass. */
+    public Set<Pagina> parents() {
+        Collection<Pagina> all;
+        synchronized(paginae) {all = new ArrayList<>(paginae);}
+        Set<Pagina> result = Collections.newSetFromMap(new IdentityHashMap<>());
+        for(Pagina pag : all) {
+            try {
+                Pagina parent = pag.parent();
+                if(parent != null) {
+                    pag.button();
+                    result.add(parent);
+                }
+            } catch(Loading e) {
+            }
+        }
+        return result;
     }
 
     public boolean mouseup(MouseUpEvent ev) {
@@ -590,14 +680,18 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 		pressed = null;
 		dragging = null;
 	    } else if(pressed != null) {
-		if(pressed == h)
-		    use(h, new Interaction(), false);
+		if(hearthborn.ui.ActionPress.same(pressed, h))
+		    use(h, new Interaction(ev.b,ui.modflags()), false);
 		pressed = null;
 	    }
 	    grab.remove();
 	    grab = null;
 	}
 	return(true);
+    }
+    private double displayScale(){
+	hearthborn.ui.ActionMenuFrame frame=parent==null?null:parent.getchild(hearthborn.ui.ActionMenuFrame.class);
+	return frame==null?hearthborn.ui.ActionMenuFrame.SCALE:frame.factor();
     }
 
     public void uimsg(String msg, Object... args) {
@@ -658,6 +752,7 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
     public static final KeyBinding kb_back = KeyBinding.get("scm-back", KeyMatch.forcode(KeyEvent.VK_BACK_SPACE, 0));
     public static final KeyBinding kb_next = KeyBinding.get("scm-next", KeyMatch.forchar('N', KeyMatch.S | KeyMatch.C | KeyMatch.M, KeyMatch.S));
     public boolean globtype(GlobKeyEvent ev) {
+        Coord gsz=gridSize();
 	if(kb_root.key().match(ev) && (this.cur != null)) {
 	    change(null);
 	    return(true);
@@ -680,7 +775,7 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 	    }
 	}
 	if(pag != null) {
-	    use(pag, new Interaction(), (ev.mods & KeyMatch.S) == 0);
+	    use(pag, new Interaction(1,ui.modflags()), (ev.mods & KeyMatch.S) == 0);
 	    if(this.cur != null)
 		showkeys = true;
 	    return(true);

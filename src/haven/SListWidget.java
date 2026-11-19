@@ -90,14 +90,21 @@ public abstract class SListWidget<I, W extends Widget> extends Widget {
 	protected boolean valid(String text) {return(true);}
 
 	private Text.Slug text = null;
+	private int textGeneration = Integer.MIN_VALUE, textTint = -1;
 	protected void drawtext(GOut g) {
 	    try {
-		if((this.text == null) || !valid(text.text)) {
+		int generation = hearthborn.ui.UiTheme.generation(), tint = g.getcolor().getRGB() & 0x00ffffff;
+		if((this.text == null) || !valid(text.text) || textGeneration != generation || textTint != tint) {
 		    String text = text();
-		    this.text = foundry().render(text);
+		    if(this.text != null)
+			this.text.dispose();
+		    this.text = hearthborn.ui.UiTheme.line(this, g, foundry(), text);
+		    textGeneration = generation;
+		    textTint = tint;
 		    if(this.text.sz().x > sz.x) {
 			int len = this.text.charat(sz.x - foundry().strsize("...").x);
-			this.text = foundry().render(text.substring(0, len) + "...");
+			this.text.dispose();
+			this.text = hearthborn.ui.UiTheme.line(this, g, foundry(), text.substring(0, len) + "...");
 		    }
 		}
 		int m = margin();
@@ -180,15 +187,22 @@ public abstract class SListWidget<I, W extends Widget> extends Widget {
 	}
 
 	private Text.Slug text = null;
+	private int textGeneration = Integer.MIN_VALUE, textTint = -1;
 	protected void drawtext(GOut g) {
 	    int tx = sz.y + UI.scale(5);
 	    try {
-		if((this.text == null) || !valid(text.text)) {
+		int generation = hearthborn.ui.UiTheme.generation(), tint = g.getcolor().getRGB() & 0x00ffffff;
+		if((this.text == null) || !valid(text.text) || textGeneration != generation || textTint != tint) {
 		    String text = text();
-		    this.text = foundry().render(text);
+		    if(this.text != null)
+			this.text.dispose();
+		    this.text = hearthborn.ui.UiTheme.line(this, g, foundry(), text);
+		    textGeneration = generation;
+		    textTint = tint;
 		    if(tx + this.text.sz().x > sz.x) {
 			int len = this.text.charat(sz.x - tx - foundry().strsize("...").x);
-			this.text = foundry().render(text.substring(0, len) + "...");
+			this.text.dispose();
+			this.text = hearthborn.ui.UiTheme.line(this, g, foundry(), text.substring(0, len) + "...");
 		    }
 		}
 		g.image(this.text.tex(), Coord.of(tx, (sz.y - this.text.sz().y) / 2));

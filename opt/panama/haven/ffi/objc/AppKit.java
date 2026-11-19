@@ -195,6 +195,7 @@ public abstract class AppKit {
     }
 
     public interface NSWindow extends Runtime.NSObject {
+        public NSScreen screen();
 	public ID id();
 	public void setDelegate(WindowDelegate delegate);
 	public void setAcceptsMouseMovedEvents(boolean val);
@@ -277,6 +278,7 @@ public abstract class AppKit {
 	public void mouseExited(NSEvent event) {}
 	public void keyDown(NSEvent event) {}
 	public void keyUp(NSEvent event) {}
+	public void flagsChanged(NSEvent event) {}
 	public void insertText(String string) {}
 	public void doCommandBySelector(SEL selector) {}
 	public void resetCursorRects() {}
@@ -791,6 +793,7 @@ public abstract class AppKit {
 
 	private final Runtime.Class cls_NSWindow = rt.objc_getClass("NSWindow");
 	private final SEL sel_setAcceptsMouseMovedEvents = rt.sel_registerName("setAcceptsMouseMovedEvents:");
+        private final SEL sel_windowScreen = rt.sel_registerName("screen");
 	private final SEL sel_styleMask = rt.sel_registerName("styleMask");
 	private final SEL sel_setStyleMask = rt.sel_registerName("setStyleMask:");
 	private final SEL sel_collectionBehavior = rt.sel_registerName("collectionBehavior");
@@ -818,6 +821,10 @@ public abstract class AppKit {
 	private final SEL sel_setReleasedWhenClosed = rt.sel_registerName("setReleasedWhenClosed:");
 	class NSWindow implements AppKit.NSWindow {
 	    public final ID id;
+
+            public AppKit.NSScreen screen() {
+                return rt.wrap(rt.objc_msgSend_id(id,sel_windowScreen),NSScreen::new,true,true);
+            }
 
 	    public NSWindow(ID id) {
 		this.id = id;
@@ -1008,6 +1015,9 @@ public abstract class AppKit {
 	    rt.class_addMethod(cls_IOSYSView, rt.sel_registerName("keyUp:"),
 			       supcall(localarena, MethodHandles.lookup(), IOSYSView.class, "keyUp", this,
 				       null, C_ID, C_SEL, C_ID), "v@:@");
+	    rt.class_addMethod(cls_IOSYSView, rt.sel_registerName("flagsChanged:"),
+                               supcall(localarena, MethodHandles.lookup(), IOSYSView.class, "flagsChanged", this,
+                                       null, C_ID, C_SEL, C_ID), "v@:@");
 	    rt.class_addMethod(cls_IOSYSView, rt.sel_registerName("insertText:"),
 			       supcall(localarena, MethodHandles.lookup(), IOSYSView.class, "insertText", this,
 				       null, C_ID, C_SEL, C_ID), "v@:@");
@@ -1147,6 +1157,9 @@ public abstract class AppKit {
 	    private static void keyUp(VersionC ak, MemorySegment objp, MemorySegment sel, MemorySegment event) {
 		callback(ak, objp, view -> view.dg.keyUp(NSEvent.retain(ak, ak.rt.id(event))));
 	    }
+	    private static void flagsChanged(VersionC ak, MemorySegment objp, MemorySegment sel, MemorySegment event) {
+                callback(ak, objp, view -> view.dg.flagsChanged(NSEvent.retain(ak, ak.rt.id(event))));
+            }
 	    private static void insertText(VersionC ak, MemorySegment objp, MemorySegment sel, MemorySegment string) {
 		callback(ak, objp, view -> view.dg.insertText(ak.fnd.fromNSString(ak.rt.id(string))));
 	    }

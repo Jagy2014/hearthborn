@@ -34,6 +34,7 @@ import haven.resutil.CrackTex;
 public class GobHealth extends GAttrib implements Gob.SetupMod {
     public final float hp;
     public final Pipe.Op fx;
+    private final Pipe.Op cracks;
     
     public GobHealth(Gob g, float hp) {
 	super(g);
@@ -41,18 +42,20 @@ public class GobHealth extends GAttrib implements Gob.SetupMod {
 	int level = 3 - Math.round(hp * 4);
 	if(level >= 0) {
 	    Random rnd = g.mkrandoom();
-	    this.fx = Pipe.Op.compose(new CrackTex(CrackTex.imgs[Math.min(level, 2)],
+	    this.cracks = new CrackTex(CrackTex.imgs[Math.min(level, 2)],
 						   new Color(0, 0, 0, 255),
 						   Coord3f.of((rnd.nextFloat() * 2) - 1, (rnd.nextFloat() * 2) - 1, (rnd.nextFloat() * 2) - 1).norm(),
-						   rnd.nextFloat() * (float)Math.PI * 2),
+						   rnd.nextFloat() * (float)Math.PI * 2);
+	    this.fx = Pipe.Op.compose(cracks,
 				      new MixColor(255, 0, 0, 64 - (Math.round(hp * 64))));
 	} else {
 	    this.fx = null;
+            this.cracks = null;
 	}
     }
     
     public Pipe.Op gobstate() {
-	return(fx);
+	return(hearthborn.storage.ContainerLook.ready(gob)?cracks:fx);
     }
 
     @OCache.DeltaType(OCache.OD_HEALTH)

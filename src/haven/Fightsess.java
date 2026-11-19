@@ -29,6 +29,7 @@ package haven;
 import haven.render.*;
 import java.util.*;
 import java.awt.Color;
+import java.awt.Font;
 import java.awt.event.KeyEvent;
 
 public class Fightsess extends Widget {
@@ -45,7 +46,12 @@ public class Fightsess extends Widget {
     public static final int actpitch = UI.scale(50);
     public final Action[] actions;
     public int use = -1, useb = -1;
+    public static boolean active;
     public Coord pcc;
+    /** Cooldown circle and initiative, in place of the day and night dial. */
+    public Coord deck = Coord.z;
+    /** Attack buttons. Fixed above the hotbar, does not follow the fighter. */
+    public Coord moves = Coord.z;
     public int pho;
     private Fightview fv;
 
@@ -73,6 +79,8 @@ public class Fightsess extends Widget {
     }
 
     protected void added() {
+	active = true;
+	hearthborn.ui.ServerStats.covered = true;
 	fv = parent.getparent(GameUI.class).fv;
 	presize();
     }
@@ -83,15 +91,49 @@ public class Fightsess extends Widget {
     }
 
     private void updatepos() {
+	GameUI gui = getparent(GameUI.class);
+	int half = (actpitch * 2) + (actpitch / 2);
+	int x = sz.x / 2;
+	int y = UI.scale(2);
+	if(gui != null) {
+	    Cal cal = gui.findchild(Cal.class);
+	    if(cal != null) {
+		Coord at = cal.rootpos().sub(rootpos());
+		x = at.x + cal.sz.x / 2;
+		y = at.y + cal.sz.y / 2;
+	    }
+	}
+	x = Math.max(half, Math.min(sz.x - half, x));
+	deck = new Coord(x, y).add(hearthborn.combat.CombatPrefs.alt() ? hearthborn.combat.CombatPrefs.shift() : Coord.z);
+	int rows = Math.max(1, (actions.length + 4) / 5);
+	int below = UI.scale(125) + ((rows - 1) * actpitch) + (actpitch / 2) + UI.scale(6) + UI.scale(36);
+	int limit = sz.y - UI.scale(4);
+	if(gui != null && gui.beltwdg != null && gui.beltwdg.visible())
+	    limit = Math.min(limit, gui.beltwdg.c.y - UI.scale(6));
+	if(gui != null && gui.chat != null && gui.chat.visible() && !gui.chat.detached())
+	    limit = Math.min(limit, gui.chat.c.y - UI.scale(6));
+	int my = limit - below;
+	if(my < UI.scale(4))
+	    my = UI.scale(4);
+	moves = new Coord(Math.max(half, Math.min(sz.x - half, sz.x / 2)), my);
 	MapView map;
 	Gob pl;
-	if(((map = getparent(GameUI.class).map) == null) || ((pl = map.player()) == null))
+	if((gui == null) || ((map = gui.map) == null) || ((pl = map.player()) == null))
 	    return;
 	Coord3f raw = pl.placed.getc();
 	if(raw == null)
 	    return;
-	pcc = map.screenxf(raw).round2();
-	pho = (int)(map.screenxf(raw.add(0, 0, UI.scale(20))).round2().sub(pcc).y) - UI.scale(20);
+	Coord3f at = map.screenxf(raw);
+	if(at == null)
+	    return;
+	pcc = at.round2();
+	if(!hearthborn.combat.CombatPrefs.alt()) {
+	    deck = pcc.add(0, UI.scale(67));
+	    moves = pcc;
+	}
+	Coord3f up = map.screenxf(raw.add(0, 0, UI.scale(20)));
+	if(up != null)
+	    pho = (int)(up.round2().sub(pcc).y) - UI.scale(20);
     }
 
     private static class Effect implements RenderTree.Node {
@@ -149,6 +191,7 @@ public class Fightsess extends Widget {
 		fx.spr.tick(dt);
 	    }
 	}
+	hearthborn.combat.AutoCombat.tick(this, fv);
     }
 
     public void destroy() {
@@ -157,43 +200,271 @@ public class Fightsess extends Widget {
 		fx.slot.remove();
 	}
 	curfx.clear();
+	active = false;
+	hearthborn.ui.ServerStats.covered = false;
+	hearthborn.combat.AutoCombat.ended();
+        hearthborn.combat.BowCombat.ended(this);
+	if(hearthborn.combat.CombatPrefs.clearAll())
+	    hearthborn.combat.FighterMark.clearAll();
+	else if(hearthborn.combat.CombatPrefs.clearPlayer())
+	    hearthborn.combat.FighterMark.clearPlayer();
 	super.destroy();
     }
 
     private static final Text.Furnace ipf = new PUtils.BlurFurn(new Text.Foundry(Text.serif, 18, new Color(128, 128, 255)).aa(true), 1, 1, new Color(48, 48, 96));
-    private final Indir<Text> ip =  Utils.transform(() -> fv.current.ip , v -> ipf.render("IP: " + v));
-    private final Indir<Text> oip = Utils.transform(() -> fv.current.oip, v -> ipf.render("IP: " + v));
+    private final Indir<Text> ip =  Utils.transform(() -> fv.current.ip , v -> ipf.render(Integer.toString(v)));
+    private final Indir<Text> oip = Utils.transform(() -> fv.current.oip, v -> ipf.render(Integer.toString(v)));
+    private static final String[] OPEN_NAME = {
+	"paginae/atk/offbalance",
+	"paginae/atk/reeling",
+	"paginae/atk/dizzy",
+	"paginae/atk/cornered",
+    };
+    private static final Color[] OPEN_COL = {
+	new Color(81, 165, 56),
+	new Color(210, 210, 64),
+	new Color(39, 82, 191),
+	new Color(192, 28, 28),
+    };
+    private static final Text.Foundry openf = new Text.Foundry(Text.sans.deriveFont(Font.BOLD), 12);
+    private final Map<Buff, Coord> slot = new IdentityHashMap<>();
+    private final Map<Buff, Tex> onum = new IdentityHashMap<>();
+    private final Map<Buff, Integer> oval = new IdentityHashMap<>();
+    private Coord lastc1, lastc2;
+    private Coord lasts1, lasts2;
+
+    private static final Coord usec1 = UI.scale(new Coord(-65, 67));
+    private static final Coord usec2 = UI.scale(new Coord(65, 67));
 
     private static Coord actc(int i) {
 	int rl = 5;
 	return(new Coord((actpitch * (i % rl)) - (((rl - 1) * actpitch) / 2), UI.scale(125) + ((i / rl) * actpitch)));
     }
 
-    private static final Coord cmc = UI.scale(new Coord(0, 67));
-    private static final Coord usec1 = UI.scale(new Coord(-65, 67));
-    private static final Coord usec2 = UI.scale(new Coord(65, 67));
+    private Coord coolc() {
+	return(deck);
+    }
+
+    private static int openix(Buff buff) {
+	Resource res;
+	try {
+	    res = buff.res.get();
+	} catch(Loading l) {
+	    return(-1);
+	}
+	String name = res.name;
+	for(int i = 0; i < OPEN_NAME.length; i++) {
+	    if(OPEN_NAME[i].equals(name))
+		return(i);
+	}
+	return(-1);
+    }
+
+    private void split(Bufflist list, List<Buff> maneuvers, List<Buff> openings) {
+	maneuvers.clear();
+	openings.clear();
+	if(list == null)
+	    return;
+	for(Buff buff : list.children(Buff.class)) {
+	    if(openix(buff) >= 0)
+		openings.add(buff);
+	    else
+		maneuvers.add(buff);
+	}
+    }
+
+    /** Top of the icon row, directly under the cooldown circle. */
+    private int rowTop() {
+	return(coolc().y + (cdframe.sz().y / 2) + UI.scale(4));
+    }
+
+    /**
+     * One row under the cooldown circle.
+     * Mine, outward: last move, maneuver, openings.
+     * Opponent, outward: maneuver, last move, openings.
+     */
+    private int placeBuffs(int edge, boolean left, List<Buff> buffs) {
+	int gap = UI.scale(4);
+	int y = rowTop();
+	for(Buff buff : buffs) {
+	    int x;
+	    if(left) {
+		x = edge - gap - buff.sz.x;
+		edge = x;
+	    } else {
+		x = edge + gap;
+		edge = x + buff.sz.x;
+	    }
+	    slot.put(buff, new Coord(x, y + (Buff.cframe.sz().y - buff.sz.y) / 2));
+	}
+	return(edge);
+    }
+
+    private int placeUse(int edge, boolean left, Indir<Resource> act, boolean mine) {
+	if(act == null)
+	    return(edge);
+	Tex ut;
+	try {
+	    ut = act.get().flayer(Resource.imgc).tex();
+	} catch(Loading l) {
+	    return(edge);
+	}
+	int gap = UI.scale(4);
+	int x = left ? edge - gap - ut.sz().x : edge + gap;
+	int y = rowTop() + (Buff.cframe.sz().y - ut.sz().y) / 2;
+	Coord c = new Coord(x, y);
+	if(mine) {
+	    lastc1 = c;
+	    lasts1 = ut.sz();
+	} else {
+	    lastc2 = c;
+	    lasts2 = ut.sz();
+	}
+	if(left)
+	    return(x - Math.max(0, useframeo.x));
+	return(x + Math.max(ut.sz().x, useframe.sz().x - useframeo.x));
+    }
+
+    /** Old combat UI: openings and maneuvers in columns beside the fighter, last move beside the circle. */
+    private void placeClassic() {
+	if(pcc == null)
+	    return;
+	for(Buff buff : fv.buffs.children(Buff.class))
+	    slot.put(buff, pcc.add(-buff.c.x - Buff.cframe.sz().x - UI.scale(20), buff.c.y + pho - Buff.cframe.sz().y));
+	placeClassicUse(true, fv.lastact);
+	if(fv.current == null)
+	    return;
+	for(Buff buff : fv.current.buffs.children(Buff.class))
+	    slot.put(buff, pcc.add(buff.c.x + UI.scale(20), buff.c.y + pho - Buff.cframe.sz().y));
+	placeClassicUse(false, fv.current.lastact);
+    }
+
+    private void placeClassicUse(boolean mine, Indir<Resource> act) {
+	if(act == null)
+	    return;
+	Tex ut;
+	try {
+	    ut = act.get().flayer(Resource.imgc).tex();
+	} catch(Loading l) {
+	    return;
+	}
+	Coord c = pcc.add(mine ? usec1 : usec2).sub(ut.sz().div(2));
+	if(mine) {
+	    lastc1 = c;
+	    lasts1 = ut.sz();
+	} else {
+	    lastc2 = c;
+	    lasts2 = ut.sz();
+	}
+    }
+
+    private void place() {
+	slot.clear();
+	lastc1 = lastc2 = null;
+	lasts1 = lasts2 = null;
+	if(!hearthborn.combat.CombatPrefs.alt()) {
+	    placeClassic();
+	    return;
+	}
+	Coord mid = coolc();
+	List<Buff> maneuvers = new ArrayList<>();
+	List<Buff> openings = new ArrayList<>();
+	split(fv.buffs, maneuvers, openings);
+	int edge = mid.x - UI.scale(6);
+	edge = placeUse(edge, true, fv.lastact, true);
+	edge = placeBuffs(edge, true, maneuvers);
+	placeBuffs(edge, true, openings);
+	if(fv.current != null) {
+	    split(fv.current.buffs, maneuvers, openings);
+	    edge = mid.x + UI.scale(6);
+	    edge = placeBuffs(edge, false, maneuvers);
+	    edge = placeUse(edge, false, fv.current.lastact, false);
+	    placeBuffs(edge, false, openings);
+	}
+    }
+
+    private void drawBuff(GOut g, Buff buff) {
+	if(slot.get(buff) == null)
+	    return;
+	if((openix(buff) >= 0) && hearthborn.combat.CombatPrefs.simple())
+	    drawOpening(g, buff);
+	else
+	    buff.draw(g.reclip(slot.get(buff), buff.sz));
+    }
+
+    private void drawOpening(GOut g, Buff buff) {
+	Coord c = slot.get(buff);
+	if(c == null)
+	    return;
+	int ix = openix(buff);
+	if(ix < 0)
+	    return;
+	g.chcolor(OPEN_COL[ix]);
+	g.frect(c.add(1, 1), buff.sz.sub(2, 2));
+	g.chcolor(255, 255, 255, 210);
+	g.rect(c, buff.sz);
+	g.chcolor();
+	Double meter = buff.ameter();
+	if(meter == null)
+	    return;
+	int n = (int)Math.floor(meter * 100.0);
+	Integer prev = oval.get(buff);
+	Tex num = onum.get(buff);
+	if((prev == null) || (prev != n) || (num == null)) {
+	    num = new TexI(Utils.outline2(openf.render(Integer.toString(n), Color.WHITE).img, Color.BLACK));
+	    oval.put(buff, n);
+	    onum.put(buff, num);
+	}
+	g.aimage(num, c.add(buff.sz.div(2)), 0.5, 0.5);
+    }
+
+    private void drawuse(GOut g, Coord useul, Indir<Resource> act, double lastuse, double now) {
+	if((useul == null) || (act == null))
+	    return;
+	try {
+	    Tex ut = act.get().flayer(Resource.imgc).tex();
+	    g.image(ut, useul);
+	    g.image(useframe, useul.sub(useframeo));
+	    double a = now - lastuse;
+	    if(a < 1) {
+		Coord off = new Coord((int)(a * ut.sz().x / 2), (int)(a * ut.sz().y / 2));
+		g.chcolor(255, 255, 255, (int)(255 * (1 - a)));
+		g.image(ut, useul.sub(off), ut.sz().add(off.mul(2)));
+		g.chcolor();
+	    }
+	} catch(Loading l) {
+	}
+    }
+    private final Tex[] keytex = new Tex[10];
+    private final String[] keyname = new String[10];
+    private UI.Grab drag;
+    private Coord dragAt, dragOrg;
     private Indir<Resource> lastact1 = null, lastact2 = null;
     private Text lastacttip1 = null, lastacttip2 = null;
     private Effect curtgtfx;
     public void draw(GOut g) {
 	updatepos();
+	place();
 	double now = Utils.rtime();
 
 	for(Buff buff : fv.buffs.children(Buff.class))
-	    buff.draw(g.reclip(pcc.add(-buff.c.x - Buff.cframe.sz().x - UI.scale(20), buff.c.y + pho - Buff.cframe.sz().y), buff.sz));
+	    drawBuff(g, buff);
 	if(fv.current != null) {
 	    for(Buff buff : fv.current.buffs.children(Buff.class))
-		buff.draw(g.reclip(pcc.add(buff.c.x + UI.scale(20), buff.c.y + pho - Buff.cframe.sz().y), buff.sz));
-
-	    g.aimage(ip.get().tex(), pcc.add(-UI.scale(75), 0), 1, 0.5);
-	    g.aimage(oip.get().tex(), pcc.add(UI.scale(75), 0), 0, 0.5);
-
-	    if(fv.lsrel.size() > 1)
+		drawBuff(g, buff);
+	    try {
+		int lift = UI.scale(12);
+		int side = cdframe.sz().x / 2 + UI.scale(4);
+		g.aimage(ip.get().tex(), coolc().add(-side, -lift), 1, 0.5);
+		g.aimage(oip.get().tex(), coolc().add(side, -lift), 0, 0.5);
+	    } catch(Loading l) {
+	    }
+	    if(fv.lsrel.size() > (hearthborn.combat.CombatPrefs.mark() ? 0 : 1))
 		curtgtfx = fxon(fv.current.gobid, tgtfx, curtgtfx);
 	}
 
 	{
-	    Coord cdc = pcc.add(cmc);
+	    Coord cdc = coolc();
 	    if(now < fv.atkct) {
 		double a = (now - fv.atkcs) / (fv.atkct - fv.atkcs);
 		g.chcolor(255, 0, 128, 224);
@@ -202,54 +473,20 @@ public class Fightsess extends Widget {
 	    }
 	    g.image(cdframe, cdc.sub(cdframe.sz().div(2)));
 	}
-	try {
-	    Indir<Resource> lastact = fv.lastact;
-	    if(lastact != this.lastact1) {
-		this.lastact1 = lastact;
-		this.lastacttip1 = null;
-	    }
-	    double lastuse = fv.lastuse;
-	    if(lastact != null) {
-		Tex ut = lastact.get().flayer(Resource.imgc).tex();
-		Coord useul = pcc.add(usec1).sub(ut.sz().div(2));
-		g.image(ut, useul);
-		g.image(useframe, useul.sub(useframeo));
-		double a = now - lastuse;
-		if(a < 1) {
-		    Coord off = new Coord((int)(a * ut.sz().x / 2), (int)(a * ut.sz().y / 2));
-		    g.chcolor(255, 255, 255, (int)(255 * (1 - a)));
-		    g.image(ut, useul.sub(off), ut.sz().add(off.mul(2)));
-		    g.chcolor();
-		}
-	    }
-	} catch(Loading l) {
+	if(fv.lastact != this.lastact1) {
+	    this.lastact1 = fv.lastact;
+	    this.lastacttip1 = null;
 	}
+	drawuse(g, lastc1, fv.lastact, fv.lastuse, now);
 	if(fv.current != null) {
-	    try {
-		Indir<Resource> lastact = fv.current.lastact;
-		if(lastact != this.lastact2) {
-		    this.lastact2 = lastact;
-		    this.lastacttip2 = null;
-		}
-		double lastuse = fv.current.lastuse;
-		if(lastact != null) {
-		    Tex ut = lastact.get().flayer(Resource.imgc).tex();
-		    Coord useul = pcc.add(usec2).sub(ut.sz().div(2));
-		    g.image(ut, useul);
-		    g.image(useframe, useul.sub(useframeo));
-		    double a = now - lastuse;
-		    if(a < 1) {
-			Coord off = new Coord((int)(a * ut.sz().x / 2), (int)(a * ut.sz().y / 2));
-			g.chcolor(255, 255, 255, (int)(255 * (1 - a)));
-			g.image(ut, useul.sub(off), ut.sz().add(off.mul(2)));
-			g.chcolor();
-		    }
-		}
-	    } catch(Loading l) {
+	    if(fv.current.lastact != this.lastact2) {
+		this.lastact2 = fv.current.lastact;
+		this.lastacttip2 = null;
 	    }
+	    drawuse(g, lastc2, fv.current.lastact, fv.current.lastuse, now);
 	}
 	for(int i = 0; i < actions.length; i++) {
-	    Coord ca = pcc.add(actc(i));
+	    Coord ca = moves.add(actc(i));
 	    Action act = actions[i];
 	    try {
 		if(act != null) {
@@ -263,6 +500,15 @@ public class Fightsess extends Widget {
 			g.prect(ca, ic.sub(ca), ic.add(img.sz()).sub(ca), (1.0 - a) * Math.PI * 2);
 			g.chcolor();
 		    }
+		    if(hearthborn.combat.CombatPrefs.keys() && (i < kb_acts.length) && (i < keytex.length)) {
+			String name = kb_acts[i].key().name();
+			if(!name.equals(keyname[i])) {
+			    keyname[i] = name;
+			    keytex[i] = new TexI(Utils.outline2(openf.render(name, Color.WHITE).img, Color.BLACK));
+			}
+			if(keytex[i] != null)
+			    g.aimage(keytex[i], ic.add(img.sz()), 1, 1);
+		    }
 		    if(i == use) {
 			g.image(indframe, ic.sub(indframeo));
 		    } else if(i == useb) {
@@ -273,15 +519,46 @@ public class Fightsess extends Widget {
 		}
 	    } catch(Loading l) {}
 	}
+	hearthborn.combat.AutoCombat.draw(g, this);
+    }
+
+    public boolean mousedown(MouseDownEvent ev) {
+	if(hearthborn.combat.AutoCombat.click(this, ev))
+	    return(true);
+	if(hearthborn.combat.CombatPrefs.drag() && hearthborn.combat.CombatPrefs.alt() && (ev.b == 1)
+	    && (ev.c.dist(coolc()) <= (cdframe.sz().x / 2) + UI.scale(6))) {
+	    drag = ui.grabmouse(this);
+	    dragAt = ev.c;
+	    dragOrg = hearthborn.combat.CombatPrefs.shift();
+	    return(true);
+	}
+	return(false);
+    }
+
+    public void mousemove(MouseMoveEvent ev) {
+	if(drag != null)
+	    hearthborn.combat.CombatPrefs.shift(dragOrg.add(ev.c.sub(dragAt)));
+    }
+
+    public boolean mouseup(MouseUpEvent ev) {
+	if((drag == null) || (ev.b != 1))
+	    return(false);
+	drag.remove();
+	drag = null;
+	return(true);
     }
 
     private Widget prevtt = null;
     private Text acttip = null;
     public static final String[] keytips = {"1", "2", "3", "4", "5", "Shift+1", "Shift+2", "Shift+3", "Shift+4", "Shift+5"};
     public Object tooltip(Coord c, Widget prev) {
+	String auto = hearthborn.combat.AutoCombat.tip(c);
+	if(auto != null)
+	    return(auto);
+	place();
 	for(Buff buff : fv.buffs.children(Buff.class)) {
-	    Coord dc = pcc.add(-buff.c.x - Buff.cframe.sz().x - UI.scale(20), buff.c.y + pho - Buff.cframe.sz().y);
-	    if(c.isect(dc, buff.sz)) {
+	    Coord dc = slot.get(buff);
+	    if((dc != null) && c.isect(dc, buff.sz)) {
 		Object ret = buff.tooltip(c.sub(dc), prevtt);
 		if(ret != null) {
 		    prevtt = buff;
@@ -291,8 +568,8 @@ public class Fightsess extends Widget {
 	}
 	if(fv.current != null) {
 	    for(Buff buff : fv.current.buffs.children(Buff.class)) {
-		Coord dc = pcc.add(buff.c.x + UI.scale(20), buff.c.y + pho - Buff.cframe.sz().y);
-		if(c.isect(dc, buff.sz)) {
+		Coord dc = slot.get(buff);
+		if((dc != null) && c.isect(dc, buff.sz)) {
 		    Object ret = buff.tooltip(c.sub(dc), prevtt);
 		    if(ret != null) {
 			prevtt = buff;
@@ -303,7 +580,7 @@ public class Fightsess extends Widget {
 	}
 	final int rl = 5;
 	for(int i = 0; i < actions.length; i++) {
-	    Coord ca = pcc.add(actc(i));
+	    Coord ca = moves.add(actc(i));
 	    Indir<Resource> act = (actions[i] == null) ? null : actions[i].res;
 	    if(act != null) {
 		Tex img = act.get().flayer(Resource.imgc).tex();
@@ -320,10 +597,8 @@ public class Fightsess extends Widget {
 	}
 	{
 	    Indir<Resource> lastact = this.lastact1;
-	    if(lastact != null) {
-		Coord usesz = lastact.get().flayer(Resource.imgc).sz;
-		Coord lac = pcc.add(usec1);
-		if(c.isect(lac.sub(usesz.div(2)), usesz)) {
+	    if((lastact != null) && (lastc1 != null) && (lasts1 != null)) {
+		if(c.isect(lastc1, lasts1)) {
 		    if(lastacttip1 == null)
 			lastacttip1 = Text.render(lastact.get().flayer(Resource.tooltip).t);
 		    return(lastacttip1);
@@ -332,10 +607,8 @@ public class Fightsess extends Widget {
 	}
 	{
 	    Indir<Resource> lastact = this.lastact2;
-	    if(lastact != null) {
-		Coord usesz = lastact.get().flayer(Resource.imgc).sz;
-		Coord lac = pcc.add(usec2);
-		if(c.isect(lac.sub(usesz.div(2)), usesz)) {
+	    if((lastact != null) && (lastc2 != null) && (lasts2 != null)) {
+		if(c.isect(lastc2, lasts2)) {
 		    if(lastacttip2 == null)
 			lastacttip2 = Text.render(lastact.get().flayer(Resource.tooltip).t);
 		    return(lastacttip2);
@@ -374,11 +647,11 @@ public class Fightsess extends Widget {
 	KeyBinding.get("fgt/2", KeyMatch.forcode(KeyEvent.VK_3, 0)),
 	KeyBinding.get("fgt/3", KeyMatch.forcode(KeyEvent.VK_4, 0)),
 	KeyBinding.get("fgt/4", KeyMatch.forcode(KeyEvent.VK_5, 0)),
-	KeyBinding.get("fgt/5", KeyMatch.forcode(KeyEvent.VK_1, KeyMatch.S)),
-	KeyBinding.get("fgt/6", KeyMatch.forcode(KeyEvent.VK_2, KeyMatch.S)),
-	KeyBinding.get("fgt/7", KeyMatch.forcode(KeyEvent.VK_3, KeyMatch.S)),
-	KeyBinding.get("fgt/8", KeyMatch.forcode(KeyEvent.VK_4, KeyMatch.S)),
-	KeyBinding.get("fgt/9", KeyMatch.forcode(KeyEvent.VK_5, KeyMatch.S)),
+	KeyBinding.get("fgt/5", KeyMatch.forcode(KeyEvent.VK_Q, 0)),
+	KeyBinding.get("fgt/6", KeyMatch.forcode(KeyEvent.VK_W, 0)),
+	KeyBinding.get("fgt/7", KeyMatch.forcode(KeyEvent.VK_E, 0)),
+	KeyBinding.get("fgt/8", KeyMatch.forcode(KeyEvent.VK_R, 0)),
+	KeyBinding.get("fgt/9", KeyMatch.forcode(KeyEvent.VK_T, 0)),
     };
     public static final KeyBinding kb_relcycle =  KeyBinding.get("fgt-cycle", KeyMatch.forcode(KeyEvent.VK_TAB, KeyMatch.C), KeyMatch.S);
 

@@ -34,6 +34,7 @@ public class ResDrawable extends Drawable implements Sprite.Owner, EquipTarget {
     public final Indir<Resource> res;
     public final Resource rres;
     public final Sprite spr;
+    private final RenderTree.Node visual;
     MessageBuf sdt;
 
     public ResDrawable(Gob gob, Indir<Resource> res, Message sdt, boolean old) {
@@ -42,6 +43,7 @@ public class ResDrawable extends Drawable implements Sprite.Owner, EquipTarget {
 	this.sdt = new MessageBuf(sdt);
 	this.rres = res.get();
 	spr = Sprite.create(this, rres, this.sdt.clone());
+        visual = hearthborn.world.PlantVisibility.visual(this);
 	if(old || true)
 	    spr.age();
     }
@@ -56,6 +58,7 @@ public class ResDrawable extends Drawable implements Sprite.Owner, EquipTarget {
 
     public void ctick(double dt) {
 	spr.tick(dt);
+        hearthborn.world.PlantVisibility.tick(visual, dt);
     }
 
     public void gtick(Render g) {
@@ -63,14 +66,17 @@ public class ResDrawable extends Drawable implements Sprite.Owner, EquipTarget {
     }
 
     public void added(RenderTree.Slot slot) {
-	slot.add(spr);
+	slot.add(visual);
 	super.added(slot);
     }
 
     public void dispose() {
+        hearthborn.world.PlantVisibility.dispose(visual);
 	if(spr != null)
 	    spr.dispose();
     }
+
+    public MessageBuf stateData() { return sdt.clone(); }
 
     public Resource getres() {
 	return(rres);

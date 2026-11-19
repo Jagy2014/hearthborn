@@ -80,6 +80,7 @@ public class Progress extends Widget {
 	int mw = (int)Math.floor((sz.x - (m * 2)) * a);
 	g.frect(Coord.of(m), new Coord(mw, sz.y - (m * 2)));
 	g.chcolor();
+        if(text == null) hearthborn.ui.ClaimPresence.attach(this);
 	Object t = (text == null) ? null : text.apply(a);
 	if((rt != null) && !Utils.eq(t, pt)) {
 	    rt.dispose();

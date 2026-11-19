@@ -32,6 +32,23 @@ public class Music {
     private static Player player;
     public static boolean enabled = true;
     private static boolean debug = false;
+    private static volatile int volume = Utils.clip(Utils.getprefi("hearthborn/music/volume", 100), 0, 100);
+
+    /** Loudness of the background music in percent, applied to the synthesizer as a MIDI master volume. */
+    public static int volume() {
+	return(volume);
+    }
+
+    public static void volume(int percent) {
+	volume = Utils.clip(percent, 0, 100);
+	Utils.setprefi("hearthborn/music/volume", volume);
+	Player current;
+	synchronized(Music.class) {
+	    current = player;
+	}
+	if(current != null)
+	    current.applyvolume();
+    }
     
     static {
 	enabled = Utils.parsebool(Utils.getpref("bgmen", "true"), true);
@@ -57,6 +74,19 @@ public class Music {
 	    this.waitfor = waitfor;
 	}
 	
+	private void applyvolume() {
+	    Synthesizer synth = this.synth;
+	    if(synth == null)
+		return;
+	    try {
+		int v = (int)Math.round(volume * 16383 / 100.0);
+		byte[] data = {(byte)0xf0, 0x7f, 0x7f, 0x04, 0x01, (byte)(v & 0x7f), (byte)((v >> 7) & 0x7f), (byte)0xf7};
+		synth.getReceiver().send(new SysexMessage(data, data.length), -1);
+	    } catch(MidiUnavailableException | InvalidMidiDataException | RuntimeException e) {
+		debug("Could not set the music volume: " + e);
+	    }
+	}
+
 	public void run() {
 	    try {
 		if(waitfor != null)
@@ -69,6 +99,7 @@ public class Music {
 		    seq.setSequence(res.flayer(Resource.Music.class).seq);
 		    synth.open();
 		    seq.getTransmitter().setReceiver(synth.getReceiver());
+		    applyvolume();
 		} catch(MidiUnavailableException e) {
 		    return;
 		} catch(InvalidMidiDataException e) {

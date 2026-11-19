@@ -52,6 +52,8 @@ public abstract class LayerMeter extends Widget implements ItemInfo.Owner {
 	this.meters = meters;
     }
 
+    public List<Meter> meters() {return(meters);}
+
     public void set(double a, Color c) {
 	set(Collections.singletonList(new Meter(a, c)));
     }
@@ -95,11 +97,11 @@ public abstract class LayerMeter extends Widget implements ItemInfo.Owner {
 	    hoverstart = now;
 	if(now - hoverstart < 1.0) {
 	    if(shorttip == null)
-		shorttip = new TexI(ItemInfo.shorttip(info()));
+		shorttip = new TexI(hearthborn.l10n.TooltipText.render(() -> ItemInfo.shorttip(info())));
 	    return(shorttip);
 	} else {
 	    if(longtip == null)
-		longtip = new TexI(ItemInfo.longtip(info()));
+		longtip = new TexI(hearthborn.l10n.TooltipText.render(() -> ItemInfo.longtip(info())));
 	    return(longtip);
 	}
     }

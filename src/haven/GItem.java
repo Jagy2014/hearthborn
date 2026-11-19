@@ -37,11 +37,14 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
     public Indir<Resource> res;
     public MessageBuf sdt;
     public int meter = 0;
+    public long meterUpdated;
     public int num = -1;
     public Widget contents = null;
     public String contentsnm = null;
     public Object contentsid = null;
     public ContentsWindow contentswnd = null;
+    /** Set once the automatic drop rules have judged this item. */
+    public boolean autoDropChecked = false;
     public int infoseq;
     private Widget hovering;
     private boolean hoverset;
@@ -123,11 +126,25 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
 	}
 
 	public default Tex overlay() {
-	    return(new TexI(GItem.NumberInfo.numrender(itemnum(), numcolor())));
+	    Color col = numcolor();
+	    return(new TexI(hearthborn.QualityOverlay.styled(Integer.toString(itemnum()), col)));
+	}
+
+	/** Item counts, remaining uses and gilding sit in the bottom-right. Quality has its own overlay. */
+	public static boolean gildingClass(String name) {
+	    return(name != null && name.endsWith("tt.slots.ISlots"));
+	}
+
+	public static boolean stackCount(String name) {
+	    return(name != null && name.equals("haven.GItem$Amount"));
 	}
 
 	public default void drawoverlay(GOut g, Tex tex) {
-	    g.aimage(tex, g.sz(), 1, 1);
+	    /* With quality and count swapped the count and the gilding go to the top-right, where quality was. */
+	    if(hearthborn.QualityStyle.swapped())
+		g.aimage(tex, Coord.of(g.sz().x, 0), 1, 0);
+	    else
+		g.aimage(tex, g.sz(), 1, 1);
 	}
 
 	public static BufferedImage numrender(int num, Color col) {
@@ -168,6 +185,10 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
 	return(rnd);
     }
     public Resource getres() {return(res.get());}
+    public void wdgmsg(String msg, Object... args) {
+	if("iact".equals(msg)) hearthborn.ui.FlowerChoices.itemMenu(ui);
+	super.wdgmsg(msg, args);
+    }
     private static final OwnerContext.ClassResolver<GItem> ctxr = new OwnerContext.ClassResolver<GItem>()
 	.add(GItem.class, wdg -> wdg)
 	.add(Glob.class, wdg -> wdg.ui.sess.glob)
@@ -191,6 +212,7 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
 	if(spr != null)
 	    spr.tick(dt);
 	updcontinfo();
+	hearthborn.inventory.AutoDrop.check(this);
 	if(!hoverset)
 	    hovering = null;
 	hoverset = false;
@@ -200,12 +222,32 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
 	if(this.info == null) {
 	    List<ItemInfo> info = ItemInfo.buildinfo(this, rawinfo);
 	    addcontinfo(info);
-	    Resource.Pagina pg = res.get().layer(Resource.pagina);
-	    if(pg != null)
+	    Resource resource = res.get();
+	    Resource.Pagina pg = resource.layer(Resource.pagina);
+	    boolean stack = "gfx/invobjs/stack".equals(resource.name) || hearthborn.QualityOverlay.stacked(this);
+	    if(pg != null && !stack)
 		info.add(new ItemInfo.Pagina(this, pg.text));
+	    hearthborn.food.FishFry.add(this, info);
+	    if(stack) {
+		hearthborn.QualityOverlay.presentAverage(this, info);
+		hearthborn.ui.StackTips.present(this, info);
+	    }
+	    stripStackGuide(info);
 	    this.info = info;
 	}
 	return(this.info);
+    }
+
+    /** The server attaches the stack instructions through its own tooltip page, not only the item resource. */
+    private static void stripStackGuide(List<ItemInfo> info) {
+	for(Iterator<ItemInfo> tips = info.iterator(); tips.hasNext();) {
+	    ItemInfo tip = tips.next();
+	    if(!(tip instanceof ItemInfo.Pagina)) continue;
+	    String text = ((ItemInfo.Pagina)tip).doc.text;
+	    if(text != null && (text.contains("To stack items") || text.contains("On the stacks themselves")
+		|| text.contains("Чтобы сложить предметы в стак") || text.contains("На самих стаках")))
+		tips.remove();
+	}
     }
 
     public Resource resource() {
@@ -228,11 +270,14 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
 		spr = null;
 	    }
 	} else if(name == "tt") {
+            meterUpdated=System.currentTimeMillis();
 	    info = null;
 	    rawinfo = new ItemInfo.Raw(args);
 	    infoseq++;
 	} else if(name == "meter") {
+            meterUpdated=System.currentTimeMillis();
 	    meter = Utils.iv(args[0]);
+	    hearthborn.ui.ItemMeter.widget(this, meter);
 	} else if(name == "contopen") {
 	    if(contentswnd != null) {
 		boolean nst;
@@ -340,15 +385,15 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
 
     public static class HoverDeco extends Window.Deco {
 	public static final Coord hovermarg = UI.scale(12, 12);
-	public static final Tex bg = Window.bg;
-	public static final IBox box = Window.wbox;
+	/** A one-pixel line close around the items instead of the full window moulding. */
+	public static final Coord inset = UI.scale(3, 3);
 	public Area ca;
 	private UI.Grab dm = null;
 	private Coord doff;
 
 	public void iresize(Coord isz) {
-	    ca = Area.sized(hovermarg.add(box.btloff()), isz);
-	    resize(ca.br.add(box.bbroff()));
+	    ca = Area.sized(hovermarg.add(inset), isz);
+	    resize(ca.br.add(inset));
 	}
 
 	public Area contarea() {
@@ -357,13 +402,15 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
 
 	public void draw(GOut g) {
 	    Coord bgc = new Coord();
-	    Coord ctl = hovermarg.add(box.btloff());
-	    Coord cbr = sz.sub(box.bbroff());
-	    for(bgc.y = ctl.y; bgc.y < cbr.y; bgc.y += bg.sz().y) {
-		for(bgc.x = ctl.x; bgc.x < cbr.x; bgc.x += bg.sz().x)
-		    g.image(bg, bgc, ctl, cbr);
+	    Coord ctl = hovermarg;
+	    Coord cbr = sz;
+	    for(bgc.y = ctl.y; bgc.y < cbr.y; bgc.y += Window.bg().sz().y) {
+		for(bgc.x = ctl.x; bgc.x < cbr.x; bgc.x += Window.bg().sz().x)
+		    g.image(Window.bg(), bgc, ctl, cbr);
 	    }
-	    box.draw(g, hovermarg, sz.sub(hovermarg));
+	    g.chcolor(hearthborn.ui.AccentTheme.blue() ? new java.awt.Color(0x4D, 0xA6, 0xD3, 220) : new java.awt.Color(0xDA, 0xB9, 0x70, 220));
+	    g.rect2(hovermarg, sz.sub(1, 1));
+	    g.chcolor();
 	    super.draw(g);
 	}
 
@@ -409,26 +456,39 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
 	public static final Coord overlap = UI.scale(2, 2);
 	public final GItem cont;
 	public final Widget inv;
+	/** What the window really holds: the contents themselves, or a magnifier around a bare stack row. */
+	private final Widget view;
 	private final Object id;
 	private Coord psz = null;
 	private String st;
 	private boolean hovering;
+        private Widget hoverSource;
 
 	public ContentsWindow(GItem cont, Widget inv) {
 	    super(Coord.z, cont.contentsnm);
 	    this.cont = cont;
-	    this.inv = add(inv, Coord.z);
+	    this.inv = inv;
+	    this.view = add(inv instanceof Inventory ? inv : new hearthborn.inventory.ScaledContents(inv, () -> sourceScale(cont), this::cdestroy), Coord.z);
 	    this.id = cont.contentsid;
 	    this.tick(0);
 	    Coord c = null;
 	    if(Utils.getprefb(String.format("cont-wndvis/%s", id), false))
 		c = Utils.getprefc(String.format("cont-wndc/%s", id), null);
 	    if(c != null) {
-		this.c = c;
 		chstate("wnd");
+		this.c = c;
 	    } else {
 		chstate("hide");
 	    }
+	}
+
+	/** A stack opens as large as the cells it sits in. */
+	private static double sourceScale(GItem item) {
+	    if(item.parent instanceof Inventory)
+		return(((Inventory)item.parent).viewScale());
+	    if(item.parent instanceof Equipory)
+		return(Equipory.SCALE);
+	    return(hearthborn.inventory.InventoryScale.SCALE);
 	}
 
 	private void chstate(String nst) {
@@ -448,11 +508,13 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
 		if(parent != null)
 		    raise();
 	    } else if(nst == "wnd") {
-		chdeco(new DefaultDeco());
+		chdeco(makedeco());
 		show();
 		z(0);
 		if(parent != null)
 		    raise();
+		GameUI opened=getparent(GameUI.class);
+		if(opened!=null&&opened.compactUI())opened.compactLayout.reveal(this);
 		if(id != null)
 		    Utils.setprefb(String.format("cont-wndvis/%s", id), true);
 	    }
@@ -469,16 +531,72 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
 			    if(p instanceof ContentsWindow)
 				break;
 			}
-			return;
+			/* Another stack is under the pointer: the earlier one gives way at once, unless the pointer is really inside it. */
+			ContentsWindow other = (ContentsWindow)prev;
+			if(other.pointerOnPopup())
+			    return;
+			other.dismissHover();
 		    }
 		}
+                hoverSource=hover;
+                for(Widget owner=hover;owner!=null;owner=owner.parent)if(owner instanceof ContentsWindow){
+                    Widget source=((ContentsWindow)owner).hoverSource;
+                    if(source!=null)hoverSource=source;
+                    break;
+                }
 		chstate("hover");
-		move(hover.parentpos(parent, hover.sz.sub(overlap).sub(HoverDeco.hovermarg)));
+		move(belowPointer());
 	    }
 	}
 
+	/** The stack opens just under the pointer, so the click still lands on the stack icon. */
+	public static final Coord pointerGap = UI.scale(0, 8);
+	public static Coord belowPointer(Coord cursor, Coord popup, Coord bounds) {
+	    return(belowPointer(cursor, popup, bounds, pointerGap));
+	}
+	private static Coord belowPointer(Coord cursor, Coord popup, Coord bounds, Coord gap) {
+	    int width = popup == null ? 0 : popup.x;
+	    int height = popup == null ? 0 : popup.y;
+	    Coord at = Coord.of(cursor.x - width / 2, cursor.y + gap.y);
+	    if(bounds != null && popup != null) {
+		if(at.y + height > bounds.y)
+		    at = Coord.of(at.x, Math.max(0, cursor.y - height - gap.y));
+		if(at.x + width > bounds.x)
+		    at = Coord.of(Math.max(0, bounds.x - width), at.y);
+		if(at.x < 0)
+		    at = Coord.of(0, at.y);
+	    }
+	    return(at);
+	}
+
+	private Coord belowPointer() {
+            if(hoverSource!=null&&hoverSource.parent instanceof hearthborn.ui.EquipmentStrip)
+                return ((hearthborn.ui.EquipmentStrip)hoverSource.parent).previewPosition(this,hoverSource);
+	    Coord cursor = parent == null || ui == null ? Coord.z : parent.rootxlate(ui.mc);
+	    return(belowPointer(cursor, hearthborn.ui.HudInterfaceScale.size(this), parent == null ? null : parent.sz,
+			hearthborn.ui.HudInterfaceScale.toParent(this, pointerGap)));
+	}
+
+	/** Gap and the frame margin are not clickable, but the pointer still crosses them into the belt. */
+	public static boolean reaches(Coord pointer, Coord popupAt, Coord popupSize, Coord pad) {
+	    return(pointer.isect(popupAt.sub(pad), popupSize.add(pad.mul(2))));
+	}
+
+	/** The clickable part of the popup, without the gap and the frame margin that only keep it open. */
+	public boolean pointerOnPopup() {
+	    if(ui == null || parent == null) return(false);
+	    Coord marg = hearthborn.ui.HudInterfaceScale.toParent(this, HoverDeco.hovermarg);
+	    return(reaches(parent.rootxlate(ui.mc), c.add(marg), hearthborn.ui.HudInterfaceScale.size(this).sub(marg), Coord.z));
+	}
+
+	private boolean pointerInPopup() {
+	    if(ui == null || parent == null) return(false);
+	    Coord pad = hearthborn.ui.HudInterfaceScale.toParent(this, Coord.of(UI.scale(16), pointerGap.y + HoverDeco.hovermarg.y));
+	    return(reaches(parent.rootxlate(ui.mc), c, hearthborn.ui.HudInterfaceScale.size(this), pad));
+	}
+
 	private void ckunhover() {
-	    if((cont.hovering == null) && !hovering) {
+	    if((cont.hovering == null) && !hovering && !pointerInPopup()) {
 		boolean hasmore = false;
 		for(GItem item : children(GItem.class)) {
 		    if((item.contentswnd != null) && (item.contentswnd.st == "hover")) {
@@ -499,8 +617,8 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
 	    } else if(st == "hover") {
 		ckunhover();
 	    }
-	    if(!Utils.eq(inv.sz, psz))
-		resize(inv.c.add(psz = inv.sz));
+	    if(!Utils.eq(view.sz, psz))
+		resize(view.c.add(psz = view.sz));
 	    if(st == "wnd") {
 		if(!Utils.eq(lc, this.c) && (id != null))
 		    Utils.setprefc(String.format("cont-wndc/%s", id), lc = this.c);
@@ -510,6 +628,15 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
 	public void reqclose() {
 	    chstate("hide");
 	}
+
+        /** Replacing a toolbar hover closes only transient previews, including nested bags. */
+        public void dismissHover() {
+            if(st != "hover")return;
+            cont.hovering=null;cont.hoverset=false;hovering=false;
+            for(GItem item:children(GItem.class))
+                if(item.contentswnd!=null)item.contentswnd.dismissHover();
+            chstate("hide");
+        }
 
 	public void cdestroy(Widget w) {
 	    super.cdestroy(w);

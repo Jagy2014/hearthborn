@@ -69,10 +69,10 @@ public class MapFile {
 	buf.append(datum);
 	return(buf.toString());
     }
-    private InputStream sfetch(String ctl, Object... args) throws IOException {
+    public InputStream sfetch(String ctl, Object... args) throws IOException {
 	return(store.fetch(mangle(String.format(ctl, args))));
     }
-    private OutputStream sstore(String ctl, Object... args) throws IOException {
+    public OutputStream sstore(String ctl, Object... args) throws IOException {
 	return(store.store(mangle(String.format(ctl, args))));
     }
 
@@ -1179,6 +1179,12 @@ public class MapFile {
     }
 
     public class Segment {
+        public Set<Coord> gridCoordinates() {
+            checklock();
+            Set<Coord> result=new HashSet<>();
+            for(Coord c:map.keySet())result.add(new Coord(c));
+            return result;
+        }
 	public final long id;
 	private final BMap<Coord, Long> map = new HashBMap<>();
 	private final Map<Long, Cached> cache = new CacheMap<>(CacheMap.RefType.WEAK);
@@ -2021,11 +2027,17 @@ public class MapFile {
 	new Coord( 0, -1), new Coord( 1,  0), new Coord( 0,  1), new Coord(-1,  0),
 	new Coord( 1, -1), new Coord( 1,  1), new Coord(-1,  1), new Coord(-1, -1),
     };
-    public void update(MCache map, Coord cgc) {
+    /** Saves the loaded cells around the player. Returns false while a neighbour is still loading. */
+    public boolean update(MCache map, Coord cgc) {
 	Collection<MCache.Grid> grids = new ArrayList<>();
+	boolean complete = true;
 	for(Coord off : inout) {
 	    Coord gc = cgc.add(off);
-	    grids.add(map.getgrid(gc));
+	    try {
+		grids.add(map.getgrid(gc));
+	    } catch(Loading l) {
+		complete = false;
+	    }
 	}
 	if(!grids.isEmpty()) {
 	    synchronized(procmon) {
@@ -2033,5 +2045,6 @@ public class MapFile {
 		process();
 	    }
 	}
+	return(complete);
     }
 }

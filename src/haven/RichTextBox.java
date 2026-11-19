@@ -66,10 +66,13 @@ public class RichTextBox extends Widget {
 		return;
 	    }
 	    render = null;
+            rendered(this.text);
 	    sb.max = (this.text == null) ? 0 : this.text.sz().y + marg * 2 - sz.y;
 	    sb.val = 0;
 	}
     }
+
+    protected void rendered(RichText text) {}
 
     public void tick(double dt) {
 	super.tick(dt);

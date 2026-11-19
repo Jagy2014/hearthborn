@@ -38,6 +38,11 @@ public abstract class MenuSearch extends Window {
     protected List<Result> cur = Collections.emptyList();
     protected List<Result> filtered = Collections.emptyList();
     private boolean recons = true;
+    private double retryAt;
+
+    public static String displayName(PagButton button) {
+        return hearthborn.L10n.resource("action",button.res.name,button.name());
+    }
 
     public class Result {
 	public final PagButton btn;
@@ -51,30 +56,60 @@ public abstract class MenuSearch extends Window {
     public static final int elh = elf.height() + UI.scale(2);
     public class Results extends SListBox<Result, Widget> {
 	private Results(Coord sz) {
-	    super(sz, elh);
+	    super(sz, rowHeight());
 	}
 
 	protected List<Result> items() {return(filtered);}
+	protected void drawsel(GOut g, Result item, int idx, Area area) {drawSelection(g, area);}
+        public void change(Result item) {super.change(item);selectionChanged(item);}
+
 
 	protected Widget makeitem(Result el, int idx, Coord sz) {
 	    return(new ItemWidget<Result>(this, sz, el) {
 		    {
-			add(new IconText(sz) {
-				protected BufferedImage img() {return(item.btn.img());}
-				protected String text() {return(el.btn.name());}
-				protected int margin() {return(0);}
-				protected Text.Foundry foundry() {return(elf);}
-			    }, Coord.z);
+			Widget content = rowContent(el, sz);
+			if(content != null) {
+			    add(content, Coord.z);
+			} else {
+			    add(new IconText(sz) {
+				    protected BufferedImage img() {return(item.btn.img());}
+				    protected String text() {return(displayName(el.btn));}
+				    protected int margin() {return(0);}
+				    protected Text.Foundry foundry() {return(elf);}
+				}, Coord.z);
+			}
 		    }
 
+                    private UI.Grab grab;
+                    private Coord pressed;
+                    private boolean dragging;
+                    public void mousemove(MouseMoveEvent ev) {
+                        if(pressed!=null && ev.c.dist(pressed)>UI.scale(5))dragging=true;
+                    }
+                    public boolean mouseup(MouseUpEvent ev) {
+                        if(ev.b==1 && grab!=null) {
+                            grab.remove();grab=null;pressed=null;
+                            if(dragging)DropTarget.dropthing(ui.root,ui.mc,item.btn.pag);
+                            dragging=false;return true;
+                        }
+                        return super.mouseup(ev);
+                    }
+                    public void draw(GOut g) {
+                        super.draw(g);
+                        if(dragging)ui.drawafter(out->{try {item.btn.spr().draw(out.reclip(ui.mc.sub(item.btn.spr().sz().div(2)),item.btn.spr().sz()));}catch(Loading ignored){}});
+                    }
+                    public void dispose(){if(grab!=null)grab.remove();super.dispose();}
 		    private double lastcl = 0;
 		    public boolean mousedown(MouseDownEvent ev) {
+                        if(ev.b==3&&menu.shortcuts!=null&&menu.shortcuts.favoriteMenu(item.btn,this,ev.c))return true;
+                        if(ev.b!=1)return super.mousedown(ev);
+                        pressed=ev.c;grab=ui.grabmouse(this);dragging=false;
 			boolean psel = sel == item;
 			super.mousedown(ev);
 			double now = Utils.rtime();
 			if(psel) {
 			    if(now - lastcl < 0.5)
-				menu.use(item.btn, new MenuGrid.Interaction(1, ui.modflags()), false);
+				execute(item);
 			}
 			lastcl = now;
 			return(true);
@@ -93,13 +128,7 @@ public abstract class MenuSearch extends Window {
 		}
 
 		public void activate(String text) {
-		    if(rls.sel != null)
-			menu.use(rls.sel.btn, new MenuGrid.Interaction(1, ui.modflags()), false);
-		    if(!ui.modctrl) {
-			reqclose();
-			settext("");
-			refilter();
-		    }
+                    activateSelected();
 		}
 	    }, 0, rls.sz.y);
 	pack();
@@ -111,14 +140,24 @@ public abstract class MenuSearch extends Window {
 
     protected void refilter() {
 	List<Result> found = new ArrayList<>();
-	String needle = sbox.text().toLowerCase();
+	String needle = sbox.text().toLowerCase(Locale.ROOT);
 	for(Result res : this.cur) {
-	    if(res.btn.name().toLowerCase().indexOf(needle) >= 0)
+	    if(matches(res,needle))
 		found.add(res);
 	}
+	/* The sort keys are worked out once per result, not at every comparison. */
+	Map<Result, Integer> rank = new IdentityHashMap<>();
+	Map<Result, String> names = new IdentityHashMap<>();
+	for(Result res : found) {
+	    rank.put(res, priority(res, needle));
+	    names.put(res, displayName(res.btn));
+	}
+        found.sort(Comparator.comparingInt((Result result)->rank.get(result))
+            .thenComparing(result->names.get(result),String.CASE_INSENSITIVE_ORDER));
 	this.filtered = found;
 	int idx = filtered.indexOf(rls.sel);
 	if(idx < 0) {
+            if(filtered.isEmpty())rls.change(null);
 	    if(filtered.size() > 0) {
 		rls.change(filtered.get(0));
 		rls.display(0);
@@ -128,13 +167,41 @@ public abstract class MenuSearch extends Window {
 	}
     }
 
+    protected int rowHeight(){return elh;}
+    /** What a row shows instead of the plain icon and name; null keeps the plain row. */
+    protected Widget rowContent(Result result, Coord size) {return(null);}
+    protected void drawSelection(GOut g, Area area) {
+	g.chcolor(255, 255, 0, 128);
+	g.frect2(area.ul, area.br);
+	g.chcolor();
+    }
+    protected void selectionChanged(Result result){}
+    protected boolean matches(Result result,String needle) {
+        return result.btn.name().toLowerCase(Locale.ROOT).contains(needle)
+            || displayName(result.btn).toLowerCase(Locale.ROOT).contains(needle);
+    }
+    protected int priority(Result result,String needle){return 0;}
+    protected void execute(Result result){menu.use(result.btn,new MenuGrid.Interaction(1,ui.modflags()),false);}
+    protected void activateSelected(){
+        if(rls.sel!=null)execute(rls.sel);
+        if(!ui.modctrl){reqclose();sbox.settext("");refilter();}
+    }
+
+    public boolean collectButtons(List<PagButton> buttons){return generate(buttons);}
     protected abstract boolean generate(List<PagButton> buf);
+
+    private int stamp = Integer.MIN_VALUE;
+    /** Changes when something besides the list and the query changes how the list is ordered. */
+    protected int refilterStamp() {return(0);}
 
     protected void updlist() {
 	recons = false;
 	List<PagButton> buf = new ArrayList<>();
-	if(generate(buf))
+	if(generate(buf)) {
+	    /* Something is still loading: look again soon, not at every frame. */
 	    recons = true;
+	    retryAt = Utils.rtime() + 0.5;
+	}
 	Map<PagButton, Result> prev = new HashMap<>();
 	for(Result pr : this.cur)
 	    prev.put(pr.btn, pr);
@@ -146,16 +213,22 @@ public abstract class MenuSearch extends Window {
 	    else
 		results.add(new Result(btn));
 	}
+	boolean same = results.size() == this.cur.size() && stamp == refilterStamp();
+	for(int i = 0; same && i < results.size(); i++)
+	    same = results.get(i) == this.cur.get(i);
 	this.cur = results;
-	refilter();
+	stamp = refilterStamp();
+	if(!same)
+	    refilter();
     }
 
     protected void recons() {
 	recons = true;
+	retryAt = 0;
     }
 
     public void tick(TickEvent ev) {
-	if(ev.visible && recons) {
+	if(ev.visible && recons && Utils.rtime() >= retryAt) {
 	    updlist();
 	}
 	super.tick(ev);
@@ -220,7 +293,7 @@ public abstract class MenuSearch extends Window {
 		    recons = true;
 		}
 	    }
-	    Collections.sort(buf, Comparator.comparing(PagButton::name));
+	    Collections.sort(buf, Comparator.comparing(MenuSearch::displayName));
 	    return(recons);
 	}
 

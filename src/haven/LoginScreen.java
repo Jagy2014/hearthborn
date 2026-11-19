@@ -30,32 +30,78 @@ import java.util.*;
 import java.net.URI;
 
 public class LoginScreen extends Widget {
+    /** Set by the Steam launch file: the client may offer the Steam login next to the account name and password. */
+    public static final String STEAM_LOGIN = "haven.steamlogin";
+    /** Whether Steam answers; replaced in tests, which have none. */
+    static java.util.function.BooleanSupplier steamAvailable = () -> Steam.get() != null;
     public static final Config.Variable<String> authmech = Config.Variable.prop("haven.authmech", "native");
     public static final Text.Foundry
 	textf = new Text.Foundry(Text.sans, 16).aa(true),
 	textfs = new Text.Foundry(Text.sans, 14).aa(true);
-    public static final Tex bg = Resource.loadtex("gfx/loginscr");
     public static final Position bgc = new Position(UI.scale(420, 300));
-    public final Widget login;
+    public Widget login;
     public final String confname;
     private Text error, progress;
+    private String lastError, lastProgress;
     private Widget cancel;
     private Button optbtn;
+    private Button closeClient;
     private OptWnd opts;
+    private hearthborn.ui.SavedLogins accounts;
+    private Widget chooser;
+    private Widget status;
+    private Widget language;
+    private Button back;
+    private boolean formMode, accepting;
+
 
     private String getpref(String name, String def) {
 	return(Utils.getpref(name + "@" + confname, def));
     }
 
     public LoginScreen(String confname) {
-	super(bg.sz());
+	super(UI.scale(800, 600));
 	this.confname = confname;
-	setfocustab(true);
-	add(new Img(bg), Coord.z);
+        setfocustab(true);
+        buildView();
+    }
+
+    private Button steam;
+
+    private static boolean steamOffered() {
+        String mode = System.getProperty(STEAM_LOGIN);
+        return mode != null && !mode.equalsIgnoreCase("off") && !mode.equalsIgnoreCase("false") && steamAvailable.getAsBoolean();
+    }
+
+    private void steamEnter() {
+        if(!accepting) return;
+        try {
+            error(null);
+            wdgmsg("login", new SteamCreds(), false);
+        } catch(java.io.IOException e) {
+            error(e.getMessage());
+        }
+    }
+
+    /** Under the account form (or the list of saved accounts), centered. */
+    private void placeSteam() {
+        if(steam == null || login == null) return;
+        Widget last = chooser != null && chooser.visible ? chooser : login;
+        int bottom = last.c.y + last.sz.y;
+        if(back != null && back.visible) bottom = Math.max(bottom, back.c.y + back.sz.y);
+        steam.move(Coord.of(Math.max(0, (sz.x - steam.sz.x) / 2), bottom + UI.scale(10)));
+        steam.show(accepting && progress == null);
+    }
+
+    private void buildView() {
+        steam = null;
+        closeClient=add(new Button(UI.scale(200),"Close",false,()->hearthborn.ui.LoginControls.close(ui)));
+        status = null;
+        language = null;
 	optbtn = adda(new Button(UI.scale(100), "Options"), pos("cbl").add(10, -10), 0, 1);
 	optbtn.setgkey(GameUI.kb_opt);
 	if(HttpStatus.mond.get() != null)
-	    adda(new StatusLabel(HttpStatus.mond.get(), 1.0), sz.x - UI.scale(10), UI.scale(10), 1.0, 0.0);
+	    status = adda(new StatusLabel(HttpStatus.mond.get(), 1.0), sz.x - UI.scale(10), UI.scale(10), 1.0, 0.0);
 	switch(authmech.get()) {
 	case "native":
 	    login = new Credbox();
@@ -67,11 +113,81 @@ public class LoginScreen extends Widget {
 	    throw(new RuntimeException("Unknown authmech: " + authmech.get()));
 	}
 	adda(login, bgc.adds(0, 10), 0.5, 0.0).hide();
+        if(login instanceof Credbox) {
+            Credbox credentials = (Credbox)login;
+            chooser = add(new Widget(Coord.z), Coord.z);
+            accounts = chooser.add(new hearthborn.ui.SavedLogins(confname,
+                name -> {
+                    if(!accepting) return;
+                    credentials.init();
+                    credentials.user.settext2(name);
+                    error(null);
+                    credentials.enter();
+                },
+                name -> {
+                    if(!accepting) return;
+                    Bootstrap.settoken(name, confname, null);
+                    accounts.refresh();
+                    credentials.checktoken();
+                    if(accepting) showLogin();
+                }), Coord.z);
+            chooser.add(new Button(UI.scale(225), "Add account").action(() -> {
+                if(!accepting) return;
+                credentials.init();
+                credentials.user.settext2("");
+                credentials.pass.rsettext("");
+                formMode = true;
+                error(null);
+                showLogin();
+                credentials.setfocus(credentials.user);
+            }), Coord.z);
+            chooser.hide();
+            back = add(new Button(UI.scale(200), "Saved accounts").action(() -> {
+                if(!accepting) return;
+                formMode = false;
+                error(null);
+                showLogin();
+            }), Coord.z);
+            back.hide();
+        }
+        language = adda(new hearthborn.ui.LoginLanguage(this::changeLanguage), optbtn.c.add(0, -UI.scale(5)), 0, 1);
+
 	cancel = adda(new Button(UI.scale(100), "Cancel")
 		      .action(() -> wdgmsg("cancel"))
 		      .setgkey(key_esc),
 		      bgc.adds(0, 75), 0.5, 0.0);
 	cancel.hide();
+        if(login instanceof Credbox && steamOffered()) {
+            steam = add(new Button(UI.scale(200), "Log in with Steam", false, this::steamEnter), Coord.z);
+            steam.hide();
+        }
+    }
+
+    public void changeLanguage(String language) {
+        String username = login instanceof Credbox ? ((Credbox)login).user.text() : "";
+        String password = login instanceof Credbox ? ((Credbox)login).pass.text() : "";
+        boolean remember = login instanceof Credbox && ((Credbox)login).savetoken.state();
+        boolean ready = accepting;
+        String errorMessage = lastError, progressMessage = lastProgress;
+        hearthborn.L10n.switchLanguage(language);
+        for(Widget child = this.child, next; child != null; child = next) {
+            next = child.next;
+            child.destroy();
+        }
+        accounts = null; chooser = null; back = null; opts = null;
+        buildView();
+        if(login instanceof Credbox) {
+            Credbox credentials = (Credbox)login;
+            credentials.init();
+            credentials.user.settext2(username);
+            credentials.pass.rsettext(password);
+            credentials.savetoken.set(remember);
+        }
+        if(ready) mklogin();
+        else if(progressMessage != null) showLogin();
+        error(errorMessage);
+        progress(progressMessage);
+        presize();
     }
 
     public static final KeyBinding kb_savtoken = KeyBinding.get("login/savtoken", KeyMatch.forchar('R', KeyMatch.M));
@@ -83,6 +199,7 @@ public class LoginScreen extends Widget {
 	private final Button fbtn;
 	private final IButton exec;
 	private final Widget pwbox, tkbox;
+        private final Label notice, passwordLabel;
 	private byte[] token = null;
 	private boolean inited = false;
 
@@ -93,6 +210,7 @@ public class LoginScreen extends Widget {
 
 	    private UserEntry(int w) {
 		super(w, "");
+                background=new java.awt.Color(38,29,24);
 		history.addAll(Utils.getprefsl("saved-tokens@" + confname, new String[] {}));
 	    }
 
@@ -139,21 +257,27 @@ public class LoginScreen extends Widget {
 	    add(user = new UserEntry(this.sz.x), prev.pos("bl").adds(0, 1));
 	    setfocus(user);
 
+	    /* The message is a child of the box itself, not of the password box: with a saved login the password box is hidden, and the
+	     * reason the login failed (for example, an unreachable server) has to show there as well. */
+	    notice = add(new Label("", textfs), user.pos("bl").adds(0, 4));
+            notice.setcolor(UI.ErrorMessage.color);
+            notice.hide();
 	    add(pwbox = new Widget(Coord.z), user.pos("bl").adds(0, 10));
-	    pwbox.add(prev = new Label("Password", textf), Coord.z);
+            pwbox.add(prev = passwordLabel = new Label("Password", textf), Coord.z);
 	    pwbox.add(pass = new TextEntry(this.sz.x, ""), prev.pos("bl").adds(0, 1)).pw = true;
+            pass.background=new java.awt.Color(38,29,24);
 	    pwbox.add(savetoken = new CheckBox("Remember me", true), pass.pos("bl").adds(0, 10));
 	    savetoken.setgkey(kb_savtoken);
 	    savetoken.settip("Saving your login does not save your password, but rather " +
 			     "a randomly generated token that will be used to log in. " +
-			     "You can manage your saved tokens in your Account Settings.",
+			     "Manage saved logins on the website: Account security > Saved client logins.",
 			     true);
 	    pwbox.pack();
 	    pwbox.hide();
 
 	    add(tkbox = new Widget(new Coord(this.sz.x, 0)), user.pos("bl").adds(0, 10));
 	    tkbox.add(prev = new Label("Login saved", textfs), UI.scale(0, 25));
-	    tkbox.adda(fbtn = new Button(UI.scale(100), "Forget me"), prev.pos("mid").x(this.sz.x), 1.0, 0.5).action(this::forget);
+            tkbox.add(fbtn = new Button(this.sz.x, "Forget me"), prev.pos("bl").adds(0, 10)).action(this::forget);
 	    fbtn.setgkey(kb_deltoken);
 	    tkbox.pack();
 	    tkbox.hide();
@@ -166,6 +290,31 @@ public class LoginScreen extends Widget {
 		pos("cmid").y(Math.max(pwbox.pos("bl").y, tkbox.pos("bl").y)).adds(0, 35), 0.5, 0.0);
 	    pack();
 	}
+
+        private void notice(String message) {
+            if(message == null && !notice.visible) return;
+            notice.text.dispose();
+            notice.texts = message == null ? "" : message;
+            notice.text = textfs.renderwrap(notice.texts, notice.col, UI.scale(200));
+            notice.resize(notice.text.sz());
+            notice.show(message != null);
+            arrange();
+        }
+
+        /** The password or the saved-login box and the button go under the message, when there is one. */
+        private void arrange() {
+            int top = user.pos("bl").y + UI.scale(10);
+            if(notice.visible) {
+                notice.move(Coord.of(0, user.pos("bl").y + UI.scale(4)));
+                top = notice.c.y + notice.sz.y + UI.scale(8);
+            }
+            pwbox.move(Coord.of(0, top));
+            tkbox.move(Coord.of(0, top));
+            exec.move(Coord.of((UI.scale(200) - exec.sz.x) / 2,
+                Math.max(pwbox.pos("bl").y, tkbox.pos("bl").y) + UI.scale(35)));
+            pack();
+            LoginScreen.this.layoutForm();
+        }
 
 	private void init() {
 	    if(inited)
@@ -198,12 +347,16 @@ public class LoginScreen extends Widget {
 	}
 
 	private void enter() {
+            if(!accepting) return;
 	    if(user.text().equals("")) {
 		setfocus(user);
 	    } else if(pwbox.visible && pass.text().equals("")) {
 		setfocus(pass);
 	    } else {
-		LoginScreen.this.wdgmsg("login", creds(), pwbox.visible && savetoken.state());
+		AuthClient.Credentials credentials = creds();
+                boolean save = pwbox.visible && savetoken.state();
+                LoginScreen.this.error(null);
+                LoginScreen.this.wdgmsg("login", credentials, save);
 	    }
 	}
 
@@ -268,6 +421,7 @@ public class LoginScreen extends Widget {
 	}
 
 	private void enter() {
+            if(!accepting) return;
 	    try {
 		LoginScreen.this.wdgmsg("login", creds(), false);
 	    } catch(java.io.IOException e) {
@@ -289,26 +443,25 @@ public class LoginScreen extends Widget {
 	public final double ax;
 
 	public StatusLabel(URI svc, double ax) {
-	    super(new Coord(UI.scale(150), Text.std.height() * 2));
+	    super(new Coord(UI.scale(240), Text.std.height() * 2));
 	    this.stat = new HttpStatus(svc);
 	    this.ax = ax;
 	}
 
 	private Text[] lines = new Text[2];
 	public void draw(GOut g) {
-	    int x = (int)Math.round(sz.x * ax);
 	    String[] buf = {null, null};
 	    synchronized(stat) {
 		if(!stat.syn || (stat.status == "")) {
-		} else if(stat.status == "up") {
-		    buf[0] = "Server status: Up";
-		    buf[1] = String.format("Hearthlings playing: %,d", stat.users);
-		} else if(stat.status == "shutdown") {
-		    buf[0] = "Server status: Down";
-		} else if(stat.status == "terminating") {
-		    buf[0] = "Server status: Shutting down";
-		} else if(stat.status == "crashed") {
-		    buf[0] = "Server status: Crashed";
+		} else if("up".equals(stat.status)) {
+		    buf[0] = hearthborn.L10n.tr("Server status: Up");
+		    buf[1] = hearthborn.L10n.format("Hearthlings playing: %,d", stat.users);
+		} else if("shutdown".equals(stat.status)) {
+		    buf[0] = hearthborn.L10n.tr("Server status: Down");
+		} else if("terminating".equals(stat.status)) {
+		    buf[0] = hearthborn.L10n.tr("Server status: Shutting down");
+		} else if("crashed".equals(stat.status)) {
+		    buf[0] = hearthborn.L10n.tr("Server status: Crashed");
 		}
 	    }
 	    for(int i = 0, y = 0; i < 2; i++) {
@@ -334,31 +487,90 @@ public class LoginScreen extends Widget {
 	}
     }
 
-    private void mklogin() {
-	login.show();
-	progress(null);
+    /** Align with the login artwork rather than a game-scaled absolute Y coordinate. */
+    private int loginAnchorY() {return (int)Math.round(sz.y*.60);}
+    private void showLogin() {
+        if(accounts == null) { login.show(); return; }
+        accounts.refresh();
+        boolean saved = accounts.count() > 0;
+        boolean showAccounts = saved && !formMode;
+        login.show(!showAccounts);
+        chooser.show(showAccounts);
+        back.show(!showAccounts && saved);
+        int rows = Math.max(1, Math.min(accounts.count(), 5));
+        accounts.resize(Coord.of(UI.scale(235), rows * accounts.itemh));
+        chooser.lchild.move(Coord.of(0, accounts.sz.y + UI.scale(10)));
+        chooser.pack();
+        int chooserY = Math.max(UI.scale(10), Math.min(loginAnchorY(), sz.y - UI.scale(80) - chooser.sz.y));
+        chooser.move(Coord.of((sz.x - chooser.sz.x) / 2, chooserY));
+        layoutForm();
     }
 
-    private void error(String error) {
-	if(this.error != null)
-	    this.error = null;
-	if(error != null)
-	    this.error = textf.render(error, java.awt.Color.RED);
+    private void layoutForm() {
+        int footer = back != null && back.visible ? back.sz.y + UI.scale(8) : 0;
+        int y = Math.min(loginAnchorY(), sz.y - UI.scale(80) - login.sz.y - footer);
+        login.move(Coord.of((sz.x - login.sz.x) / 2, Math.max(UI.scale(10), y)));
+        if(back != null) back.move(Coord.of(login.c.x, login.c.y + login.sz.y + UI.scale(8)));
+        placeSteam();
+    }
+
+    private void mklogin() {
+        accepting = true;
+        showLogin();
+        progress(null);
+        placeSteam();
+    }
+
+    /** Whether the reason of a failed login is on the screen: in the form, with a saved login as well as with a password box. */
+    public boolean errorShown() {
+        if(login instanceof Credbox) {
+            Credbox credentials = (Credbox)login;
+            if(credentials.notice.texts.length() == 0) return false;
+            for(Widget w = credentials.notice; w != null && w != this; w = w.parent)
+                if(!w.visible) return false;
+            return true;
+        }
+        return error != null;
+    }
+
+    private void error(String message) {
+        lastError = message;
+        if(this.error != null) { this.error.dispose(); this.error = null; }
+        if(login instanceof Credbox) {
+            Credbox credentials = (Credbox)login;
+            if(message != null) { formMode = true; credentials.init(); credentials.checktoken(); }
+            credentials.notice(message == null ? null : hearthborn.L10n.text("msg", message));
+        } else if(message != null) {
+            this.error = textfs.renderwrap(hearthborn.L10n.text("msg", message), java.awt.Color.RED, UI.scale(320));
+        }
     }
 
     private void progress(String p) {
+        lastProgress = p;
 	if(progress != null) {
+            progress.dispose();
 	    progress = null;
-	    cancel.hide();
 	}
+        cancel.hide();
+        if(steam != null) steam.hide();
 	if(p != null) {
-	    progress = textf.render(p, java.awt.Color.WHITE);
+	    progress = textf.render(hearthborn.L10n.text("msg", p), java.awt.Color.WHITE);
+            Coord position = progressPosition();
+            cancel.move(position.add(-cancel.sz.x / 2, progress.sz().y + UI.scale(8)));
 	    cancel.show();
 	}
     }
 
+    private Coord progressPosition() {
+        Widget controls = chooser != null && chooser.visible ? chooser : login;
+        int bottom = controls.c.y + controls.sz.y;
+        if(back != null && back.visible) bottom = Math.max(bottom, back.c.y + back.sz.y);
+        return Coord.of(sz.x / 2, bottom + UI.scale(12));
+    }
+
     private void clear() {
-	login.hide();
+        accepting = false;
+        if(!login.visible && (chooser == null || !chooser.visible)) showLogin();
 	progress(null);
     }
 
@@ -404,7 +616,25 @@ public class LoginScreen extends Widget {
     }
 
     public void presize() {
-	c = parent.sz.div(2).sub(sz.div(2));
+	c = Coord.z;
+	if(parent != null)
+	    resize(parent.sz);
+	placeChrome();
+	if(login != null && (login.visible || (chooser != null && chooser.visible)))
+	    showLogin();
+	if(progress != null)
+	    progress(lastProgress);
+    }
+
+    private void placeChrome() {
+        Area artwork=hearthborn.ui.LoginArt.bounds(sz);
+        if(closeClient!=null)closeClient.move(hearthborn.ui.LoginControls.position(sz,closeClient.sz));
+	if(optbtn != null)
+	    optbtn.move(Coord.of(artwork.ul.x + UI.scale(10), artwork.br.y - optbtn.sz.y - UI.scale(10)));
+	if(language != null && optbtn != null)
+	    language.move(Coord.of(optbtn.c.x, optbtn.c.y - language.sz.y - UI.scale(5)));
+	if(status != null)
+	    status.move(Coord.of(artwork.br.x - status.sz.x - UI.scale(10), artwork.ul.y + UI.scale(10)));
     }
 
     protected void added() {
@@ -413,10 +643,11 @@ public class LoginScreen extends Widget {
     }
 
     public void draw(GOut g) {
+	hearthborn.ui.LoginArt.draw(g, sz);
 	super.draw(g);
 	if(error != null)
-	    g.aimage(error.tex(), bgc.adds(0, 150), 0.5, 0.0);
+	    g.aimage(error.tex(), login.c.add(login.sz.x / 2, login.sz.y + UI.scale(5)), 0.5, 0.0);
 	if(progress != null)
-	    g.aimage(progress.tex(), bgc.adds(0, 50), 0.5, 0.0);
+	    g.aimage(progress.tex(), progressPosition(), 0.5, 0.0);
     }
 }

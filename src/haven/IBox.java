@@ -38,6 +38,8 @@ public interface IBox {
     public static abstract class Images implements IBox {
 	public final Tex ctl, ctr, cbl, cbr;
 	public final Tex bl, br, bt, bb;
+	/** True for the window moulding, which a flat theme draws as a thin line instead of the sprites. */
+	public boolean replaceable;
 
 	public Images(Tex ctl, Tex ctr, Tex cbl, Tex cbr, Tex bl, Tex br, Tex bt, Tex bb) {
 	    this.ctl = ctl;
@@ -51,14 +53,28 @@ public interface IBox {
 	}
 
 	public Images(String base, String ctl, String ctr, String cbl, String cbr, String bl, String br, String bt, String bb) {
-	    this(Resource.loadtex(base + "/" + ctl),
-		 Resource.loadtex(base + "/" + ctr),
-		 Resource.loadtex(base + "/" + cbl),
-		 Resource.loadtex(base + "/" + cbr),
-		 Resource.loadtex(base + "/" + bl),
-		 Resource.loadtex(base + "/" + br),
-		 Resource.loadtex(base + "/" + bt),
-		 Resource.loadtex(base + "/" + bb));
+	    this(hearthborn.ui.FrameSkin.tex(base, ctl),
+		 hearthborn.ui.FrameSkin.tex(base, ctr),
+		 hearthborn.ui.FrameSkin.tex(base, cbl),
+		 hearthborn.ui.FrameSkin.tex(base, cbr),
+		 hearthborn.ui.FrameSkin.tex(base, bl),
+		 hearthborn.ui.FrameSkin.tex(base, br),
+		 hearthborn.ui.FrameSkin.tex(base, bt),
+		 hearthborn.ui.FrameSkin.tex(base, bb));
+	    this.replaceable = hearthborn.ui.FrameSkin.replaceable(base);
+	}
+
+	/** Draws the flat frame in place of the sprites, and says whether it did. */
+	public boolean flat(GOut g, Coord tl, Coord sz, boolean top, boolean bottom) {
+	    if(!replaceable || !hearthborn.ui.FrameSkin.flat())
+		return(false);
+	    hearthborn.ui.FrameSkin.flat(g, tl, sz,
+					 Math.max(ctl.sz().x, Math.max(cbl.sz().x, bl.sz().x)),
+					 Math.max(ctl.sz().y, Math.max(ctr.sz().y, bt.sz().y)),
+					 Math.max(ctr.sz().x, Math.max(cbr.sz().x, br.sz().x)),
+					 Math.max(cbl.sz().y, Math.max(cbr.sz().y, bb.sz().y)),
+					 top, bottom);
+	    return(true);
 	}
 
 	public Coord btloff() {
@@ -96,6 +112,8 @@ public interface IBox {
 	}
 
 	public void draw(GOut g, Coord tl, Coord sz) {
+	    if(flat(g, tl, sz, true, true))
+		return;
 	    g.image(bt, tl.add(new Coord(ctl.sz().x, 0)), new Coord(sz.x - ctr.sz().x - ctl.sz().x, bt.sz().y));
 	    g.image(bb, tl.add(new Coord(cbl.sz().x, sz.y - bb.sz().y)), new Coord(sz.x - cbr.sz().x - cbl.sz().x, bb.sz().y));
 	    g.image(bl, tl.add(new Coord(0, ctl.sz().y)), new Coord(bl.sz().x, sz.y - cbl.sz().y - ctl.sz().y));

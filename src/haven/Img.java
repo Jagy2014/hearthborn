@@ -45,7 +45,9 @@ public class Img extends Widget {
 	    } else {
 		res = ui.sess.getresv(args[a++]);
 	    }
-	    Img ret = new Img(res.get().flayer(Resource.imgc).tex());
+	    Resource resource=res.get();
+            Img ret = hearthborn.ui.AccountStatusFlag.matches(resource.name)
+                ? new hearthborn.ui.AccountStatusFlag(resource.name) : new Img(resource.flayer(Resource.imgc).tex());
 	    if(args.length > a) {
 		int fl = Utils.iv(args[a++]);
 		ret.hit = (fl & 1) != 0;
@@ -65,7 +67,22 @@ public class Img extends Widget {
     }
 
     public void draw(GOut g) {
+	if(underCharacterArt())
+	    return;
 	g.image(img, Coord.z);
+    }
+
+    /** A wide picture behind the character list is covered by the Hearthborn painting. */
+    private boolean underCharacterArt() {
+	if(sz.x < UI.scale(500) || sz.y < UI.scale(280))
+	    return(false);
+	Widget root = this;
+	while(root.parent != null) {
+	    if(root instanceof Charlist)
+		return(false);
+	    root = root.parent;
+	}
+	return(root.findchild(Charlist.class) != null && root.findchild(LoginScreen.class) == null);
     }
 
     public Img(Tex img) {

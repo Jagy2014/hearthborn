@@ -162,6 +162,15 @@ public abstract class AWTToolkit implements Toolkit {
 	public final Key.Loc loc;
 
 	public AWTKey(int pc, int ec, char ch, int loc) {
+	    if(stdsyms.get(pc) == null) {
+		int vk = hearthborn.input.LayoutKeys.keyCode(letter(ch));
+		if(vk == java.awt.event.KeyEvent.VK_UNDEFINED)
+		    vk = hearthborn.input.LayoutKeys.keyCode(extendedLetter(ec));
+		if(stdsyms.get(vk) == null && stdsyms.get(ec) != null)
+		    vk = ec;
+		if(stdsyms.get(vk) != null)
+		    pc = vk;
+	    }
 	    this.pc = pc;
 	    this.ec = ec;
 	    this.ch = ch;
@@ -212,6 +221,23 @@ public abstract class AWTToolkit implements Toolkit {
 
 	public String toString() {
 	    return(String.format("#<awt-key pc=%x ec=%x %s std=%s ext=%s>", pc, ec, loc, stdsym, extsym));
+	}
+
+	/** Printable character, ignoring control codes produced by Ctrl. */
+	private static char letter(char ch) {
+	    if((ch < 32) || (ch == java.awt.event.KeyEvent.CHAR_UNDEFINED))
+		return(0);
+	    return(ch);
+	}
+
+	/** macOS stores a layout character as {@code 0x01000000 | codepoint}. */
+	private static char extendedLetter(int ec) {
+	    if((ec & 0xff000000) != 0x01000000)
+		return(0);
+	    int unit = ec & 0xffffff;
+	    if((unit < 32) || (unit > 0xffff))
+		return(0);
+	    return((char)unit);
 	}
     }
 
@@ -349,6 +375,7 @@ public abstract class AWTToolkit implements Toolkit {
 	}
 
 	public void put(Contents c, Runnable expire) {
+	    Runnable publish = () -> {
 	    try {
 		bk.setContents(new Transferable() {
 		    public Object getTransferData(DataFlavor flavor) throws UnsupportedFlavorException {
@@ -401,6 +428,11 @@ public abstract class AWTToolkit implements Toolkit {
 		    }
 		});
 	    } catch(IllegalStateException e) {}
+	    };
+            // setContents on the UI thread can wait for the AWT thread, which is
+            // already waiting for the UI thread. Publishing later leaves the game running.
+            if(java.awt.EventQueue.isDispatchThread()) publish.run();
+            else java.awt.EventQueue.invokeLater(publish);
 	}
 
 	public static <T> Promise<T> xfpromise(Class<T> typ, Transferable xf, DataFlavor flavor) {
@@ -470,6 +502,23 @@ public abstract class AWTToolkit implements Toolkit {
 
 	public AWTWindow() {
 	    frame = new java.awt.Frame();
+	    quithandler();
+	}
+
+	/* The system's "Quit" (Cmd+Q) must not close the client at once: it is turned into a question. Needs Java 9, hence by name. */
+	private void quithandler() {
+	    try {
+		Class<?> handler = Class.forName("java.awt.desktop.QuitHandler");
+		Object proxy = java.lang.reflect.Proxy.newProxyInstance(handler.getClassLoader(), new Class<?>[] {handler}, (p, m, args) -> {
+		    if(m.getName().equals("handleQuitRequestWith")) {
+			args[1].getClass().getMethod("cancelQuit").invoke(args[1]);
+			callback(new QuitRequest() {});
+		    }
+		    return(null);
+		});
+		Desktop.getDesktop().getClass().getMethod("setQuitHandler", handler).invoke(Desktop.getDesktop(), proxy);
+	    } catch(Throwable t) {
+	    }
 	}
 
 	protected abstract Component panel();

@@ -46,17 +46,17 @@ public class Client implements Console.Directory {
     public Client(Toolkit tk) {
 	this.tk = tk;
 	this.wnd = tk.window();
-	wnd.title("Haven & Hearth");
+	wnd.title(hearthborn.BuildTitle.title());
 	Coord fsz = Utils.getprefc("mainwnd/locksize", null);
 	if(fsz == null)
 	    wnd.sizing(new Windeye.Sizing().minsize(UI.scale(800, 600)).normsize(Utils.getprefc("mainwnd/size", UI.scale(1024, 768))));
 	else
 	    wnd.sizing(new Windeye.Sizing().fixsize(fsz));
-	if(initfullscreen.get())
+	if(initfullscreen.get() || Utils.getprefb("mainwnd/fullscreen",false))
 	    wnd.state(Windeye.State.EXCLUSIVE);
 	else if(Utils.getprefb("mainwnd/max", false))
 	    wnd.state(Windeye.State.MAXIMIZED);
-	try(InputStream icon = Client.class.getResourceAsStream("icon.png")) {
+	try(InputStream icon = hearthborn.assets.Assets.open("icons/app/hearthborn.png")) {
 	    wnd.icon(javax.imageio.ImageIO.read(icon));
 	} catch(IOException e) {
 	    throw(new Error(e));
@@ -115,6 +115,12 @@ public class Client implements Console.Directory {
 		} else if(ev instanceof Toolkit.KeyUpEvent) {
 		    ui.keyup((Toolkit.KeyUpEvent)ev);
 		    Debug.keyevent((Toolkit.KeyEvent)ev);
+		} else if(ev instanceof Toolkit.QuitRequest) {
+		    hearthborn.ui.QuitConfirm.ask(ui, () -> {
+			Thread mt = cl.mt;
+			if(mt != null)
+			    mt.interrupt();
+		    });
 		}
 		ui.lastevent = Utils.rtime();
 	    }
@@ -172,9 +178,9 @@ public class Client implements Console.Directory {
 		    fun = new Bootstrap();
 		String t= fun.title();
 		if(t == null)
-		    wnd.title("Haven & Hearth");
+		    wnd.title(hearthborn.BuildTitle.title());
 		else
-		    wnd.title("Haven & Hearth \u2013 " + t);
+		    wnd.title(hearthborn.BuildTitle.title() + " \u2013 " + t);
 		fun = fun.run(newui(fun));
 	    }
 	}
@@ -387,6 +393,8 @@ public class Client implements Console.Directory {
     }
 
     public static void main(String[] args) {
+        ThreadQos.install();
+        hearthborn.io.Logs.install();
 	/* Set up the error handler as early as humanly possible. */
 	ThreadGroup g = new ThreadGroup("Haven main group");
 	String ed = Utils.getprop("haven.errorurl", "");

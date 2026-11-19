@@ -34,6 +34,17 @@ public class HSlider extends Widget {
     static final int chcut = UI.scale(7);
     public int val, min, max;
     private UI.Grab drag = null;
+    private boolean over;
+    /** In the settings window the slider is a thin neutral line with a plain tan handle. */
+    private boolean settings;
+
+    public boolean settings() {
+	return(settings);
+    }
+
+    public void settingsFace() {
+	settings = true;
+    }
 
     static {
 	BufferedImage vc = Resource.loadsimg("gfx/hud/schain");
@@ -53,17 +64,45 @@ public class HSlider extends Widget {
     }
 
     public void draw(GOut g) {
-	int ew = sz.x + chcut, cw = schain.sz().x;
-	int n = Math.max((ew + cw - 1) / cw, 2);
-	int cy = (sflarp.sz().y - schain.sz().y) / 2;
-	for(int i = 0; i < n; i++)
-	    g.image(schain, Coord.of(((ew - cw) * i) / (n - 1), cy));
-	int fx = ((sz.x - sflarp.sz().x) * (val - min)) / (max - min);
-	g.image(sflarp, new Coord(fx, 0));
+	if(settings) {
+	    drawSettings(g);
+	    return;
+	}
+	boolean light = hearthborn.ui.UiTheme.light();
+	int hw = hearthborn.ui.SliderSkin.handleWidth(), hh = Math.min(sz.y, hearthborn.ui.SliderSkin.handleHeight());
+	int th = hearthborn.ui.SliderSkin.trackHeight(), ty = (sz.y - th) / 2;
+	g.image(hearthborn.ui.SliderSkin.track(sz.x - hw, th, light), Coord.of(hw / 2, ty));
+	int fx = (max == min) ? 0 : ((sz.x - hw) * (val - min)) / (max - min);
+	int in = Math.max(1, UI.scale(1));
+	if(fx > 0) {
+	    g.chcolor(hearthborn.ui.SliderSkin.filled(light));
+	    g.frect(Coord.of(hw / 2 + in, ty + in), Coord.of(fx, th - in * 2));
+	    g.chcolor();
+	}
+	g.image(hearthborn.ui.SliderSkin.handle(hw, hh, drag != null, over || drag != null, light), Coord.of(fx, (sz.y - hh) / 2));
     }
     
+    private void drawSettings(GOut g) {
+	int hw = hearthborn.ui.SliderSkin.settingsHandleWidth(), hh = Math.min(sz.y, hearthborn.ui.SliderSkin.settingsHandleHeight());
+	int th = hearthborn.ui.SliderSkin.settingsTrackHeight(), ty = (sz.y - th) / 2;
+	g.chcolor(hearthborn.ui.UiPalette.borderLit());
+	g.frect(Coord.of(hw / 2, ty), Coord.of(sz.x - hw, th));
+	int fx = (max == min) ? 0 : ((sz.x - hw) * (val - min)) / (max - min);
+	if(fx > 0) {
+	    g.chcolor(hearthborn.ui.SliderSkin.settingsFilled());
+	    g.frect(Coord.of(hw / 2, ty), Coord.of(fx, th));
+	}
+	g.chcolor();
+	g.image(hearthborn.ui.SliderSkin.settingsHandle(hw, hh, drag != null, over || drag != null), Coord.of(fx, (sz.y - hh) / 2));
+    }
+
+    private int handleWidth() {
+	return(settings ? hearthborn.ui.SliderSkin.settingsHandleWidth() : hearthborn.ui.SliderSkin.handleWidth());
+    }
+
     private void update(Coord c) {
-	double a = (double)(c.x - (sflarp.sz().x / 2)) / (double)(sz.x - sflarp.sz().x);
+	int hw = handleWidth();
+	double a = (double)(c.x - (hw / 2)) / (double)(sz.x - hw);
 	if(a < 0)
 	    a = 0;
 	if(a > 1)
@@ -98,6 +137,11 @@ public class HSlider extends Widget {
 	drag = null;
 	fchanged();
 	return(true);
+    }
+
+    public boolean mousehover(MouseHoverEvent ev, boolean hovering) {
+	over = hovering;
+	return(super.mousehover(ev, hovering));
     }
 
     public void changed() {}

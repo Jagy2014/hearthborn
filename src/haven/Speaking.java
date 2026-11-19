@@ -34,16 +34,18 @@ public class Speaking extends GAttrib implements RenderTree.Node, PView.Render2D
     public static final Tex svans = Resource.loadtex("gfx/hud/emote/svans");
     public static final int sx = UI.scale(5);
     public float zo;
+    /** Speech bubbles stay antialiased whatever the text smoothing setting is. */
+    public static final Text.Foundry fnd = new Text.Foundry(Text.sans, 10).aa(true);
     public Text text;
 	
     public Speaking(Gob gob, float zo, String text) {
 	super(gob);
 	this.zo = zo;
-	this.text = Text.render(text, Color.BLACK);
+	this.text = fnd.render(text, Color.BLACK);
     }
 	
     public void update(String text) {
-	this.text = Text.render(text, Color.BLACK);
+	this.text = fnd.render(text, Color.BLACK);
     }
 	
     public void draw(GOut g, Coord c) {
@@ -51,13 +53,32 @@ public class Speaking extends GAttrib implements RenderTree.Node, PView.Render2D
 	sz.x = Math.max(sz.x, UI.scale(15));
 	Coord tl = c.sub(sx, sb.cisz().y + sz.y + svans.sz().y - sb.bb.sz().y);
 	Coord ftl = tl.add(sb.btloff());
+	Coord body = sz.add(sb.cisz());
+	int tail = Math.max(UI.scale(4), c.y - (tl.y + body.y));
+	/* No dark outline: a plain white balloon with a barely visible soft shadow to lift it off pale ground. */
+	g.chcolor(0, 0, 0, 36);
+	balloon(g, tl.add(0, 1), body, c.add(0, 1), tail);
 	g.chcolor(Color.WHITE);
-	g.frect(ftl, sz);
-	sb.draw(g, tl, sz.add(sb.cisz()));
+	balloon(g, tl, body, c, tail);
 	g.chcolor(Color.BLACK);
 	g.image(text.tex(), ftl);
 	g.chcolor(Color.WHITE);
-	g.image(svans, c.add(0, -svans.sz().y));
+    }
+
+    /** White rounded rectangle with a small pointer whose tip sits at {@code tip}. */
+    static void balloon(GOut g, Coord tl, Coord sz, Coord tip, int tail) {
+	int r = Math.min(UI.scale(3), Math.min(sz.x, sz.y) / 2);
+	/* One strip per row, so translucent colours never overlap and darken. */
+	for(int y = 0; y < sz.y; y++) {
+	    int edge = Math.min(y, sz.y - 1 - y);
+	    int inset = (edge < r) ? r - edge : 0;
+	    g.frect(tl.add(inset, y), Coord.of(sz.x - 2 * inset, 1));
+	}
+	int base = UI.scale(9);
+	for(int row = 0; row < tail; row++) {
+	    int w = Math.max(1, base * (tail - row) / tail);
+	    g.frect(Coord.of(tip.x, tip.y - tail + row), Coord.of(w, 1));
+	}
     }
 
     public void draw(GOut g, Pipe state) {

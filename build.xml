@@ -2,7 +2,9 @@
 
 <project name="hafen" default="deftgt" xmlns:if="ant:if">
   <property file="build.properties" />
+  <property file="version.properties" />
   <property name="ext-lib-base" value="http://www.havenandhearth.com/java" />
+  <property name="private-agent-files" value="**/AGENTS/**,**/AGENTS.md" />
 
   <target name="build-env">
     <mkdir dir="build" />
@@ -25,10 +27,13 @@
     </condition>
   </target>
 
-  <target name="buildinfo" depends="make-buildinfo" unless="buildinfo-unchanged">
+  <target name="buildinfo" depends="make-buildinfo">
+    <tstamp><format property="build-time-eet" pattern="yyyy-MM-dd HH:mm" timezone="GMT+02:00" /></tstamp>
     <echo message="Updating buildinfo" />
     <echo file="build/classes/buildinfo" xml:space="default">
+      version = ${version}
       git-rev = ${git-rev}
+      build-time-eet = ${build-time-eet}
     </echo>
   </target>
 
@@ -84,7 +89,7 @@
     <condition property="explicit-annotations">
       <javaversion atleast="21" />
     </condition>
-    <javac srcdir="src" destdir="build/classes" debug="on"
+    <javac srcdir="src" destdir="build/classes" debug="on" excludes="${private-agent-files}"
 	   source="1.8" target="1.8" includeantruntime="no"
 	   bootclasspath="${boot-classpath}">
       <classpath>
@@ -103,19 +108,23 @@
       <!-- <compilerarg value="-Xbarda" /> -->
     </javac>
     <copy todir="build/classes">
-      <fileset dir="src" excludes="**/*.java" />
+      <fileset dir="src" excludes="**/*.java,**/.DS_Store,${private-agent-files}" />
     </copy>
+    <copy todir="build/classes/hearthborn/assets">
+      <fileset dir="assets" includes="icons/**/*.png,audio/**/*.wav,fonts/**/*.ttf,fonts/**/LICENSE" excludes="${private-agent-files}" />
+    </copy>
+    <copy file="docs/changelog.md" tofile="build/classes/hearthborn/changelog/en.md" />
+    <copy file="docs/changelog.ru.md" tofile="build/classes/hearthborn/changelog/ru.md" />
     <copy todir="build/classes/haven" file="etc/ressrv.crt" />
     <copy todir="build/classes/haven" file="etc/authsrv.crt" />
     <copy todir="build/classes/haven" file="etc/res-preload" />
     <copy todir="build/classes/haven" file="etc/res-bgload" />
-    <copy todir="build/classes/haven" file="etc/icon.png" />
     <copy file="local-boot.properties" tofile="build/classes/haven/boot-props" failonerror="false" quiet="true" />
   </target>
 
   <target name="opt/panama" if="has-panama" depends="build-env, hafen-client">
     <mkdir dir="build/opt/panama" />
-    <javac srcdir="opt/panama" destdir="build/opt/panama" release="22"
+    <javac srcdir="opt/panama" destdir="build/opt/panama" release="22" excludes="${private-agent-files}"
 	   debug="on" includeantruntime="no">
       <classpath>
 	<pathelement path="build/classes" />
@@ -126,7 +135,7 @@
       <compilerarg value="-Xlint:deprecation" />
     </javac>
     <jar destfile="build/hafen-panama.jar" update="true">
-      <fileset dir="build/opt/panama" />
+      <fileset dir="build/opt/panama" excludes="${private-agent-files}" />
     </jar>
   </target>
 
@@ -139,8 +148,8 @@
 
   <target name="jar" depends="hafen-client, buildinfo, lib-classes">
     <jar destfile="build/hafen.jar" update="true">
-      <fileset dir="build/classes" />
-      <fileset dir="build/classes-lib" />
+      <fileset dir="build/classes" excludes="${private-agent-files}" />
+      <fileset dir="build/classes-lib" excludes="${private-agent-files}" />
       <manifest>
 	<attribute name="Main-Class" value="haven.Client" />
 	<attribute name="Class-Path" value="hafen-panama.jar jogl-all.jar gluegen-rt.jar lwjgl-fat.jar lwjgl-awt.jar lwjgl-opengl-fat.jar steamworks4j.jar builtin-res.jar hafen-res.jar" />

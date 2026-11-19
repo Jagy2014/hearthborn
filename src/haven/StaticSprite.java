@@ -81,6 +81,7 @@ public class StaticSprite extends Sprite {
     }
 
     public void added(RenderTree.Slot slot) {
+        hearthborn.storage.ContainerDecals.place(this,slot);
 	for(RenderTree.Node p : parts)
 	    slot.add(p);
     }

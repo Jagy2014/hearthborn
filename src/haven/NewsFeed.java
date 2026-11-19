@@ -44,7 +44,12 @@ public class NewsFeed extends SListBox<NewsFeed.Entry, Widget> {
     private final Filtered entries;
 
     public NewsFeed(int h, Filtered entries) {
-	super(Coord.of(Display.size.x + Scrollbar.width, h), Display.size.y, UI.scale(5));
+	this(Coord.of(Display.size.x + Scrollbar.width, h), Display.size.y, UI.scale(5), entries);
+    }
+
+    /** A list with entries of a size of its own. */
+    public NewsFeed(Coord sz, int itemh, int gap, Filtered entries) {
+	super(sz, itemh, gap);
 	this.entries = entries;
     }
 

@@ -36,7 +36,7 @@ public class Window extends Widget {
     public static final Pipe.Op bgblend = FragColor.blend.nil;
     public static final Pipe.Op cblend  = FragColor.blend(new BlendMode(BlendMode.Function.ADD, BlendMode.Factor.SRC_ALPHA, BlendMode.Factor.INV_SRC_ALPHA,
 									BlendMode.Function.ADD, BlendMode.Factor.ONE, BlendMode.Factor.INV_SRC_ALPHA));
-    public static final Tex bg = Resource.loadtex("gfx/hud/wnd/lg/bg");
+    public static Tex bg() {return(hearthborn.ui.UiTheme.windowBackground());}
     public static final Tex bgl = Resource.loadtex("gfx/hud/wnd/lg/bgl");
     public static final Tex bgr = Resource.loadtex("gfx/hud/wnd/lg/bgr");
     public static final Tex cl = Resource.loadtex("gfx/hud/wnd/lg/cl");
@@ -114,7 +114,7 @@ public class Window extends Widget {
     }
 
     protected Deco makedeco() {
-	return(new DefaultDeco(this.large));
+	return(new hearthborn.ui.SmallWindowDeco(this.large));
     }
 
     protected void added() {
@@ -122,10 +122,12 @@ public class Window extends Widget {
 	if(visible())
 	    parent.setfocus(this);
 	initanim();
+	hearthborn.ui.WindowPlaces.attached(this);
     }
 
     public void chcap(String cap) {
 	this.cap = cap;
+	hearthborn.ui.WindowPlaces.renamed(this);
     }
 
     public void chdeco(Deco deco) {
@@ -217,12 +219,8 @@ public class Window extends Widget {
 	    ((Window)parent).cdraw(g);
 	}
 
-	protected void drawbg(GOut g) {
-	    g.usestate(bgblend);
-	    g.rimage2(bg, ca.ul, ca.br);
-	    g.defstate();
-	    g.rimagev(bgl, ca.ul, ca.br.y - ca.ul.y);
-	    g.rimagev(bgr, Coord.of(ca.br.x - bgr.sz().x, ca.ul.y), ca.br.y - ca.ul.y);
+        protected void drawbg(GOut g) {
+            hearthborn.ui.UiTheme.background(g,ca.ul,ca.sz());
 	}
 
 	protected void drawframe(GOut g) {
@@ -236,7 +234,7 @@ public class Window extends Widget {
 		cmw = cmw - (cl.sz().x - cpo.x) - UI.scale(5);
 	    }
 	    if(dragsize)
-		g.image(sizer, ca.br.sub(sizer.sz()));
+		hearthborn.ui.ResizeMarks.draw(g, ca.br, false);
 	    g.image(cl, Coord.z);
 	    g.rimageh(cm, Coord.of(cl.sz().x, 0), cmw);
 	    g.image(cr, Coord.of(cl.sz().x + cmw, 0));
@@ -260,6 +258,7 @@ public class Window extends Widget {
 
 	public void draw(GOut g) {
 	    drawbg(g);
+	    hearthborn.ui.UiTheme.panels(g.reclip(aa.ul, aa.sz()), (Window)parent);
 	    cdraw(g.reclip(aa.ul, aa.sz()));
 	    drawframe(g);
 	    super.draw(g);
@@ -328,8 +327,14 @@ public class Window extends Widget {
 	    g.image(buf, Coord.z);
     }
 
+    private boolean destroying;
+    /** Keep the last complete frame while server commands tear down the children. */
+    public void prepareDestroy() {
+        destroying = true;
+    }
+
     public void draw(GOut og) {
-	if(animst != "dest") {
+	if(!destroying && animst != "dest") {
 	    GOut g = new GOut(og.out, og.basicstate().prep(gbasic()), this.sz);
 	    g.out.clear(g.state(), FragColor.fragcol, FColor.BLACK_T);
 	    drawbuf(g);
@@ -341,7 +346,7 @@ public class Window extends Widget {
     public Coord contentsz() {
 	Coord max = Coord.z;
 	for(Widget wdg = child; wdg != null; wdg = wdg.next) {
-	    if(wdg == deco)
+	    if(wdg == deco || wdg instanceof hearthborn.ui.RightStretch)
 		continue;
 	    if(!wdg.visible)
 		continue;
@@ -378,6 +383,9 @@ public class Window extends Widget {
 	resize2(sz);
     }
 
+    /** Refit decoration without changing a subclass's saved content-size preference. */
+    public void refreshDecoration(){resize2(csz());}
+
     public void uimsg(String msg, Object... args) {
 	if(msg == "cap") {
 	    String cap = (String)args[0];
@@ -399,6 +407,7 @@ public class Window extends Widget {
     }
 
     public void drag(Coord off) {
+        hearthborn.ui.MagneticWindows.begin(this);
 	dm = ui.grabmouse(this);
 	doff = off;
     }
@@ -416,10 +425,16 @@ public class Window extends Widget {
 	return(super.mousedown(ev));
     }
 
+    public void raise(){
+        if(!hearthborn.ui.MagneticWindows.raiseStack(this))super.raise();
+    }
+
     public boolean mouseup(MouseUpEvent ev) {
 	if(dm != null) {
 	    dm.remove();
 	    dm = null;
+            hearthborn.ui.MagneticWindows.end(this);
+	    hearthborn.ui.WindowPlaces.moved(this);
 	    return(true);
 	}
 	return(super.mouseup(ev));
@@ -427,8 +442,10 @@ public class Window extends Widget {
 
     public void mousemove(MouseMoveEvent ev) {
 	super.mousemove(ev);
-	if(dm != null)
-	    move(this.c.add(ev.c.sub(doff)));
+	if(dm != null) {
+	    move(this.c.add(hearthborn.ui.HudInterfaceScale.toParent(this,ev.c.sub(doff))));
+            hearthborn.ui.MagneticWindows.drag(this);
+        }
     }
 
     public boolean handle(Event ev) {
@@ -450,12 +467,15 @@ public class Window extends Widget {
     public boolean keydown(KeyDownEvent ev) {
 	if(ev.propagate(this))
 	    return(true);
-	if(key_esc.match(ev)) {
+	if(key_esc.match(ev) && escapeCloses()) {
 	    reqclose();
 	    return(true);
 	}
 	return(super.keydown(ev));
     }
+
+    /** Chat, the map and the quest journal stay up. Escape still leaves their fields and returns to the world. */
+    protected boolean escapeCloses() {return(true);}
 
     private Runnable reqclose = () -> wdgmsg("close");
     public Window reqclose(Runnable reqclose) {
@@ -463,6 +483,7 @@ public class Window extends Widget {
 	return(this);
     }
     public void reqclose() {
+        hearthborn.inventory.ContainerTools.closed(this);
 	reqclose.run();
     }
 
@@ -481,6 +502,7 @@ public class Window extends Widget {
     private String animst = null;
     public void tick(double dt) {
 	super.tick(dt);
+	hearthborn.ui.ShutdownNotice.tick(this);
 	if(anim != null) {
 	    if(anim.tick(dt)) {
 		if(animst == "show") {
@@ -506,6 +528,10 @@ public class Window extends Widget {
 	return(trans.hide(this, (S)s));
     }
 
+    public Long objectId() {
+        return trans instanceof GameUI.GobTrans ? ((GameUI.GobTrans)trans).gobid : null;
+    }
+
     public void settrans(Transition<?, ?> trans) {
 	if(this.anim != null)
 	    throw(new IllegalStateException(String.valueOf(this.anim)));
@@ -513,7 +539,7 @@ public class Window extends Widget {
     }
 
     public boolean visible() {
-	return(visible && ((animst == null) || (animst == "show")));
+	return(super.visible() && ((animst == null) || (animst == "show")));
     }
 
     private void initanim() {
@@ -526,6 +552,7 @@ public class Window extends Widget {
     }
 
     public void show() {
+        if(!visible())hearthborn.inventory.ContainerTools.closed(this);
 	if(parent == null) {
 	    super.show();
 	    return;
@@ -546,6 +573,7 @@ public class Window extends Widget {
     }
 
     public void hide() {
+        hearthborn.inventory.ContainerTools.closed(this);
 	if(parent == null) {
 	    super.hide();
 	    return;
@@ -561,6 +589,16 @@ public class Window extends Widget {
 	} else {
 	    throw(new AssertionError(animst));
 	}
+    }
+
+    /** Hide a temporary presentation before restoring its normal geometry. */
+    public void hideImmediately() {
+        hearthborn.inventory.ContainerTools.closed(this);
+        if(animst != "dest") {
+            anim = null;
+            animst = null;
+        }
+        super.hide();
     }
 
     public void reqdestroy() {

@@ -51,6 +51,7 @@ public class ModSprite extends Sprite implements Sprite.CUpd, EquipTarget {
     protected EquipTarget[] eqtgts = noeqtgts;
     private Mod[] omods = nomods;
     private int lastupd;
+    private boolean hearthbornDefaultMaterials;
     
     public static final Factory fact = new Factory() {
 	    public Sprite create(Owner owner, Resource res, Message sdt) {
@@ -173,7 +174,8 @@ public class ModSprite extends Sprite implements Sprite.CUpd, EquipTarget {
 			}
 		    }
 		    mods.remove(min);
-		    min.operate(this);
+                    if(!hearthborn.storage.ContainerLook.skipMaterial(min, res.name))
+                        min.operate(this);
 		}
 	    } finally {
 		curcons.set(prev);
@@ -330,7 +332,7 @@ public class ModSprite extends Sprite implements Sprite.CUpd, EquipTarget {
 		cons.add(mod);
 	}
 	for(Mod mod : omods)
-	    cons.add(mod);
+            cons.add(mod);
     }
 
     protected void update() {
@@ -377,6 +379,8 @@ public class ModSprite extends Sprite implements Sprite.CUpd, EquipTarget {
     }
 
     public boolean tick(double dt) {
+        boolean desired=hearthborn.storage.ContainerLook.defaultMaterials(res.name);
+        if(desired!=hearthbornDefaultMaterials)try {update();hearthbornDefaultMaterials=desired;}catch(Loading ignored){}
 	if(gob != null) {
 	    int seq = gob.updateseq;
 	    if(seq != lastupd) {

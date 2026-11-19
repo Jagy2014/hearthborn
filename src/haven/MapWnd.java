@@ -57,8 +57,10 @@ public class MapWnd extends Window implements Console.Directory {
     private final Locator player;
     private final Widget toolbar;
     private final Frame viewf;
+    private final hearthborn.map.MapResize leftResize;
     private final MarkerObjs mvmarks = new MarkerObjs(this);
     private GroupSelector colsel;
+    private ICheckBox compactToggle;
     private CheckBox onmapbtn;
     private Button mremove;
     private Predicate<Marker> mflt = pmarkers;
@@ -67,6 +69,13 @@ public class MapWnd extends Window implements Console.Directory {
     private int markerseq = -1;
     private Marker mrefocus = null;
     private int olalpha = 64;
+    private long playerSegment = Long.MIN_VALUE;
+    private Coord playerTile;
+    /** A jump no walk can make between map updates. Same-segment teleports still need a recenter. */
+    public static boolean farJump(Coord from, Coord to) {
+	return from != null && to != null && from.dist(to) > 40;
+    }
+    public boolean frameBoosted;
     private final Collection<Runnable> deferred = new LinkedList<>();
 
     private final static Predicate<Marker> pmarkers = (m -> m instanceof PMarker);
@@ -79,6 +88,7 @@ public class MapWnd extends Window implements Console.Directory {
     public static final KeyBinding kb_hmark = KeyBinding.get("mapwnd/hmark", KeyMatch.forchar('M', KeyMatch.C));
     public static final KeyBinding kb_compact = KeyBinding.get("mapwnd/compact", KeyMatch.forchar('A', KeyMatch.M));
     public static final KeyBinding kb_prov = KeyBinding.get("mapwnd/prov", KeyMatch.nil);
+    protected boolean escapeCloses() {return(false);}
     public MapWnd(MapFile file, MapView mv, Coord sz, String title) {
 	super(sz, title, true);
 	this.file = file;
@@ -86,6 +96,10 @@ public class MapWnd extends Window implements Console.Directory {
 	this.player = new MapLocator(mv);
 	viewf = add(new ViewFrame());
 	view = viewf.add(new View(file));
+        leftResize=viewf.add(new hearthborn.map.MapResize(this));
+        add(new hearthborn.ui.RightStretch(this){
+            protected boolean enabled(){return !combatPresentation()&&MapWnd.this.c.x>=-10000;}
+        });
 	recenter();
 	toolbar = add(new Widget(Coord.z));
 	toolbar.add(new Img(Resource.loadtex("gfx/hud/mmap/fgwdg")) {
@@ -104,17 +118,10 @@ public class MapWnd extends Window implements Console.Directory {
 		}
 	    }, Coord.z);
 	toolbar.add(new MarkButton(), Coord.z).setgkey(kb_mark);
-	toolbar.add(new ICheckBox("gfx/hud/mmap/hmark", "", "-d", "-h", "-dh"))
-	    .state(() -> Utils.eq(markcfg, MarkerConfig.hideall)).click(() -> {
-		    if(Utils.eq(markcfg, MarkerConfig.hideall))
-			markcfg = MarkerConfig.showall;
-		    else if(Utils.eq(markcfg, MarkerConfig.showall) && (cmarkers != null))
-			markcfg = cmarkers;
-		    else
-			markcfg = MarkerConfig.hideall;
-		})
-	    .settip("Hide markers").setgkey(kb_hmark);
-	toolbar.add(new ICheckBox("gfx/hud/mmap/wnd", "", "-d", "-h", "-dh"))
+	toolbar.add(new ICheckBox("gfx/hud/mmap/hmark", "", "-d", "-h", "-dh") {
+		public void click() {markersShown(!markersShown());}
+	    }).state(this::markersShown).setgkey(kb_hmark);
+	toolbar.add(compactToggle = new ICheckBox("gfx/hud/mmap/wnd", "", "-d", "-h", "-dh"))
 	    .state(this::compact).set(a -> {
 		    compact(a);
 		    Utils.setprefb("compact-map", a);
@@ -130,7 +137,19 @@ public class MapWnd extends Window implements Console.Directory {
 	    })
 	    .changed(a -> toggleol("realm", a))
 	    .settip("Display provinces").setgkey(kb_prov);
-	toolbar.pack();
+	hearthborn.map.MapToolbar column = add(new hearthborn.map.MapToolbar(this));
+	java.util.List<Widget> nativeButtons = new java.util.ArrayList<Widget>();
+	for(Widget child : toolbar.children()) {
+	    if(child instanceof Img)
+		child.hide();
+	    else
+		nativeButtons.add(child);
+	}
+	for(Widget child : nativeButtons)
+	    if(child.kb_gkey != kb_hmark)
+		column.adopt(child);
+	toolbar.hide();
+	toolbar.resize(Coord.z);
 	tool = add(new Toolbox());
 	compact(Utils.getprefb("compact-map", false));
 	resize(sz);
@@ -138,13 +157,15 @@ public class MapWnd extends Window implements Console.Directory {
 
     protected void added() {
 	super.added();
-	mv.basic.add(mvmarks);
+	if(worldMarks()) mv.basic.add(mvmarks);
     }
 
     public void remove() {
 	super.remove();
-	mvmarks.remove();
+	if(worldMarks()) mvmarks.remove();
     }
+
+    protected boolean worldMarks() {return true;}
 
     public void toggleol(String tag, boolean a) {
 	if(a)
@@ -154,60 +175,27 @@ public class MapWnd extends Window implements Console.Directory {
     }
 
     private class ViewFrame extends Frame {
-	Coord sc = Coord.z;
+        ViewFrame() {super(Coord.z, true);}
 
-	ViewFrame() {
-	    super(Coord.z, true);
-	}
+        public void tick(double dt){super.tick(dt);fitMapView();}
 
-	public void resize(Coord sz) {
-	    super.resize(sz);
-	    sc = sz.sub(box.bisz()).add(box.btloff()).sub(sizer.sz());
-	}
+        public void draw(GOut g){fitMapView();super.draw(g);}
 
-	public void draw(GOut g) {
-	    super.draw(g);
-	    if(compact())
-		g.image(sizer, sc);
-	}
+        public void drawframe(GOut g){
+            hearthborn.ui.JoinedWindowFrame.draw(g,(IBox.Images)box,Coord.z,sz,
+                hearthborn.ui.MagneticWindows.joinedAbove(MapWnd.this),
+                hearthborn.ui.MagneticWindows.joinedBelow(MapWnd.this));
+        }
 
-	private UI.Grab drag;
-	private Coord dragc;
-	public boolean mousedown(MouseDownEvent ev) {
-	    Coord c = ev.c, cc = c.sub(sc);
-	    if((ev.b == 1) && compact() && (cc.x < sizer.sz().x) && (cc.y < sizer.sz().y) && (cc.y >= sizer.sz().y - UI.scale(25) + (sizer.sz().x - cc.x))) {
-		if(drag == null) {
-		    drag = ui.grabmouse(this);
-		    dragc = csz().sub(parentpos(MapWnd.this, c));
-		    return(true);
-		}
-	    }
-	    /* XXX: Shift-clicks that do not drag should be propagated to the map. */
-	    if((ev.b == 1) && (checkhit(c) || ui.modshift)) {
-		MapWnd.this.drag(parentpos(MapWnd.this, c));
-		return(true);
-	    }
-	    return(super.mousedown(ev));
-	}
-
-	public void mousemove(MouseMoveEvent ev) {
-	    super.mousemove(ev);
-	    if(drag != null) {
-		Coord nsz = parentpos(MapWnd.this, ev.c).add(dragc);
-		nsz.x = Math.max(nsz.x, UI.scale(150));
-		nsz.y = Math.max(nsz.y, UI.scale(150));
-		MapWnd.this.resize(nsz);
-	    }
-	}
-
-	public boolean mouseup(MouseUpEvent ev) {
-	    if((ev.b == 1) && (drag != null)) {
-		drag.remove();
-		drag = null;
-		return(true);
-	    }
-	    return(super.mouseup(ev));
-	}
+        public boolean mousedown(MouseDownEvent ev) {
+            if(combatPresentation())return super.mousedown(ev);
+            /* Shift-clicks that do not drag should be propagated to the map. */
+            if(ev.b==1&&(checkhit(ev.c)||ui.modshift)) {
+                MapWnd.this.drag(parentpos(MapWnd.this,ev.c));
+                return true;
+            }
+            return super.mousedown(ev);
+        }
     }
 
     private static final int btnw = UI.scale(95);
@@ -259,22 +247,36 @@ public class MapWnd extends Window implements Console.Directory {
 
 	public void resize(int h) {
 	    super.resize(new Coord(sz.x, h));
-	    listf.resize(listf.sz.x, sz.y - UI.scale(225));
-	    listf.c = new Coord(sz.x - listf.sz.x, 0);
-	    list.resize(listf.inner());
 	    mebtn.c = new Coord(0, sz.y - mebtn.sz.y);
 	    mibtn.c = new Coord(sz.x - btnw, sz.y - mibtn.sz.y);
-	    nobtn.c = new Coord(0, mebtn.c.y - UI.scale(30) - nobtn.sz.y);
-	    tobtn.c = new Coord(sz.x - btnw, mibtn.c.y - UI.scale(30) - tobtn.sz.y);
+	    nobtn.c = new Coord(0, mebtn.c.y - UI.scale(5) - nobtn.sz.y);
+	    tobtn.c = new Coord(sz.x - btnw, nobtn.c.y);
 	    pmbtn.c = new Coord(0, nobtn.c.y - UI.scale(5) - pmbtn.sz.y);
-	    smbtn.c = new Coord(sz.x - btnw, tobtn.c.y - UI.scale(5) - smbtn.sz.y);
+	    smbtn.c = new Coord(sz.x - btnw, pmbtn.c.y);
+	    int bottom = pmbtn.c.y - UI.scale(6);
 	    if(namesel != null) {
-		namesel.c = listf.c.add(0, listf.sz.y + UI.scale(10));
-		mremove.c = pmbtn.c.sub(0, mremove.sz.y + UI.scale(10));
+		int editor = namesel.sz.y + UI.scale(8);
+		if(colsel != null)
+		    editor += colsel.sz.y + onmapbtn.sz.y + UI.scale(12);
+		if(mremove != null)
+		    editor += mremove.sz.y + UI.scale(8);
+		bottom -= editor;
+	    }
+	    listf.resize(sz.x, Math.max(UI.scale(48), bottom));
+	    listf.c = Coord.z;
+	    list.resize(listf.inner());
+	    if(namesel != null) {
+		namesel.c = new Coord(0, listf.sz.y + UI.scale(6));
+		namesel.resize(sz.x);
+		int y = namesel.c.y + namesel.sz.y + UI.scale(6);
 		if(colsel != null) {
-		    colsel.c   = namesel.c.add(0, namesel.sz.y + UI.scale(10));
-		    onmapbtn.c =  colsel.c.add(0,  colsel.sz.y + UI.scale(5));
+		    colsel.c = new Coord(0, y);
+		    y += colsel.sz.y + UI.scale(4);
+		    onmapbtn.c = new Coord(0, y);
+		    y += onmapbtn.sz.y + UI.scale(6);
 		}
+		if(mremove != null)
+		    mremove.c = new Coord(0, y);
 	    }
 	}
     }
@@ -357,12 +359,34 @@ public class MapWnd extends Window implements Console.Directory {
 	    return(grab != null);
 	}
 
+	public void tick(double dt) {
+	    if(indoors()) ungrab();
+	    super.tick(dt);
+	}
+
 	public void click() {
+	    if(indoors()) {
+		ungrab();
+		return;
+	    }
 	    if(grab == null)
 		grab = ui.grabmouse(this);
 	}
 
+	public Object tooltip(Coord c, Widget prev) {
+	    settip(indoors() ? "Cannot place a marker indoors" : "New marker");
+	    return super.tooltip(c, prev);
+	}
+
 	public void mark(Location loc, boolean onmap) {
+	    if(indoors()) return;
+	    if(compact()) {
+		GameUI gui = getparent(GameUI.class);
+		if(gui != null) {
+		    hearthborn.map.MarkerAsk.open(gui, c.add(UI.scale(12, 12)), (title, color) -> file.add(new PMarker(file, loc.seg.id, loc.tc, title, color, onmap)));
+		    return;
+		}
+	    }
 	    Marker nm = new PMarker(file, loc.seg.id, loc.tc, "New marker", BuddyWnd.gc[new Random().nextInt(BuddyWnd.gc.length)], onmap);
 	    file.add(nm);
 	    focus(nm);
@@ -412,8 +436,9 @@ public class MapWnd extends Window implements Console.Directory {
 	    if(!ev.grabbed)
 		return(super.mousedown(ev));
 	    if(ev.b == 1) {
-		Coord gc = ev.c.add(rootpos());
-		ui.dispatch(ui.root, new PlaceMarker(gc));
+                Widget domain=hearthborn.map.DetachedMap.domain(this);
+                if(domain==null)ui.dispatch(ui.root,new PlaceMarker(ev.c.add(rootpos())));
+                else ui.dispatchWithin(domain,new PlaceMarker(ev.c.add(parentpos(domain))));
 		return(true);
 	    } else if(ev.b == 3) {
 		return(ungrab());
@@ -424,6 +449,12 @@ public class MapWnd extends Window implements Console.Directory {
 	public boolean getcurs(CursorQuery ev) {
 	    return(ev.grabbed ? ev.set(markcurs) : false);
 	}
+    }
+
+    public void copyMarkerFiltersFrom(MapWnd source) {
+        mflt=source.mflt;
+        mcmp=source.mcmp;
+        markerseq=-1;
     }
 
     public void tick(double dt) {
@@ -440,7 +471,18 @@ public class MapWnd extends Window implements Console.Directory {
 	    }
 	}
 	view.markobjs();
-	if(visible) {
+	try {
+	    MiniMap.Location place = view.resolve(player);
+	    if(place != null) {
+		long segment = place.seg.id;
+		if((playerSegment != Long.MIN_VALUE) && ((playerSegment != segment) || farJump(playerTile, place.tc)))
+		    recenter();
+		playerSegment = segment;
+		playerTile = new Coord(place.tc);
+	    }
+	} catch(Loading l) {
+	}
+	if(visible || view.loadHidden) {
 	    if(mrefocus != null) {
 		for(Predicate<Marker> filter : Arrays.asList(pmarkers, smarkers)) {
 		    if(filter.test(mrefocus)) {
@@ -690,7 +732,7 @@ public class MapWnd extends Window implements Console.Directory {
 	    }
 
 	    protected BufferedImage img() {throw(new RuntimeException());}
-	    protected String text() {return(lm.mark.nm);}
+	    protected String text() {return(lm.mark.nm + hearthborn.map.CaveLevels.markerSuffix(lm.mark.seg));}
 	    protected boolean valid(String text) {return(Utils.eq(text, text()));}
 
 	    protected void drawicon(GOut g) {
@@ -787,26 +829,136 @@ public class MapWnd extends Window implements Console.Directory {
 	}
     }
 
+    /** Use the map's former bottom-border space when a lower window owns the shared edge. */
+    private void fitMapView(){
+        Coord size=viewf.inner();
+        if(compact()&&hearthborn.ui.MagneticWindows.joinedBelow(this))size=size.add(0,viewf.box.bbroff().y);
+        if(!view.sz.equals(size))view.resize(size);
+    }
+
     public void resize(Coord sz) {
-	sz = sz.max(compact() ? UI.scale(150, 150) : UI.scale(350, 255));
+        boolean combat=combatPresentation();
+	sz = sz.max(combat?Coord.of(1,1):compact() ? UI.scale(150, 150) : UI.scale(350, 255));
+        int mapWidth=viewf.box.bisz().x+leftResize.sz.x+toolbar.sz.x+UI.scale(4);
+        if(!combat)sz.x=Math.max(sz.x,mapWidth+(compact()?0:tool.sz.x+UI.scale(10)));
 	super.resize(sz);
 	tool.resize(sz.y);
+	hearthborn.map.MapToolbar column = getchild(hearthborn.map.MapToolbar.class);
+	int frameW = sz.x;
 	if(!compact()) {
 	    tool.c = new Coord(sz.x - tool.sz.x, 0);
-	    viewf.resize(tool.pos("bl").subs(10, 0));
-	} else {
-	    viewf.resize(sz);
+	    frameW = Math.max(1, tool.c.x - UI.scale(10));
+	}
+	viewf.move(Coord.z);
+	if(!compact())
+	    viewf.resize(Coord.of(frameW, Math.max(1, sz.y)));
+	else {
+	    viewf.resize(Coord.of(sz.x, Math.max(1, sz.y)));
 	    tool.c = viewf.pos("ur").adds(10, 0);
 	}
-	view.resize(viewf.inner());
-	toolbar.c = viewf.c.add(0, viewf.sz.y - toolbar.sz.y).add(UI.scale(2), UI.scale(-2));
+	fitMapView();
+	leftResize.presize();
+	if(!combat && column != null) {
+	    column.place(Math.max(1, viewf.inner().x));
+	    Coord at = viewf.c.add(viewf.xlate(Coord.z, true));
+	    if(!compact() && deco instanceof hearthborn.ui.SmallWindowDeco)
+		at = at.add(0, ((hearthborn.ui.SmallWindowDeco)deco).buttonRowGap());
+	    column.move(at);
+	    column.raise();
+	}
+	toolbar.c = viewf.c.add(viewf.xlate(leftResize.c,true).x+leftResize.sz.x+UI.scale(4), viewf.sz.y-toolbar.sz.y-UI.scale(2));
     }
 
     private boolean compact() {
 	return(deco == null);
     }
 
+    /** Saved map markers. The choice lives in icon settings and applies to every open map. */
+    public boolean markersShown() {return !Utils.eq(markcfg, MarkerConfig.hideall);}
+
+    public void markersShown(boolean show) {
+	MarkerConfig next = show ? MarkerConfig.showall : MarkerConfig.hideall;
+	GameUI gui = getparent(GameUI.class);
+	if(gui == null && mv != null) gui = mv.getparent(GameUI.class);
+	if(gui == null) {markcfg = next; return;}
+	for(Widget child = gui.child; child != null; child = child.next)
+	    if(child instanceof MapWnd) ((MapWnd)child).markcfg = next;
+    }
+
+    /** A house floor, including a cellar. Caves stay outside. */
+    public boolean indoors() {
+	GameUI gui = getparent(GameUI.class);
+	if(gui == null && mv != null) gui = mv.getparent(GameUI.class);
+	return gui != null && gui.indoors();
+    }
+
+    private Coord restC, restSz;
+    private double cornerAt = Double.NEGATIVE_INFINITY;
+    private boolean cornerClickable;
+
+    /** The second press on a resize corner puts the map back to its size before the stretch. */
+    public boolean cornerClick() {
+	if(combatPresentation()) return false;
+	double now = Utils.rtime();
+	boolean twice = cornerClickable && now - cornerAt <= 0.5;
+	cornerAt = now;
+	cornerClickable = true;
+	if(!twice) return false;
+	cornerClickable = false;
+	Coord sz = restSz != null ? restSz : Utils.getprefc("hearthborn/map/corner-sz", null);
+	Coord at = restC != null ? restC : Utils.getprefc("hearthborn/map/corner-c", null);
+	if(sz == null || at == null) return true;
+	resize(sz);
+	move(new Coord(at));
+	fitOnScreen();
+	clearCorner();
+	storePlace();
+	return true;
+    }
+
+    /** Remember the place a stretch started from. Later stretches keep that same place. */
+    public void cornerPressed() {
+	if(restSz != null) return;
+	Coord saved = Utils.getprefc("hearthborn/map/corner-sz", null);
+	Coord savedAt = Utils.getprefc("hearthborn/map/corner-c", null);
+	if(saved != null && savedAt != null) {restSz = saved; restC = savedAt; return;}
+	restSz = csz();
+	restC = new Coord(c);
+	Utils.setprefc("hearthborn/map/corner-sz", restSz);
+	Utils.setprefc("hearthborn/map/corner-c", restC);
+    }
+
+    public void cornerDragged() {cornerClickable = false;}
+
+    public void cornerReleased(Coord before) {
+	Coord now = csz();
+	boolean grew = now.x > before.x + 1 || now.y > before.y + 1;
+	if(!grew && restSz != null && now.x <= restSz.x + 1 && now.y <= restSz.y + 1)
+	    clearCorner();
+    }
+
+    private void clearCorner() {
+	restC = null;
+	restSz = null;
+	Utils.setprefc("hearthborn/map/corner-c", null);
+	Utils.setprefc("hearthborn/map/corner-sz", null);
+    }
+
+    private boolean combatPresentation(){GameUI gui=getparent(GameUI.class);return gui!=null&&gui.compactUI()&&gui.mapfile==this;}
+
+    public void show(){
+	boolean was=visible();
+	super.show();
+	// The map button calls show(), not show(boolean). Both paths come through here.
+	if(!was&&parent!=null&&!frameBoosted){fitOnScreen();hearthborn.ui.MagneticWindows.uncover(this);}
+    }
+
     public void compact(boolean a) {
+	if(compactToggle != null)
+	    compactToggle.settip(a ? "Show full map" : "Compact mode");
+	boolean presenting=!frameBoosted&&parent!=null&&c.x>=-10000&&a!=compact();
+	if(presenting)clearCorner();
+	if(presenting)hearthborn.map.MapPlaces.before(this,a);
 	tool.show(!a);
 	if(a)
 	    delfocusable(tool);
@@ -814,10 +966,33 @@ public class MapWnd extends Window implements Console.Directory {
 	    newfocusable(tool);
 	chdeco(a ? null : makedeco());
 	pack();
+	if(presenting)hearthborn.map.MapPlaces.after(this,a);
+	else if(!a)fitOnScreen();
+    }
+
+    /** Keeps a map that grew toward the right edge fully inside the parent. */
+    public void fitOnScreen(){
+	if(parent==null||frameBoosted||parent.sz.x<UI.scale(200)||parent.sz.y<UI.scale(200))return;
+	Coord outer=hearthborn.ui.HudInterfaceScale.size(this);
+	int x=c.x,y=c.y;
+	if(x+outer.x>parent.sz.x)x=parent.sz.x-outer.x;
+	if(y+outer.y>parent.sz.y)y=parent.sz.y-outer.y;
+	x=Math.max(0,x);y=Math.max(0,y);
+	if(x!=c.x||y!=c.y)move(Coord.of(x,y));
     }
 
     public void recenter() {
 	view.follow(player);
+    }
+
+    /** Writes the window's current place. The off-screen copy used by the separate map window is ignored. */
+    public void storePlace() {
+	if(frameBoosted || parent == null || c.x < -10000)
+	    return;
+	Utils.setprefc("wndc-map", new Coord(c));
+	Utils.setprefc("wndsz-map", csz());
+	hearthborn.map.MapPlaces.remember(this);
+        hearthborn.ui.WindowPlaces.flushPreferences();
     }
 
     public void focus(Marker m) {
@@ -825,7 +1000,9 @@ public class MapWnd extends Window implements Console.Directory {
     }
 
     protected Deco makedeco() {
-	return(new DefaultDeco(true).dragsize(true));
+	hearthborn.ui.SmallWindowDeco deco=new hearthborn.ui.SmallWindowDeco(true);
+	deco.untitled();
+	return deco;
     }
 
     public static class MarkerObjs extends RenderTree.Node.Track1 implements TickList.TickNode, TickList.Ticking {
@@ -1110,6 +1287,44 @@ public class MapWnd extends Window implements Console.Directory {
     }
 
     public void exportmap() {
+        Window choices=new Window(UI.scale(340,155),hearthborn.L10n.tr("Export map"),true);
+        choices.reqclose(choices::destroy);
+        choices.add(new Button(UI.scale(320),"Map data (.hmap)",false,()->{choices.destroy();exportdata();}),UI.scale(10,5));
+        choices.add(new Button(UI.scale(320),"Current segment as PNG",false,()->{choices.destroy();exportimage(false);}),UI.scale(10,40));
+        choices.add(new Button(UI.scale(320),"All saved tiles as PNG (.zip)",false,()->{choices.destroy();exportimage(true);}),UI.scale(10,75));
+        choices.add(new Label(hearthborn.L10n.tr("PNG contains terrain, without markers.")),UI.scale(10,115));
+        GameUI gui=getparent(GameUI.class);
+        gui.adda(choices,gui.sz.div(2),.5,.5);
+    }
+
+    private void exportimage(boolean tiles) {
+        MiniMap.Location loc=view.displayLocation();
+        if(!tiles&&loc==null){ui.error(hearthborn.L10n.tr("No map segment is selected."));return;}
+        final long segment=loc==null?0:loc.seg.id;
+        String extension=tiles?"zip":"png";
+        FilePicker dialog=ui.wnd.toolkit().picker().make(FilePicker.Mode.SAVE,ui.wnd);
+        dialog.filter(tiles?"PNG map tiles":"Map image",extension);
+        dialog.show().consume(Promise.cnonnull(chosen->{
+            Path target=chosen.getFileName().toString().toLowerCase(java.util.Locale.ROOT).endsWith("."+extension)?chosen:chosen.resolveSibling(chosen.getFileName()+"."+extension);
+            GameUI gui=getparent(GameUI.class);
+            ExportWindow progress=new ExportWindow();progress.reqclose(progress::cancel);
+            Thread worker=new HackThread(()->{
+                try{
+                    java.util.function.Consumer<String> status=text->progress.prog=hearthborn.L10n.tr("Exporting map images")+": "+text;
+                    if(tiles)hearthborn.map.MapImageExport.tiles(file,target,status);
+                    else hearthborn.map.MapImageExport.png(file,segment,target,status);
+                    gui.ui.success(hearthborn.L10n.format("Map exported: %s",target.toString()));
+                }catch(InterruptedException cancelled){
+                }catch(Exception failure){
+                    new Warning(failure,"Map image export failed").issue();
+                    gui.error(hearthborn.L10n.tr("Could not export map image:")+" "+hearthborn.L10n.tr(failure.getMessage()==null?failure.toString():failure.getMessage()));
+                }
+            },"Map image exporter");
+            gui.adda(progress,gui.sz.div(2),.5,.5);progress.run(worker);
+        })).report(ui);
+    }
+
+    private void exportdata() {
 	FilePicker dialog = ui.wnd.toolkit().picker().make(FilePicker.Mode.SAVE, ui.wnd);
 	dialog.filter("Exported Haven map data", "hmap");
 	dialog.show().consume(Promise.cnonnull(path -> {

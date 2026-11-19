@@ -241,6 +241,10 @@ public interface ReadLine {
 	    int code = ev.getKeyCode();
 	    boolean s = (mod & S) != 0;
 	    mod &= ~S;
+            if(mod == SUPER && (code == KeyEvent.VK_C || code == KeyEvent.VK_V || code == KeyEvent.VK_A)) {
+                mod=C;c=Character.toLowerCase((char)code);
+            }
+            if(mod == C && code == KeyEvent.VK_A){mark=0;point=length;cksel();return true;}
 	    if((c == 8) && (mod == 0)) {
 		if(mark < 0) {
 		    if(point > 0)

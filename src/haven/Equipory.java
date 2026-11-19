@@ -62,6 +62,9 @@ public class Equipory extends Widget implements DTarget {
     };
     public static final Tex[] ebgs = new Tex[ecoords.length];
     public static final Text[] etts = new Text[ecoords.length];
+    /** Same step as a furnace grid: the paper doll grows, the marks stay the quality size. */
+    public static final double SCALE = hearthborn.inventory.InventoryScale.OVEN;
+    private Coord logical = Coord.z;
     static Coord isz;
     static {
 	isz = new Coord();
@@ -103,6 +106,9 @@ public class Equipory extends Widget implements DTarget {
 	super.added();
     }
 
+    private final hearthborn.ui.Parasites parasites=new hearthborn.ui.Parasites();
+    private final hearthborn.ui.EquipmentFeet feet=new hearthborn.ui.EquipmentFeet(this);
+    private Widget parasiteToggle, bootToggle;
     public Equipory(long gobid) {
 	super(isz);
 	ava = add(new Avaview(bg.sz(), gobid, "equcam") {
@@ -113,13 +119,56 @@ public class Equipory extends Widget implements DTarget {
 		public void draw(GOut g) {
 		    g.image(bg, Coord.z);
 		    super.draw(g);
+		    feet.paint(g);
 		}
 
 		final FColor cc = new FColor(0, 0, 0, 0);
 		protected FColor clearcolor() {return(cc);}
 	    }, bgc);
-    }
+        Widget bonuses=add(new hearthborn.ui.EquipmentBonuses(this,ava.sz.y),Coord.of(isz.x+UI.scale(14),0));
+        parasiteToggle=add(new CheckBox("Auto drop parasites").state(hearthborn.ui.Parasites::enabled).set(hearthborn.ui.Parasites::enabled),
+            Coord.of(0, Math.max(isz.y,bonuses.pos("bl").y)+UI.scale(4)));
+        parasiteToggle.settip("Drop leeches and ticks as soon as they attach to you.");
+        bootToggle=add(new CheckBox("Auto-Switch Bunny Slippers/Armor Boots").state(hearthborn.combat.BootSwitch::enabled).set(hearthborn.combat.BootSwitch::enabled),
+            parasiteToggle.pos("ur").adds(12, 0));
+        bootToggle.settip(hearthborn.L10n.tr("Right-click a rabbit to equip bunny slippers. A left click, a click on empty ground or the map, or a right click on anything else equips the best armor boots in the main inventory: plate boots, armored striders, ranger's boots, then leather boots."));
+        pack();
 
+    }
+    public void pack() {
+        super.pack();
+        logical = sz;
+        super.resize(hearthborn.inventory.InventoryScale.size(logical, SCALE));
+    }
+    public void draw(GOut g) {
+        if(logical.x > 0 && logical.y > 0)
+            g = hearthborn.inventory.InventoryScale.graphics(g, logical, SCALE);
+        drawslots(g);
+        super.draw(g);
+    }
+    public boolean handle(Event event) {
+        if(event instanceof PointerEvent && SCALE != 1) {
+            PointerEvent pointer = ((PointerEvent)event).derive(hearthborn.inventory.InventoryScale.logical(((PointerEvent)event).c, SCALE));
+            event.stop();
+            pointer.propagate = true;
+            pointer.handling = this;
+            return super.handle(pointer) || pointer.propagate(this);
+        }
+        return super.handle(event);
+    }
+    public void tick(double dt) {
+        super.tick(dt);
+        GameUI gui=getparent(GameUI.class);
+        parasiteToggle.show(gui!=null && gui.equipment()==this);
+        bootToggle.show(gui!=null && gui.equipment()==this);
+        parasites.tick(this,dt);
+        feet.tick(dt);
+    }
+    public void dispose(){feet.dispose();super.dispose();}
+
+    public java.util.List<GItem> equippedItems() {
+        synchronized(wmap){return new ArrayList<>(wmap.keySet());}
+    }
     public static interface SlotInfo {
 	public int slots();
     }
@@ -135,7 +184,10 @@ public class Equipory extends Widget implements DTarget {
 		    v.add(add(new WItem(g), ecoords[ep].add(1, 1)));
 	    }
 	    v.trimToSize();
-	    wmap.put(g, v);
+	    synchronized(wmap) {
+		wmap.put(g, v);
+	    }
+	    hearthborn.world.GobMarks.equipment(this);
 	} else {
 	    super.addchild(child, args);
 	}
@@ -145,9 +197,32 @@ public class Equipory extends Widget implements DTarget {
 	super.cdestroy(w);
 	if(w instanceof GItem) {
 	    GItem i = (GItem)w;
-	    for(WItem v : wmap.remove(i))
-		ui.destroy(v);
+	    Collection<WItem> views;
+	    synchronized(wmap) {
+		views = wmap.remove(i);
+	    }
+	    if(views != null)
+		for(WItem v : views)
+		    ui.destroy(v);
+	    hearthborn.world.GobMarks.equipment(this);
 	}
+    }
+
+    /** Live check, a loaded bat cape hides the radius. */
+    public boolean hasBatCape() {
+	GItem[] items;
+	synchronized(wmap) {
+	    items = wmap.keySet().toArray(new GItem[0]);
+	}
+	for(GItem item : items) {
+	    try {
+		Resource resource = item.resource();
+		if(resource != null && resource.name.contains("/batcape"))
+		    return true;
+	    } catch(Loading ignored) {
+	    }
+	}
+	return false;
     }
 
     public void uimsg(String msg, Object... args) {
@@ -188,7 +263,12 @@ public class Equipory extends Widget implements DTarget {
 		g.frect(ecoords[i].add(1, 1), invsq.sz().sub(2, 2));
 		g.chcolor();
 	    }
-	    g.image(invsq, ecoords[i]);
+	    if(hearthborn.ui.UiTheme.light()) {
+		/* The same cell as an inventory on parchment, not the dark one with gold edges. */
+		hearthborn.ui.UiTheme.panel(g, ecoords[i], invsq.sz());
+		hearthborn.ui.UiTheme.slot(g, ecoords[i], invsq.sz());
+	    } else
+		g.image(invsq, ecoords[i]);
 	    if(ebgs[i] != null)
 		g.image(ebgs[i], ecoords[i]);
 	}
@@ -199,11 +279,6 @@ public class Equipory extends Widget implements DTarget {
 	if(sl >= 0)
 	    return(etts[sl]);
 	return(null);
-    }
-
-    public void draw(GOut g) {
-	drawslots(g);
-	super.draw(g);
     }
 
     public boolean iteminteract(Coord cc, Coord ul) {

@@ -315,6 +315,7 @@ public class OCache implements Iterable<Gob> {
 			nol = new Gob.Overlay(g, olid, new OlSprite(res, sdt));
 			nol.old = msg.old;
 			g.addol(nol, false);
+			hearthborn.combat.FighterMark.seen(g, res, sdt);
 			if(!prs)
 			    g.lastolid = olid;
 		    }

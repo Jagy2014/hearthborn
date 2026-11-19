@@ -39,16 +39,16 @@ public class Scrollport extends Widget {
 
     public Scrollport(Coord sz) {
 	super(sz);
-	bar = adda(new Scrollbar(sz.y, 0, 0) {
-		public void changed() {
-		    cont.sy = bar.val;
-		}
-	    }, sz.x, 0, 1, 0);
+	bar = adda(makebar(sz.y), sz.x, 0, 1, 0);
 	cont = add(new Scrollcont(sz.sub(bar.sz.x, 0)) {
 		public void update() {
 		    bar.max = Math.max(0, contentsz().y + 10 - sz.y);
 		}
 	    }, Coord.z);
+    }
+
+    protected Scrollbar makebar(int height) {
+        return new Scrollbar(height,0,0){public void changed(){Scrollport.this.cont.sy=val;}};
     }
 
     public static class Scrollcont extends Widget {
@@ -89,6 +89,10 @@ public class Scrollport extends Widget {
     }
 
     public boolean mousewheel(MouseWheelEvent ev) {
+	/* A list inside this one is nearer to the pointer and scrolls first; an event goes to a widget before its
+	 * children, so without this the outer port took every notch, whether it had anything to scroll or not. */
+	if(ev.propagate(this))
+	    return(true);
 	bar.ch(ev.s * UI.scale(15));
 	return(true);
     }

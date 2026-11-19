@@ -181,7 +181,8 @@ public class Connection implements Transport {
 	private long ptx, prx, pretx;
 	private long btx, brx, prerx, prorx;
 	private int rplhead = 0, nrpls = 0;
-	private double srtt, rttv;
+	private volatile double srtt, rttv;
+        public double roundTripMillis() {return srtt > 0 ? srtt * 1000 : Double.NaN;}
 
 	private void addreply(double time) {
 	    rpltimes[rplhead] = time;

@@ -27,26 +27,33 @@
 package haven;
 
 public class Speedget extends Widget {
+    private final hearthborn.ui.DefaultSpeed defaultSpeed = new hearthborn.ui.DefaultSpeed();
+    public void tick(double dt) { super.tick(dt); hearthborn.ui.BoatSpeed.apply(this); if(visible) defaultSpeed.tick(this); }
     public static final Tex imgs[][];
     public static final String tips[];
     public static final Coord tsz;
+    private static final Coord[] cells;
     public int cur, max;
+    /** Set while the selector sits inside the portrait frame: its own pixel size, split into four equal cells. */
+    private Coord fitted;
+    private Coord[] fittedCells;
 
     static {
-	String[] names = {"crawl", "walk", "run", "sprint"};
-	String[] vars = {"dis", "off", "on"};
-	imgs = new Tex[names.length][vars.length];
-	int w = 0;
-	for(int i = 0; i < names.length; i++) {
-	    for(int o = 0; o < vars.length; o++)
-		imgs[i][o] = Resource.loadtex("gfx/hud/meter/rmeter/" + names[i] + "-" + vars[o]);
-	    w += imgs[i][0].sz().x;
-	}
-	tsz = new Coord(w, imgs[0][0].sz().y);
-	tips = new String[names.length];
-	for(int i = 0; i < names.length; i++) {
-	    tips[i] = Resource.local().loadwait("gfx/hud/meter/rmeter/" + names[i] + "-on").flayer(Resource.tooltip).t;
-	}
+        String[] names = {"crawl", "walk", "run", "sprint"};
+        String[] vars = {"dis", "off", "on"};
+        imgs = new Tex[names.length][vars.length];
+        cells = new Coord[names.length];
+        int w = 0;
+        for(int i = 0; i < names.length; i++) {
+            for(int o = 0; o < vars.length; o++)
+                imgs[i][o] = Resource.loadtex("gfx/hud/meter/rmeter/" + names[i] + "-" + vars[o]);
+            cells[i] = hearthborn.ui.SpeedArtwork.cellSize();
+            w += cells[i].x;
+        }
+        tsz = new Coord(w, cells[0].y);
+        tips = new String[names.length];
+        for(int i = 0; i < names.length; i++)
+            tips[i] = Resource.local().loadwait("gfx/hud/meter/rmeter/" + names[i] + "-on").flayer(Resource.tooltip).t;
     }
 
     @RName("speedget")
@@ -59,23 +66,53 @@ public class Speedget extends Widget {
     }
 
     public Speedget(int cur, int max) {
-	super(tsz);
+	super(hearthborn.ui.HudScale.size(tsz));
 	this.cur = cur;
 	this.max = max;
     }
 
+    /** Fills {@code size} pixels exactly, with four equal cells, instead of the fixed magnified size. */
+    public void fit(Coord size) {
+	if(size.equals(fitted) && size.equals(sz))
+	    return;
+	int w = Math.max(1, size.x / 4);
+	fitted = size;
+	fittedCells = new Coord[] {Coord.of(w, size.y), Coord.of(w, size.y), Coord.of(w, size.y), Coord.of(Math.max(1, size.x - 3 * w), size.y)};
+	resize(size);
+    }
+
+    public void unfit() {
+	if(fitted == null)
+	    return;
+	fitted = null;
+	fittedCells = null;
+	resize(hearthborn.ui.HudScale.size(tsz));
+    }
+
+    public boolean fitted() {return(fitted != null);}
+
     public void draw(GOut g) {
+	boolean fit = fitted != null;
+	Coord[] cs = fit ? fittedCells : cells;
+	Coord total = fit ? fitted : tsz;
+        Tex[][] artwork=hearthborn.ui.SpeedArtwork.images(defaultSpeed.mounted(),cs,
+            (fit ? 1 : hearthborn.ui.ActionMenuFrame.SCALE)*hearthborn.ui.HudInterfaceScale.forUI(ui));
+        if(!fit)
+	    g=hearthborn.ui.HudScale.graphics(g,tsz);
+	g.chcolor(0, 0, 0, 235);
+	g.frect(Coord.z, total);
+	g.chcolor();
 	int x = 0;
 	for(int i = 0; i < 4; i++) {
 	    Tex t;
 	    if(i == cur)
-		t = imgs[i][2];
+		t = artwork[i][2];
 	    else if(i > max)
-		t = imgs[i][0];
+		t = artwork[i][0];
 	    else
-		t = imgs[i][1];
-	    g.image(t, new Coord(x, 0));
-	    x += t.sz().x;
+		t = artwork[i][1];
+	    g.image(t, new Coord(x, 0),cs[i]);
+	    x += cs[i].x;
 	}
     }
 
@@ -91,10 +128,12 @@ public class Speedget extends Widget {
     }
 
     public boolean mousedown(MouseDownEvent ev) {
+	Coord point = fitted != null ? ev.c : hearthborn.ui.HudScale.logical(ev.c);
+	Coord[] cs = fitted != null ? fittedCells : cells;
 	int x = 0;
 	for(int i = 0; i < 4; i++) {
-	    x += imgs[i][0].sz().x;
-	    if(ev.c.x < x) {
+	    x += cs[i].x;
+	    if(point.x < x) {
 		set(i);
 		break;
 	    }
@@ -110,7 +149,7 @@ public class Speedget extends Widget {
 
     public Object tooltip(Coord c, Widget prev) {
 	if((cur >= 0) && (cur < tips.length))
-	    return(String.format("Selected speed: " + tips[cur]));
+	    return(hearthborn.L10n.format("Selected speed: %s", tips[cur]));
 	return(null);
     }
 
@@ -123,6 +162,8 @@ public class Speedget extends Widget {
 	KeyBinding.get("speed-set/3", KeyMatch.nil),
     };
     public boolean globtype(GlobKeyEvent ev) {
+	if(!visible)
+	    return(super.globtype(ev));
 	int dir = 0;
 	if(kb_speedup.key().match(ev))
 	    dir = 1;

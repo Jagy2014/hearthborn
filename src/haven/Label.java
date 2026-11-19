@@ -30,6 +30,8 @@ import java.awt.Color;
 
 public class Label extends Widget {
     public final Text.Foundry f;
+    private static final Text.Foundry SETTINGS = new Text.Foundry(Text.sans, 12).aa(true);
+    private boolean settings;
     public Text text;
     public String texts;
     public Color col = Color.WHITE;
@@ -47,14 +49,15 @@ public class Label extends Widget {
     public Label(String text, int w, Text.Foundry f) {
 	super(Coord.z);
 	this.f = f;
-	this.text = f.renderwrap(texts = text, this.col, w);
+	this.wrap = w;
+	this.text = f.renderwrap(hearthborn.ui.RuneTranslation.label(texts = text), this.col, w);
 	resize(this.text.sz());
     }
 
     public Label(String text, Text.Foundry f) {
 	super(Coord.z);
 	this.f = f;
-	this.text = f.render(texts = text, this.col);
+	this.text = renderLabel(texts = text,this.col);
 	resize(this.text.sz());
     }
 
@@ -66,15 +69,77 @@ public class Label extends Widget {
 	this(text, Text.std);
     }
 
+    /** Body text in the settings window is one step larger than the usual label. */
+    public void settingsFace() {
+	if(settings || f != Text.std) return;
+	settings = true;
+	this.text.dispose();
+	this.text = renderLabel(texts, col);
+	resize(this.text.sz());
+    }
+
+    /** The width the text was asked to wrap at, kept so that a new face or new text wraps the same way. */
+    private int wrap;
+
+    /** Which text tier of the settings window this label is (0: none, the usual colours apply). */
+    private int tier, tierGeneration = -1;
+
+    /** Draws the label in a tier colour of {@link hearthborn.ui.UiPalette} while it keeps the default colour. */
+    public Label tier(int tier) {
+	if(this.tier == tier) return(this);
+	this.tier = tier;
+	this.text.dispose();
+	this.text = renderLabel(texts, col);
+	tierGeneration = hearthborn.ui.UiTheme.generation();
+	resize(this.text.sz());
+	return(this);
+    }
+
+    public int tier() {return(tier);}
+
+    private Text.Foundry face() {
+	return settings ? SETTINGS : f;
+    }
+
+    private Text renderLabel(String source,Color color){
+        Text.Foundry face = face();
+        if(tier != 0 && color == Color.WHITE) color = hearthborn.ui.UiPalette.tier(tier);
+        String translated=hearthborn.ui.RuneTranslation.label(source);
+        if(wrap > 0)return face.renderwrap(translated,color,wrap);
+        return translated.contains("\n")?face.renderwrap(translated,color,Math.max(UI.scale(300),face.strsize(source).x)):face.render(translated,color);
+    }
+
+    private Text ink;
+    private int inkGeneration = -1;
     public void draw(GOut g) {
-	g.image(text.tex(), Coord.z);
+	g.image(shown().tex(), Coord.z);
+    }
+
+    private Text shown() {
+	if(tier != 0 && col == Color.WHITE) {
+	    if(tierGeneration != hearthborn.ui.UiTheme.generation()) {
+		text.dispose();
+		text = renderLabel(texts, col);
+		tierGeneration = hearthborn.ui.UiTheme.generation();
+	    }
+	    return(text);
+	}
+	if(col != Color.WHITE || !hearthborn.ui.UiTheme.light() || !hearthborn.ui.UiTheme.onPanel(this))
+	    return(text);
+	if(ink == null || inkGeneration != hearthborn.ui.UiTheme.generation()) {
+	    if(ink != null)
+		ink.dispose();
+	    ink = renderLabel(texts, hearthborn.ui.UiTheme.INK);
+	    inkGeneration = hearthborn.ui.UiTheme.generation();
+	}
+	return(ink);
     }
 
     public void settext(String text) {
 	if(text.equals(this.text.text))
 	    return;
 	this.text.dispose();
-	this.text = f.render(texts = text, col);
+	this.text = renderLabel(texts = text,col);
 	resize(this.text.sz());
     }
 
@@ -82,13 +147,15 @@ public class Label extends Widget {
 	if(color.equals(col))
 	    return;
 	this.text.dispose();
-	this.text = f.render(texts, col = color);
+	this.text = renderLabel(texts,col = color);
 	resize(this.text.sz());
     }
 
     public void dispose() {
 	super.dispose();
 	this.text.dispose();
+	if(ink != null)
+	    ink.dispose();
     }
 
     public void uimsg(String msg, Object... args) {

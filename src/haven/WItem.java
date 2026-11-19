@@ -39,6 +39,10 @@ import static haven.Inventory.sqsz;
 public class WItem extends Widget implements DTarget {
     public static final Resource missing = Resource.local().loadwait("gfx/invobjs/missing");
     public final GItem item;
+    private final hearthborn.QualityOverlay qualityOverlay = new hearthborn.QualityOverlay();
+    private final hearthborn.ui.ProcessItemOverlay processOverlay=new hearthborn.ui.ProcessItemOverlay();
+    private final hearthborn.ItemCondition condition = new hearthborn.ItemCondition();
+    private final hearthborn.ui.ClaimPresenceOverlay claimPresence = new hearthborn.ui.ClaimPresenceOverlay();
     private Resource cspr = null;
     private Message csdt = Message.nil;
 
@@ -47,7 +51,22 @@ public class WItem extends Widget implements DTarget {
 	this.item = item;
     }
 
+    public Coord parentpos(Widget in){
+        if(parent instanceof Inventory&&in!=this)
+            return parent.parentpos(in,hearthborn.inventory.InventoryScale.size(c));
+        return super.parentpos(in);
+    }
+
+    private final hearthborn.ui.StudyOverlay studyOverlay = new hearthborn.ui.StudyOverlay();
+    private final hearthborn.ui.MeterPercent progress = new hearthborn.ui.MeterPercent();
+    private final hearthborn.cheese.CheeseCountdown cheeseTime=new hearthborn.cheese.CheeseCountdown();
+    private long studyTooltipSecond = -1;
     public void drawmain(GOut g, GSprite spr) {
+	if(hearthborn.ui.UiTheme.light()) {
+	    GOut shadow = g.reclip(UI.scale(1, 1), g.sz());
+	    shadow.chcolor(hearthborn.ui.UiTheme.EDGE);
+	    spr.draw(shadow);
+	}
 	spr.draw(g);
     }
 
@@ -72,7 +91,7 @@ public class WItem extends Widget implements DTarget {
     }
 
     public class LongTip extends ItemTip {
-	public LongTip(List<ItemInfo> info) {super(info, ItemInfo.longtip(info));}
+	public LongTip(List<ItemInfo> info) {super(info, hearthborn.l10n.TooltipText.render(() -> ItemInfo.longtip(info)));}
     }
 
     private double hoverstart;
@@ -93,19 +112,16 @@ public class WItem extends Widget implements DTarget {
 	List<ItemInfo> info = item.info();
 	if(info.size() < 1)
 	    return(null);
+        if(hearthborn.ui.StudyProgress.isStudy(item)) {
+            long second = (long)Utils.rtime();
+            if(second != studyTooltipSecond) { longtip = null; studyTooltipSecond = second; }
+        }
 	if(info != ttinfo) {
 	    shorttip = longtip = null;
 	    ttinfo = info;
 	}
-	if(now - hoverstart < 1.0) {
-	    if(shorttip == null)
-		shorttip = new ShortTip(info);
-	    return(shorttip);
-	} else {
-	    if(longtip == null)
-		longtip = new LongTip(info);
-	    return(longtip);
-	}
+        if(longtip == null)longtip=new LongTip(info);
+        return longtip;
     }
 
     private List<ItemInfo> info() {return(item.info());}
@@ -113,7 +129,8 @@ public class WItem extends Widget implements DTarget {
     public final AttrCache<GItem.InfoOverlay<?>[]> itemols = new AttrCache<>(this::info, info -> {
 	    ArrayList<GItem.InfoOverlay<?>> buf = new ArrayList<>();
 	    for(ItemInfo inf : info) {
-		if(inf instanceof GItem.OverlayInfo)
+		if(inf instanceof GItem.OverlayInfo && !hearthborn.ItemCondition.replaces(inf,info) &&
+		   !hearthborn.QualityOverlay.replaces(inf,info))
 		    buf.add(GItem.InfoOverlay.create((GItem.OverlayInfo<?>)inf));
 	    }
 	    GItem.InfoOverlay<?>[] ret = buf.toArray(new GItem.InfoOverlay<?>[0]);
@@ -142,7 +159,10 @@ public class WItem extends Widget implements DTarget {
 	}
     }
 
-    public void draw(GOut g) {
+    public void draw(GOut g) {draw(g,true);}
+    private double inventoryZoom(){return hearthborn.inventory.InventoryScale.zoomOf(this);}
+
+    public void draw(GOut g,boolean showQuality) {
 	GSprite spr = item.spr();
 	if(spr != null) {
 	    Coord sz = spr.sz();
@@ -154,25 +174,72 @@ public class WItem extends Widget implements DTarget {
 	    GItem.InfoOverlay<?>[] ols = itemols.get();
 	    if(ols != null) {
 		for(GItem.InfoOverlay<?> ol : ols)
-		    ol.draw(g);
+		    if(!(ol.inf instanceof GItem.NumberInfo))
+			ol.draw(g);
 	    }
-	    Double meter = (item.meter > 0) ? Double.valueOf(item.meter / 100.0) : itemmeter.get();
-	    if((meter != null) && (meter > 0)) {
-		g.chcolor(255, 255, 255, 64);
-		Coord half = sz.div(2);
-		g.prect(half, half.inv(), half, meter * Math.PI * 2);
-		g.chcolor();
+	    Double infoMeter = itemmeter.get();
+	    hearthborn.ui.ItemMeter.info(item, infoMeter);
+	    Double meter = hearthborn.ui.ItemMeter.shown(item, hearthborn.ui.ItemMeter.cooking(this));
+            if(!hearthborn.ui.ProductionSettings.showProgress(this))meter=null;
+            boolean process=processOverlay.draw(g,this,sz,meter==null?0:meter);
+            if(process){
+                qualityOverlay.drawCorner(g,item,hearthborn.ui.EquipmentStrip.SCALE/inventoryZoom());
+            }else{
+	    if(studyOverlay.draw(g, item, sz))
+		progress.draw(g, sz.div(2), 0);
+	    else
+		progress.draw(g, sz.div(2), meter == null ? 0 : meter, !hearthborn.ui.MeterPercent.bare(getparent(Window.class)) && !hearthborn.ui.MeterPercent.egg(item));
+            cheeseTime.draw(g,this,sz.div(2),meter==null?0:meter);
+            if(showQuality)qualityOverlay.drawCorner(g,item,hearthborn.ui.EquipmentStrip.SCALE/inventoryZoom());
+            }
+	    if(ols != null) {
+		for(GItem.InfoOverlay<?> ol : ols)
+		    if(ol.inf instanceof GItem.NumberInfo && !GItem.NumberInfo.gildingClass(ol.inf.getClass().getName()))
+			ol.draw(g);
 	    }
+	    condition.draw(g, item, sz, hearthborn.ui.EquipmentStrip.SCALE / inventoryZoom());
+	    if(ols != null) {
+		for(GItem.InfoOverlay<?> ol : ols)
+		    if(GItem.NumberInfo.gildingClass(ol.inf.getClass().getName()))
+			ol.draw(g);
+	    }
+            claimPresence.draw(g,item,sz);
 	} else {
 	    g.image(missing.layer(Resource.imgc).tex(), Coord.z, sz);
 	}
+        if(hearthborn.ui.GlobalCommands.ItemFilter.active()) {
+            /* The items that do not match are dimmed, the ones that do get a gold frame, so the hits stand out in a full inventory. */
+            if(hearthborn.ui.GlobalCommands.ItemFilter.dim(item)){g.chcolor(0,0,0,205);g.frect(Coord.z,sz);g.chcolor();}
+            else {g.chcolor(255,205,70,255);g.rect(Coord.z,sz);g.rect(Coord.of(1,1),sz.sub(2,2));g.chcolor();}
+        }
+        hearthborn.inventory.ContainerOverview.highlight(g,this);
+    }
+
+    @Override
+    public void dispose() {
+	qualityOverlay.dispose();
+        processOverlay.dispose();
+        claimPresence.dispose();
+	condition.dispose();
+        studyOverlay.dispose();
+	progress.dispose();
+        cheeseTime.dispose();
+	super.dispose();
     }
 
     public boolean mousedown(MouseDownEvent ev) {
+        if(ev.b==1 && hearthborn.storage.ContainerContents.pick(this))return true;
+        if(ev.b==1 && hearthborn.quality.QualityRoster.pick(this))return true;
+        if(hearthborn.ui.StudyProgress.locked(this)) return true;
+        if(hearthborn.inventory.InventoryActions.transferMatches(ui.modflags()) && (ev.b==1 || ev.b==3) &&
+            hearthborn.inventory.InventoryActions.transferSame(this,ev.b==3)) return true;
 	if(ev.b == 1) {
+	    /* Alt+click: the actions that use this item, in the action palette. */
+	    if(ui.modflags() == UI.MOD_META && hearthborn.ui.ActionBrowser.searchByItem(getparent(GameUI.class), item, ev.c)) return(true);
 	    if(ui.modshift) {
 		int n = ui.modctrl ? -1 : 1;
-		item.wdgmsg("transfer", ev.c, n);
+                if(!hearthborn.inventory.BagTransfers.transfer(this,java.util.Collections.singletonList(this)))
+                    hearthborn.inventory.InventoryActions.transfer(this,ev.c,n);
 	    } else if(ui.modctrl) {
 		int n = ui.modmeta ? -1 : 1;
 		item.wdgmsg("drop", ev.c, n);
@@ -197,7 +264,7 @@ public class WItem extends Widget implements DTarget {
     }
 
     public boolean mousehover(MouseHoverEvent ev, boolean on) {
-	if(on && (item.contents != null)) {
+	if(on && (item.contents != null) && hearthborn.ui.ContainerPreviews.allowed(ui)) {
 	    item.hovering(this);
 	    return(true);
 	}

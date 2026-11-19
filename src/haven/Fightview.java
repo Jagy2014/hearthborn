@@ -314,19 +314,31 @@ public class Fightview extends Widget {
 	    rel.ip = Utils.iv(args[2]);
 	    rel.oip = Utils.iv(args[3]);
             lsrel.addFirst(rel);
+            GameUI navigationUI=getparent(GameUI.class);if(navigationUI!=null && navigationUI.map!=null)hearthborn.navigation.Walking.cancel(navigationUI.map);
+	    hearthborn.combat.FighterMark.track(rel);
+	    if((rel.gst == 0) && hearthborn.combat.CombatPrefs.peace())
+		wdgmsg("give", (int)rel.gobid, 1);
 	    updrel();
             return;
         } else if(msg == "del") {
             Relation rel = getrel(Utils.uiv(args[0]));
+	    hearthborn.combat.FighterMark.drop(rel.gobid);
+	    boolean again = hearthborn.combat.CombatPrefs.reaggro();
+	    long againId = rel.gobid;
 	    rel.remove();
             lsrel.remove(rel);
 	    if(rel == current)
 		setcur(null);
 	    updrel();
+	    if(again)
+		hearthborn.combat.FighterMark.reaggro(againId);
             return;
         } else if(msg == "upd") {
             Relation rel = getrel(Utils.uiv(args[0]));
+	    int was = rel.gst;
 	    rel.give(Utils.iv(args[1]));
+	    if((was == 2) && (rel.gst == 0) && hearthborn.combat.CombatPrefs.peace())
+		wdgmsg("give", (int)rel.gobid, 1);
 	    rel.ip = Utils.iv(args[2]);
 	    rel.oip = Utils.iv(args[3]);
             return;

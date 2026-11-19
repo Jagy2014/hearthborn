@@ -168,6 +168,12 @@ public class GOut {
 	Area clip = Area.corn(Coord.of(ul.x, root.br.y - br.y), Coord.of(br.x, root.br.y - ul.y));
 	if(!clip.positive())
 	    return;
+        States.Viewport viewport=def2d.get(States.viewport);
+        if(viewport!=null && !viewport.area.sz().equals(root.sz())) {
+            Coord physical=viewport.area.sz(),logical=root.sz();
+            clip=Area.corn(hearthborn.ui.LiveScale.point(clip.ul,logical,physical).add(viewport.area.ul),
+                hearthborn.ui.LiveScale.point(clip.br,logical,physical).add(viewport.area.ul));
+        }
 	usestate(new States.Scissor(clip));
 	Coord sz = tex.sz();
 	float x = c.x + tx.x, y = c.y + tx.y;

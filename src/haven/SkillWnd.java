@@ -79,7 +79,7 @@ public class SkillWnd extends Widget {
 	    buf.append("$img[self]\n\n");
 	    buf.append("$b{$font[serif,16]{" + res.flayer(Resource.tooltip).t + "}}\n\n\n");
 	    if(cost > 0)
-		buf.append("Cost: " + cost + "\n\n");
+		buf.append(hearthborn.L10n.format("Cost: %s", Utils.thformat(cost)) + "\n\n");
 	    buf.append(res.flayer(Resource.pagina).text);
 	    return(resdoc(res, buf.toString()));
 	}
@@ -141,7 +141,7 @@ public class SkillWnd extends Widget {
 	    buf.append("$img[self]\n\n");
 	    buf.append("$b{$font[serif,16]{" + res.flayer(Resource.tooltip).t + "}}\n\n\n");
 	    if(score > 0)
-		buf.append("Experience points: " + Utils.thformat(score) + "\n\n");
+		buf.append(hearthborn.L10n.format("Experience points: %s", Utils.thformat(score)) + "\n\n");
 	    buf.append(res.flayer(Resource.pagina).text);
 	    return(resdoc(res, buf.toString()));
 	}
@@ -209,15 +209,15 @@ public class SkillWnd extends Widget {
 	public Credo pcr = null;
 	public int pcl, pclt, pcql, pcqlt, pqid, cost;
 	public Credo sel = null;
-	private final Img pcrc, ncrc, ccrc;
+	private final Widget pcrc, ncrc, ccrc;
 	private final Button pbtn, qbtn;
 	private boolean loading = false;
 
 	public CredoGrid(Coord sz) {
 	    super(sz);
-	    pcrc = new Img(GridList.dcatf.render("Pursuing").tex());
-	    ncrc = new Img(GridList.dcatf.render("Credos Available").tex());
-	    ccrc = new Img(GridList.dcatf.render("Credos Acquired").tex());
+	    pcrc = hearthborn.ui.UiTheme.groupHeading(hearthborn.L10n.text("label", "Pursuing"));
+	    ncrc = hearthborn.ui.UiTheme.groupHeading(hearthborn.L10n.text("label", "Credos Available"));
+	    ccrc = hearthborn.ui.UiTheme.groupHeading(hearthborn.L10n.text("label", "Credos Acquired"));
 	    pbtn = new Button(btnw, "Pursue", false) {
 		    public void click() {
 			if(sel != null)
@@ -404,18 +404,19 @@ public class SkillWnd extends Widget {
     public SkillWnd() {
 	Widget prev;
 
-	prev = add(CharWnd.settip(new Img(catf.render("Lore & Skills").tex()), "gfx/hud/chr/tips/skills"), Coord.z);
-	RichTextBox info = add(new RichTextBox(new Coord(attrw, height), ifnd, null), prev.pos("bl").adds(5, 0).add(wbox.btloff()));
+	prev = add(CharWnd.settip(hearthborn.ui.UiTheme.heading(hearthborn.L10n.text("label", "Lore & Skills")), "gfx/hud/chr/tips/skills"), Coord.z);
+	hearthborn.ui.SkillDescription info = add(new hearthborn.ui.SkillDescription(new Coord(attrw + UI.scale(120), height), ifnd.derive(java.awt.font.TextAttribute.SIZE, UI.scale(12f)).aa(true)), prev.pos("bl").adds(5, 0).add(wbox.btloff()));
 	info.bg = new Color(0, 0, 0, 128);
-	Frame.around(this, Collections.singletonList(info));
+	info.frame(Frame.around(this, Collections.singletonList(info)));
 
-	prev = add(new Img(catf.render("Entries").tex()), width, 0);
+	prev = add(hearthborn.ui.UiTheme.heading(hearthborn.L10n.text("label", "Entries")), width + UI.scale(120), 0);
 	Tabs lists = new Tabs(prev.pos("bl").adds(5, 0), new Coord(attrw + wbox.bisz().x, 0), this);
 	int gh = UI.scale(241);
 	Tabs.Tab sktab = lists.add();
 	{
 	    Frame f = sktab.add(new Frame(new Coord(lists.sz.x, UI.scale(192)), false), 0, 0);
 	    int y = f.sz.y + UI.scale(5);
+	    panes.add(f);
 	    skg = f.addin(new SkillGrid(Coord.z) {
 		    public void change(Skill sk) {
 			Skill p = sel;
@@ -428,13 +429,15 @@ public class SkillWnd extends Widget {
 			    info.set(() -> null);
 		    }
 		});
+	    inners.add(skg);
 	    Widget bf = sktab.adda(new Frame(new Coord(f.sz.x, UI.scale(44)), false), f.c.x, gh, 0.0, 1.0);
-	    Button bbtn = sktab.adda(new Button(UI.scale(50), "Buy").action(() -> {
+	    priceFrame = (Frame)bf;
+	    Button bbtn = buyButton = sktab.adda(new Button(UI.scale(50), "Buy").action(() -> {
 			if (skg.sel != null)
 			    skill.wdgmsg("buy", skg.sel.nm);
 	    }), bf.pos("ibr").subs(10, 0).y(bf.pos("mid").y), 1.0, 0.5);
 	    Label clbl = sktab.adda(new Label("Cost:"), bf.pos("iul").adds(10, 0).y(bf.pos("mid").y), 0, 0.5);
-	    sktab.adda(new RLabel<Pair<Integer, Integer>>(() -> new Pair<>(((skg.sel == null) || skg.sel.has) ? null : skg.sel.cost, this.chr.exp),
+	    priceLabel = sktab.adda(new RLabel<Pair<Integer, Integer>>(() -> new Pair<>(((skg.sel == null) || skg.sel.has) ? null : skg.sel.cost, this.chr.exp),
 							  n -> (n.a == null) ? "N/A" : String.format("%,d / %,d LP", n.a, n.b),
 							  n -> ((n.a != null) && (n.a > n.b)) ? debuff : Color.WHITE),
 		       bbtn.pos("ul").subs(10, 0).y(bf.pos("mid").y), 1.0, 0.5);
@@ -443,6 +446,7 @@ public class SkillWnd extends Widget {
 	Tabs.Tab credos = lists.add();
 	{
 	    Frame f = credos.add(new Frame(new Coord(lists.sz.x, gh), false), 0, 0);
+	    panes.add(f);
 	    this.credos = f.addin(new CredoGrid(Coord.z) {
 		    public void change(Credo cr) {
 			Credo p = sel;
@@ -460,6 +464,7 @@ public class SkillWnd extends Widget {
 	Tabs.Tab exps = lists.add();
 	{
 	    Frame f = exps.add(new Frame(new Coord(lists.sz.x, gh), false), 0, 0);
+	    panes.add(f);
 	    this.exps = f.addin(new ExpGrid(Coord.z) {
 		    public void change(Experience exp) {
 			Experience p = sel;
@@ -473,12 +478,45 @@ public class SkillWnd extends Widget {
 		    }
 		});
 	}
+	inners.add(this.credos);
+	inners.add(this.exps);
 	lists.pack();
+	this.lists = lists;
 	addhlp(lists.c.add(0, lists.sz.y + UI.scale(5)), UI.scale(5), lists.sz.x,
-	      lists.new TabButton(0, "Skills", sktab),
-	      lists.new TabButton(0, "Credos", credos),
-	      lists.new TabButton(0, "Lore",   exps));
+	      tabButtons[0] = lists.new TabButton(0, "Skills", sktab),
+	      tabButtons[1] = lists.new TabButton(0, "Credos", credos),
+	      tabButtons[2] = lists.new TabButton(0, "Lore",   exps));
 	pack();
+    }
+
+    private Tabs lists;
+    private final List<Frame> panes = new ArrayList<>();
+    private final List<Widget> inners = new ArrayList<>();
+    private Frame priceFrame;
+    private Button buyButton;
+    private Widget priceLabel;
+    private final Button[] tabButtons = new Button[3];
+
+    /** Stretch the entry lists, price bar and tab buttons so the tab fills a wider character window. */
+    public void fitWidth(int width) {
+	int extra = width - sz.x;
+	if(extra <= 0)
+	    return;
+	Coord grow = Coord.of(extra, 0);
+	for(int i = 0; i < panes.size(); i++) {
+	    panes.get(i).resize(panes.get(i).sz.add(grow));
+	    inners.get(i).resize(panes.get(i).inner());
+	}
+	priceFrame.resize(priceFrame.sz.add(grow));
+	buyButton.move(buyButton.c.add(grow));
+	priceLabel.move(priceLabel.c.add(grow));
+	lists.resize(lists.sz.add(grow));
+	int each = (lists.sz.x - 2 * UI.scale(5)) / 3;
+	for(int i = 0; i < tabButtons.length; i++) {
+	    tabButtons[i].resizew(each);
+	    tabButtons[i].move(Coord.of(lists.c.x + i * (lists.sz.x - each) / 2, tabButtons[i].c.y));
+	}
+	resize(sz.add(grow));
     }
 
     private List<Skill> decsklist(Object[] args, int a, boolean has) {

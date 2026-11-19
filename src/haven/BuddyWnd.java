@@ -136,14 +136,13 @@ public class BuddyWnd extends Widget implements Iterable<BuddyWnd.Buddy> {
 	    wdgmsg("notes", id, buf.fin());
 	}
 
-	private void chstatus(int status) {
-	    online = status;
-	    GameUI gui = getparent(GameUI.class);
-	    if(gui != null) {
-		if(status == 1)
-		    ui.msg(String.format("%s is now online.", name));
-	    }
-	}
+        private void chstatus(int status) {
+            int previous=online;online=status;
+            if(previous!=status && previous>=0 && status>=0 && getparent(GameUI.class)!=null) {
+                String format=hearthborn.L10n.tr(status>0?"%s is now online.":"%s is now offline.");
+                ui.msg(String.format(format,name),gc[Utils.clip(group,0,gc.length-1)],UI.InfoMessage.sfx);
+            }
+        }
 
 	private Text rname = null;
 	public Text rname() {
@@ -402,9 +401,7 @@ public class BuddyWnd extends Widget implements Iterable<BuddyWnd.Buddy> {
 	}
 
 	protected void drawbg(GOut g) {
-	    g.chcolor(0, 0, 0, 128);
-	    g.frect(Coord.z, sz);
-	    g.chcolor();
+	    hearthborn.ui.UiTheme.panel(g, sz);
 	}
 
 	protected void drawbg(GOut g, Buddy item, int idx, Area area) {
@@ -453,7 +450,7 @@ public class BuddyWnd extends Widget implements Iterable<BuddyWnd.Buddy> {
 	super(new Coord(width, 0));
 	setfocustab(true);
 	Widget prev;
-        prev = add(new Img(CharWnd.catf.render("Kin").tex()));
+        prev = add(hearthborn.ui.UiTheme.heading("Kin"));
 
 	bl = add(new BuddyList(Coord.of(sz.x - Window.wbox.bisz().x, UI.scale(140))), prev.pos("bl").add(Window.wbox.btloff()));
 	prev = Frame.around(this, Collections.singletonList(bl));
@@ -530,6 +527,11 @@ public class BuddyWnd extends Widget implements Iterable<BuddyWnd.Buddy> {
 	wdgmsg("pname", name);
 	pname.settext(name);
 	pname.commit();
+    }
+
+    public String presentationName() {
+	String name = pname.text();
+	return((name == null || name.isEmpty()) ? null : name);
     }
 
     private void setcmp(Comparator<Buddy> cmp) {

@@ -249,8 +249,9 @@ public class CocoaContext implements Providers.Factory<Toolkit> {
 	public class AppDelegate implements AppKit.NSApplicationDelegate {
 	    public int applicationShouldTerminate(NSApplication app) {
 		synchronized(windows) {
+		    /* Cmd+Q is a question, not an order: the program asks the player before it ends. */
 		    for(CocoaWindow wnd : windows)
-			wnd.callback(new CloseRequest() {});
+			wnd.callback(new QuitRequest() {});
 		}
 		return(AppKit.NSTerminateCancel);
 	    }
@@ -319,8 +320,17 @@ public class CocoaContext implements Providers.Factory<Toolkit> {
 	    return(new CocoaCursor(cg.CGImageCreate(img), hs));
 	}
 
+	/* Set when the window changed size; the drawable then has to be re-synchronized with the view. */
+	private volatile boolean glstale = true;
+	private long glupdated = 0;
 	private void setglview(NSView view) {
-	    if(view != curglview) {
+	    long now = System.nanoTime();
+	    /* This runs for every submission of every frame. The context only needs rebinding and updating when the
+	     * view changed, the window was resized, or (rarely, to follow display changes) after a short interval;
+	     * doing it each time costs a large share of the render thread. */
+	    if((view != curglview) || glstale || ((now - glupdated) > 500_000_000L)) {
+		glstale = false;
+		glupdated = now;
 		ctx.clearCurrentContext();
 		// ctx.clearDrawable();
 		if(view != null) {
@@ -328,7 +338,7 @@ public class CocoaContext implements Providers.Factory<Toolkit> {
 		    ctx.makeCurrentContext();
 		    ctx.update();
 		}
-		view = curglview;
+		curglview = view;
 	    }
 	}
 
@@ -365,6 +375,14 @@ public class CocoaContext implements Providers.Factory<Toolkit> {
 	    return(new CocoaMouseBtn(num));
 	}
 
+    public static int modifierMask(int code){
+        switch(code){
+        case kVK_Shift:case kVK_RightShift:return AppKit.NSShiftKeyMask;
+        case kVK_Control:case kVK_RightControl:return AppKit.NSControlKeyMask;
+        case kVK_Option:case kVK_RightOption:return AppKit.NSAlternateKeyMask;
+        default:return 0;
+        }
+    }
 	public static Set<Key.Mod> modflags(int flags) {
 	    Set<Key.Mod> ret = EnumSet.noneOf(Key.Mod.class);
 	    if((flags & AppKit.NSShiftKeyMask) != 0)
@@ -759,6 +777,7 @@ public class CocoaContext implements Providers.Factory<Toolkit> {
 
 		public void windowDidResize(NSNotification notification) {
 		    size = view.convertRectToBacking(view.bounds()).size().c();
+		    glstale = true;
 		}
 	    }
 
@@ -827,6 +846,12 @@ public class CocoaContext implements Providers.Factory<Toolkit> {
 		public void keyUp(NSEvent event) {
 		    callback(new CocoaKeyUpEvent(event));
 		}
+                public void flagsChanged(NSEvent event){
+                    int mask=modifierMask(event.keyCode());if(mask==0)return;
+                    if((event.modifierFlags()&mask)!=0)callback(new CocoaKeyDownEvent(event,""));
+                    else callback(new CocoaKeyUpEvent(event));
+                }
+
 
 		public void insertText(String string) {
 		    if(textbuf != null) {
@@ -1077,8 +1102,10 @@ public class CocoaContext implements Providers.Factory<Toolkit> {
 	    private void updstate(State st) {
 		if(nsw.isMiniaturized() && (st != State.MINIMIZED))
 		    nsw.deminiaturize();
-		if(((nsw.styleMask() & AppKit.NSWindowStyleMaskFullScreen) != 0) && (st != State.EXCLUSIVE))
+		if(((nsw.styleMask() & AppKit.NSWindowStyleMaskFullScreen) != 0) && (st != State.EXCLUSIVE)) {
 		    nsw.toggleFullScreen();
+                    if(st==State.NORMAL)return;
+                }
 		switch(st) {
 		case MAXIMIZED: nsw.performZoom(); break;
 		case NORMAL: if(nsw.isZoomed()) nsw.zoom(); break;
@@ -1188,6 +1215,8 @@ public class CocoaContext implements Providers.Factory<Toolkit> {
 
 	    public State state() {
 		return(mainrun(() -> {
+                    if(nsw.isMiniaturized())return State.MINIMIZED;
+                    if((nsw.styleMask() & AppKit.NSWindowStyleMaskFullScreen) != 0)return State.EXCLUSIVE;
 		    if(nsw.isZoomed())
 			return(State.MAXIMIZED);
 		    return(State.NORMAL);
@@ -1338,9 +1367,20 @@ public class CocoaContext implements Providers.Factory<Toolkit> {
     }
 
     public static final Map<Integer, Key.Std> stdvsyms = Utils.<Integer, Key.Std>map()
+	.put(kVK_ANSI_A, A).put(kVK_ANSI_S, S).put(kVK_ANSI_D, D).put(kVK_ANSI_F, F).put(kVK_ANSI_H, H).put(kVK_ANSI_G, G)
+	.put(kVK_ANSI_Z, Z).put(kVK_ANSI_X, X).put(kVK_ANSI_C, C).put(kVK_ANSI_V, V).put(kVK_ANSI_B, B)
+	.put(kVK_ANSI_Q, Q).put(kVK_ANSI_W, W).put(kVK_ANSI_E, E).put(kVK_ANSI_R, R).put(kVK_ANSI_Y, Y).put(kVK_ANSI_T, T)
+	.put(kVK_ANSI_1, N1).put(kVK_ANSI_2, N2).put(kVK_ANSI_3, N3).put(kVK_ANSI_4, N4).put(kVK_ANSI_6, N6).put(kVK_ANSI_5, N5)
+	.put(kVK_ANSI_Equal, EQUALS).put(kVK_ANSI_9, N9).put(kVK_ANSI_7, N7).put(kVK_ANSI_Minus, MINUS).put(kVK_ANSI_8, N8).put(kVK_ANSI_0, N0)
+	.put(kVK_ANSI_RightBracket, RIGHTBRACKET).put(kVK_ANSI_O, O).put(kVK_ANSI_U, U).put(kVK_ANSI_LeftBracket, LEFTBRACKET)
+	.put(kVK_ANSI_I, I).put(kVK_ANSI_P, P).put(kVK_ANSI_L, L).put(kVK_ANSI_J, J).put(kVK_ANSI_Quote, QUOTE)
+	.put(kVK_ANSI_K, K).put(kVK_ANSI_Semicolon, SEMICOLON).put(kVK_ANSI_Backslash, BACKSLASH)
+	.put(kVK_ANSI_Comma, COMMA).put(kVK_ANSI_Slash, SLASH).put(kVK_ANSI_N, N).put(kVK_ANSI_M, M).put(kVK_ANSI_Period, PERIOD)
+	.put(kVK_ANSI_Grave, BACKQUOTE)
+
 	.put(kVK_ANSI_KeypadDecimal, NP_DEC)   .put(kVK_ANSI_KeypadMultiply, NP_MUL)   .put(kVK_ANSI_KeypadPlus, NP_ADD)
 	.put(kVK_ANSI_KeypadDivide, NP_DIV)    .put(kVK_ANSI_KeypadMinus, NP_SUB)      .put(kVK_ANSI_Keypad0, NP0)
-	.put(kVK_ANSI_Keypad1, NP1)            .put(kVK_ANSI_Keypad2, NP2)             .put(kVK_ANSI_Keypad2, NP2)
+	.put(kVK_ANSI_Keypad1, NP1)            .put(kVK_ANSI_Keypad2, NP2)             .put(kVK_ANSI_Keypad3, NP3)
 	.put(kVK_ANSI_Keypad4, NP4)            .put(kVK_ANSI_Keypad5, NP5)             .put(kVK_ANSI_Keypad6, NP6)
 	.put(kVK_ANSI_Keypad7, NP7)            .put(kVK_ANSI_Keypad8, NP8)             .put(kVK_ANSI_Keypad9, NP9)
 

@@ -25,6 +25,7 @@
  */
 
 package haven;
+import hearthborn.navigation.Walking;
 
 import haven.render.*;
 import haven.iosys.tk.*;
@@ -32,49 +33,135 @@ import java.util.function.*;
 
 public class OptWnd extends Window {
     public final Panel main;
+    /** False on the login screen, where windows that belong to a running game cannot open. */
+    public final boolean ingame;
     public Panel current;
 
+    /** The scrolling pane of the sidebar layout, or null in the classic one-panel-at-a-time window. */
+    public Scrollport pane;
+    private hearthborn.ui.SettingsSearch search;
+
     public void chpanel(Panel p) {
+        chcap(p==main || p.sectionTitle==null || hearthborn.ui.SettingsSidebar.enabled()?hearthborn.L10n.tr("Options"):
+            hearthborn.L10n.tr("Options")+" / "+hearthborn.L10n.text("button",p.sectionTitle));
+        if(pane != null) {
+            showInPane(p);
+            return;
+        }
 	if(current != null)
 	    current.hide();
 	(current = p).show();
 	cresize(p);
     }
 
+    /** Sidebar layout: the main panel stays put as the section list, and any other panel fills the pane. */
+    private void showInPane(Panel p) {
+        // The section list is the main panel, which starts hidden like every panel; it stays shown for good.
+        main.show();
+        if(p == main) {
+            // Reopening shows the section that was open, or the first one.
+            if(current != null && current != main) p = current;
+            else {
+                // The first section of the list as it is shown, from the top.
+                PButton top = null;
+                for(Widget w = main.child; w != null; w = w.next)
+                    if(w instanceof PButton && !((PButton)w).title().equals("Back") && (top == null || w.c.y < top.c.y)) top = (PButton)w;
+                if(top == null) return;
+                p = top.panel();
+            }
+        }
+        if(current != null && current != main && current != p) current.hide();
+        if(p.parent != pane.cont) {
+            if(p.parent != null) p.unlink();
+            pane.cont.add(p, Coord.z);
+        }
+        current = p;
+        // The list shows which section is open; a sub-section keeps the mark of the section it came from.
+        boolean listed = false;
+        for(Widget w = main.child; w != null; w = w.next)
+            if(w instanceof PButton && ((PButton)w).actual == p) listed = true;
+        if(listed)
+            for(Widget w = main.child; w != null; w = w.next)
+                if(w instanceof PButton) ((PButton)w).selected(((PButton)w).actual == p);
+        // The way back to the section list is the list itself.
+        for(Widget w = p.child; w != null; w = w.next)
+            if(w instanceof PButton && ((PButton)w).title().equals("Back") && ((PButton)w).actual == main) w.hide();
+        p.fit(pane.cont.sz.x);
+        p.show();
+        pane.bar.val = 0;
+        pane.cont.sy = 0;
+        ((Scrollport.Scrollcont)pane.cont).update();
+    }
+
     public void cresize(Widget ch) {
+	if(pane != null) {
+	    if(ch == current) pane.cont.update();
+	    return;
+	}
 	if(ch == current) {
-	    Coord cc = this.c.add(this.sz.div(2));
 	    pack();
-	    move(cc.sub(this.sz.div(2)));
+            centerOnScreen();
 	}
     }
+
+    private void centerOnScreen() {
+        if(parent!=null)move(Coord.of(Math.max(0,(parent.sz.x-sz.x)/2),Math.max(0,(parent.sz.y-sz.y)/2)));
+    }
+    protected void added(){
+        super.added();
+        if(pane != null && parent != null) {
+            // A small game window gets a narrower pane, never a sheet wider than the screen.
+            int over = sz.x - (parent.sz.x - UI.scale(40));
+            if(over > 0) {
+                hearthborn.ui.SettingsSidebar.narrow(this, search, Math.max(UI.scale(420), pane.sz.x - over));
+                pack();
+            }
+        }
+        centerOnScreen();
+    }
+    public void presize(){if(visible())centerOnScreen();}
 
     public class PButton extends Button {
 	public final Supplier<Panel> tgt;
 	public final int key;
 	private Panel actual = null;
+        private final String sectionTitle;
 
 	public PButton(int w, String title, int key, Supplier<Panel> tgt) {
 	    super(w, title, false);
+            this.sectionTitle=title;
 	    this.tgt = tgt;
 	    this.key = key;
+	    if(title.equals("Back")) look(Look.OUTLINE);
 	}
 
 	public PButton(int w, String title, int key, Panel tgt) {
 	    super(w, title, false);
+            this.sectionTitle=title;
 	    this.tgt = null;
 	    this.key = key;
 	    this.actual = tgt;
+	    if(title.equals("Back")) look(Look.OUTLINE);
+	}
+
+	public String title() {
+	    return sectionTitle;
+	}
+
+	/** The panel this button opens, built on first use. */
+	public Panel panel() {
+	    if(actual == null)
+		actual = (pane != null ? pane.cont : OptWnd.this).add(tgt.get(), Coord.z);
+            if(actual.sectionTitle==null && !sectionTitle.equals("Back"))actual.sectionTitle=sectionTitle;
+	    return actual;
 	}
 
 	public void click() {
-	    if(actual == null)
-		actual = OptWnd.this.add(tgt.get(), Coord.z);
-	    chpanel(actual);
+	    chpanel(panel());
 	}
 
 	public boolean keydown(KeyDownEvent ev) {
-	    if((this.key != -1) && (ev.c == this.key)) {
+	    if((this.key != -1) && (ev.c == this.key) && !disabled()) {
 		click();
 		return(true);
 	    }
@@ -83,10 +170,51 @@ public class OptWnd extends Window {
     }
 
     public class Panel extends Widget {
+        public String sectionTitle;
 	public Panel() {
 	    visible = false;
 	    c = Coord.z;
 	}
+        private String[] resets;
+        private Widget resetButton;
+        /** Gives the panel a "Reset to defaults" button that forgets the saved values under these key prefixes. */
+        public Panel resettable(String... prefixes){resets=prefixes;return this;}
+        private void centerBack(){
+            for(Widget child:children())if(child instanceof PButton && ((PButton)child).sectionTitle.equals("Back"))child.move(Coord.of((sz.x-child.sz.x)/2,child.c.y));
+        }
+        private java.util.function.IntConsumer fitter;
+        /** Lets the panel lay itself out for the width of the pane it is shown in. */
+        public Panel fitting(java.util.function.IntConsumer fitter){this.fitter=fitter;return this;}
+        void fit(int width){if(fitter!=null)fitter.accept(width);}
+        public void pack(){
+            super.pack();
+            centerBack();
+            if(resets!=null){
+                for(Widget child:children())if(child instanceof PButton && ((PButton)child).sectionTitle.equals("Back")){
+                    if(resetButton==null)resetButton=add(hearthborn.ui.SettingsReset.control(UI.scale(390),()->sectionTitle,hearthborn.ui.SettingsReset.clearing(resets)),child.pos("bl").adds(0,6));
+                    else resetButton.move(Coord.of(resetButton.c.x,child.pos("bl").y+UI.scale(6)));
+                    super.pack();centerBack();
+                    resetButton.move(Coord.of(0,resetButton.c.y));
+                    break;
+                }
+            }
+        }
+        public <T extends Widget> T add(T child) {
+            hearthborn.ui.SettingsText.enlarge(child);
+            return super.add(child);
+        }
+        public <T extends Widget> T adda(T child, int x, int y, double ax, double ay) {
+            hearthborn.ui.SettingsText.enlarge(child);
+            return super.adda(child, x, y, ax, ay);
+        }
+        public Coord addhlp(Coord c, int pad, Widget... children) {
+            for(Widget child : children) hearthborn.ui.SettingsText.enlarge(child);
+            return super.addhlp(c, pad, children);
+        }
+        public int addhlp(Coord c, int pad, int w, Widget... children) {
+            for(Widget child : children) hearthborn.ui.SettingsText.enlarge(child);
+            return super.addhlp(c, pad, w, children);
+        }
     }
 
     private void error(String msg) {
@@ -112,6 +240,43 @@ public class OptWnd extends Window {
 		this.prefs = gprefs;
 		Widget prev;
 		int marg = UI.scale(5);
+		prev = add(new Label("Graphics profile"), Coord.z);
+		SDropBox<hearthborn.ui.EconomyMode.Profile, Widget> profile = add(new SDropBox<hearthborn.ui.EconomyMode.Profile, Widget>(UI.scale(200), UI.scale(72), UI.scale(24)) {
+			protected java.util.List<? extends hearthborn.ui.EconomyMode.Profile> items() {
+			    /* "Custom settings" is only offered while it describes the current state. */
+			    return(hearthborn.ui.EconomyMode.Profile.of(prefs) == hearthborn.ui.EconomyMode.Profile.CUSTOM
+				   ? java.util.Arrays.asList(hearthborn.ui.EconomyMode.Profile.values())
+				   : java.util.Arrays.asList(hearthborn.ui.EconomyMode.Profile.STANDARD, hearthborn.ui.EconomyMode.Profile.ECONOMY));
+			}
+			protected Widget makeitem(hearthborn.ui.EconomyMode.Profile value, int index, Coord size) {
+			    Widget row = new Widget(size);
+			    row.add(new Label(value.label), UI.scale(4, 2));
+			    return(row);
+			}
+			public void change(hearthborn.ui.EconomyMode.Profile value) {
+			    super.change(value);
+			    if(value == null || value == hearthborn.ui.EconomyMode.Profile.of(prefs))
+				return;
+			    try {
+				ui.setgprefs(prefs = value.apply(prefs));
+			    } catch(GSettings.SettingException e) {
+				error(e.getMessage());
+				return;
+			    }
+			    /* The new values are the same object the panel holds, so it would not rebuild by itself. */
+			    resetcf(ui);
+			}
+			public void draw(GOut g) {
+			    hearthborn.ui.EconomyMode.Profile now = hearthborn.ui.EconomyMode.Profile.of(prefs);
+			    if(this.sel != now)
+				super.change(now);
+			    super.draw(g);
+			}
+		    }, prev.pos("bl").adds(0, 2));
+		profile.change(hearthborn.ui.EconomyMode.Profile.of(prefs));
+		profile.settip("Standard: the default graphics values. Economy mode is for laptops with integrated graphics whose fans run at full speed: " +
+			       "no shadows, 30 FPS limit, reduced render scale and simple lighting. Every value can still be changed below.");
+		prev = profile;
 		prev = add(new CheckBox("Render shadows") {
 			{a = prefs.lshadow.val;}
 
@@ -125,8 +290,17 @@ public class OptWnd extends Window {
 			    }
 			    a = val;
 			}
-		    }, Coord.z);
-		prev = add(new Label("Render scale"), prev.pos("bl").adds(0, 5));
+		    }, prev.pos("bl").adds(0, 5));
+		prev = add(new CheckBox("Fullscreen").state(() -> ui.wnd.state()==Windeye.State.EXCLUSIVE).set(on -> {
+                ui.wnd.state(on?Windeye.State.EXCLUSIVE:Windeye.State.NORMAL);
+                Utils.setprefb("mainwnd/fullscreen",on);
+            }),prev.pos("bl").adds(0,5));
+            prev = add(new CheckBox("Smooth text (on Mac enable, on Windows disable)").state(hearthborn.UiFonts::smooth).set(value -> {
+                hearthborn.UiFonts.smooth(value);
+                ui.msg(hearthborn.L10n.tr("Text smoothing applies after you close the client window completely and start it again (logging out to the character screen is not enough)."));
+            }), prev.pos("bl").adds(0, 5));
+            prev.settip("Antialiases text so it looks less jagged. Turn it on for macOS and off for Windows. Applies after you close the client window completely and start it again; logging out to the character screen is not enough. Speech bubbles over characters are always smoothed.");
+            prev = add(new Label("Render scale"), prev.pos("bl").adds(0, 5));
 		{
 		    Label dpy = new Label("");
 		    final int steps = 4;
@@ -365,7 +539,7 @@ public class OptWnd extends Window {
 		    );
 		}
 		*/
-		add(new Button(UI.scale(200), "Reset to defaults", false).action(() -> {
+		add(hearthborn.ui.SettingsReset.control(UI.scale(390), () -> "Video settings", () -> {
 			    ui.setgprefs(GSettings.defaults());
 			    curcf.destroy();
 			    curcf = null;
@@ -408,6 +582,18 @@ public class OptWnd extends Window {
 			ui.audio.aui.setvolume(val / 1000.0);
 		    }
 		}, prev.pos("bl").adds(0, 2));
+	    prev.settip(hearthborn.L10n.tr("Button clicks and icon notification sounds."), true);
+	    prev = add(new Label(hearthborn.L10n.tr("Warning volume")), prev.pos("bl").adds(0, 5));
+	    prev = add(new HSlider(UI.scale(200), 0, 1000, 0) {
+		    protected void attach(UI ui) {
+			super.attach(ui);
+			val = (int)(ui.audio.warn.volume * 1000);
+		    }
+		    public void changed() {
+			ui.audio.warn.setvolume(val / 1000.0);
+		    }
+		}, prev.pos("bl").adds(0, 2));
+	    prev.settip(hearthborn.L10n.tr("Animal and other player warnings, and the horse whistle. This stays loud when Interface sound volume is turned down."), true);
 	    prev = add(new Label("In-game event volume"), prev.pos("bl").adds(0, 5));
 	    prev = add(new HSlider(UI.scale(200), 0, 1000, 0) {
 		    protected void attach(UI ui) {
@@ -426,6 +612,14 @@ public class OptWnd extends Window {
 		    }
 		    public void changed() {
 			ui.audio.amb.setvolume(val / 1000.0);
+		    }
+		}, prev.pos("bl").adds(0, 2));
+	    prev = add(new CheckBox("Background music").state(() -> Music.enabled).set(Music::enable), prev.pos("bl").adds(0, 15));
+	    prev.settip("The melody the server plays for some places and events. Turning it off stops the current piece.");
+	    prev = add(new Label("Music volume"), prev.pos("bl").adds(0, 5));
+	    prev = add(new HSlider(UI.scale(200), 0, 100, Music.volume()) {
+		    public void changed() {
+			Music.volume(val);
 		    }
 		}, prev.pos("bl").adds(0, 2));
 	    prev = add(new Label("Audio latency"), prev.pos("bl").adds(0, 15));
@@ -447,6 +641,7 @@ public class OptWnd extends Window {
 		prev.settip("Sets the size of the audio buffer. Smaller sizes are better, " +
 			    "but larger sizes can fix issues with broken sound.", true);
 	    }
+	    prev = hearthborn.ui.ChatSettings.add(this, prev, UI.scale(15));
 	    add(new PButton(UI.scale(200), "Back", 27, back), prev.pos("bl").adds(0, 30));
 	    pack();
 	}
@@ -454,14 +649,28 @@ public class OptWnd extends Window {
 
     public class InterfacePanel extends Panel {
 	public InterfacePanel(Panel back) {
-	    Widget prev = add(new Label("Interface scale (requires restart)"), 0, 0);
+	    Widget prev = add(new Label("Interface scale"), 0, 0);
 	    {
 		Label dpy = new Label("");
 		final double gran = 0.05;
 		final double smin = 1, smax = Math.floor(UI.maxscale() / gran) * gran;
 		final int steps = (int)Math.round((smax - smin) / gran);
-		addhlp(prev.pos("bl").adds(0, 2), UI.scale(5),
-		       prev = new HSlider(UI.scale(160), 0, steps, (int)Math.round(steps * (UI.scale(1.0) - smin) / (smax - smin))) {
+		// Beside its caption, in the same column as the portrait, panel and font sliders under it.
+		addhlp(Coord.of(hearthborn.ui.ScaleSettings.column(), 0), UI.scale(5),
+		       prev = new HSlider(UI.scale(150), 0, steps, (int)Math.round(steps * (hearthborn.ui.LiveScale.current() - smin) / (smax - smin))) {
+                               private boolean editing;
+                               public boolean mousedown(MouseDownEvent ev) {
+                                   boolean handled=super.mousedown(ev);
+                                   if(ev.b==1 && handled)editing=true;
+                                   return handled;
+                               }
+                               public void tick(double dt) {
+                                   super.tick(dt);
+                                   if(!editing) {
+                                       int current=Utils.clip((int)Math.round((hearthborn.ui.LiveScale.current()-smin)/gran),0,steps);
+                                       if(this.val!=current){this.val=current;dpy();}
+                                   }
+                               }
 			       protected void added() {
 				   dpy();
 			       }
@@ -470,13 +679,18 @@ public class OptWnd extends Window {
 			       }
 			       public void changed() {
 				   double val = smin + (((double)this.val / steps) * (smax - smin));
-				   Utils.setprefd("uiscale", val);
+				   Utils.setprefd("hearthborn/interface-scale", val);
 				   dpy();
 			       }
+                               public void fchanged() {
+                                   hearthborn.ui.LiveScale.apply(smin+((double)this.val/steps)*(smax-smin));
+                                   editing=false;
+                               }
 			   },
 		       dpy);
 	    }
-	    prev = add(new Label("Object fine-placement granularity"), prev.pos("bl").adds(0, 5));
+	    prev = hearthborn.ui.ScaleSettings.add(this, prev.pos("bl").adds(0, 3).y);
+	    prev = add(new Label("Object fine-placement granularity"), prev.pos("bl").adds(0, 12));
 	    {
 		Label pos = add(new Label("Position"), prev.pos("bl").adds(5, 2));
 		Label ang = add(new Label("Angle"), pos.pos("bl").adds(0, 2));
@@ -532,23 +746,32 @@ public class OptWnd extends Window {
 	}
     }
 
-    private static final Text kbtt = RichText.render("$col[255,255,0]{Escape}: Cancel input\n" +
-						     "$col[255,255,0]{Backspace}: Revert to default\n" +
-						     "$col[255,255,0]{Delete}: Disable keybinding", 0);
+    private static final Text kbtt = RichText.render("$col[255,255,0]{Escape}: " + hearthborn.L10n.tr("Cancel input") + "\n" +
+						     "$col[255,255,0]{Backspace}: " + hearthborn.L10n.tr("Revert to default") + "\n" +
+						     "$col[255,255,0]{Delete}: " + hearthborn.L10n.tr("Disable keybinding"), 0);
     public class BindingPanel extends Panel {
+	/** The width a row (the name and its key) takes. A wider list keeps the rows readable and puts its scroll bar at the edge. */
+	private int rowWidth;
 	private int addbtn(Widget cont, String nm, KeyBinding cmd, int y) {
-	    return(cont.addhl(new Coord(0, y), cont.sz.x,
+	    hearthborn.input.GlobalKeys.name(cmd, nm);
+	    return(cont.addhl(new Coord(0, y), rowWidth,
 			      new Label(nm), new SetButton(UI.scale(175), cmd))
 		   + UI.scale(2));
 	}
 
 	public BindingPanel(Panel back) {
+	    this(back, UI.scale(new Coord(300, 300)));
+	}
+
+	/** {@code size} is the list: it can take all the room of the window. */
+	public BindingPanel(Panel back, Coord size) {
 	    super();
-	    Scrollport scroll = add(new Scrollport(UI.scale(new Coord(300, 300))), 0, 0);
+	    Scrollport scroll = add(new Scrollport(size), 0, 0);
 	    Widget cont = scroll.cont;
+	    rowWidth = Math.min(cont.sz.x, UI.scale(520));
 	    Widget prev;
 	    int y = 0;
-	    y = cont.adda(new Label("Main menu"), cont.sz.x / 2, y, 0.5, 0.0).pos("bl").adds(0, 5).y;
+	    y = cont.adda(new Label("Main menu"), rowWidth / 2, y, 0.5, 0.0).pos("bl").adds(0, 5).y;
 	    y = addbtn(cont, "Inventory", GameUI.kb_inv, y);
 	    y = addbtn(cont, "Equipment", GameUI.kb_equ, y);
 	    y = addbtn(cont, "Character sheet", GameUI.kb_chr, y);
@@ -561,33 +784,30 @@ public class OptWnd extends Window {
 	    y = addbtn(cont, "Take screenshot", GameUI.kb_shoot, y);
 	    y = addbtn(cont, "Minimap icons", GameUI.kb_ico, y);
 	    y = addbtn(cont, "Toggle UI", GameUI.kb_hide, y);
+            y = addbtn(cont, "Toggle compact UI", hearthborn.ui.CombatLayout.KEY, y);
 	    y = addbtn(cont, "Log out", GameUI.kb_logout, y);
 	    y = addbtn(cont, "Switch character", GameUI.kb_switchchr, y);
-	    y = cont.adda(new Label("Map options"), cont.sz.x / 2, y + UI.scale(10), 0.5, 0.0).pos("bl").adds(0, 5).y;
+	    y = cont.adda(new Label("Map options"), rowWidth / 2, y + UI.scale(10), 0.5, 0.0).pos("bl").adds(0, 5).y;
 	    y = addbtn(cont, "Display claims", GameUI.kb_claim, y);
 	    y = addbtn(cont, "Display villages", GameUI.kb_vil, y);
 	    y = addbtn(cont, "Display realms", GameUI.kb_rlm, y);
 	    y = addbtn(cont, "Display grid-lines", MapView.kb_grid, y);
-	    y = cont.adda(new Label("Camera control"), cont.sz.x / 2, y + UI.scale(10), 0.5, 0.0).pos("bl").adds(0, 5).y;
-	    y = addbtn(cont, "Rotate left", MapView.kb_camleft, y);
-	    y = addbtn(cont, "Rotate right", MapView.kb_camright, y);
-	    y = addbtn(cont, "Zoom in", MapView.kb_camin, y);
-	    y = addbtn(cont, "Zoom out", MapView.kb_camout, y);
-	    y = addbtn(cont, "Reset", MapView.kb_camreset, y);
-	    y = cont.adda(new Label("Map window"), cont.sz.x / 2, y + UI.scale(10), 0.5, 0.0).pos("bl").adds(0, 5).y;
+	    y = cont.adda(new Label("Camera control"), rowWidth / 2, y + UI.scale(10), 0.5, 0.0).pos("bl").adds(0, 5).y;
+	    y = addbtn(cont, "Rotate left", hearthborn.input.GlobalKeys.binding("CAM_ROTATE_LEFT"), y);
+	    y = addbtn(cont, "Rotate right", hearthborn.input.GlobalKeys.binding("CAM_ROTATE_RIGHT"), y);
+	    y = addbtn(cont, "Zoom in", hearthborn.input.GlobalKeys.binding("CAM_ZOOM_IN"), y);
+	    y = addbtn(cont, "Zoom out", hearthborn.input.GlobalKeys.binding("CAM_ZOOM_OUT"), y);
+	    y = addbtn(cont, "Reset", hearthborn.input.GlobalKeys.binding("CAM_RESET"), y);
+	    y = cont.adda(new Label("Map window"), rowWidth / 2, y + UI.scale(10), 0.5, 0.0).pos("bl").adds(0, 5).y;
 	    y = addbtn(cont, "Reset view", MapWnd.kb_home, y);
 	    y = addbtn(cont, "Place marker", MapWnd.kb_mark, y);
 	    y = addbtn(cont, "Toggle markers", MapWnd.kb_hmark, y);
 	    y = addbtn(cont, "Compact mode", MapWnd.kb_compact, y);
-	    y = cont.adda(new Label("Walking speed"), cont.sz.x / 2, y + UI.scale(10), 0.5, 0.0).pos("bl").adds(0, 5).y;
+	    y = cont.adda(new Label("Walking speed"), rowWidth / 2, y + UI.scale(10), 0.5, 0.0).pos("bl").adds(0, 5).y;
 	    y = addbtn(cont, "Increase speed", Speedget.kb_speedup, y);
 	    y = addbtn(cont, "Decrease speed", Speedget.kb_speeddn, y);
 	    for(int i = 0; i < 4; i++)
 		y = addbtn(cont, String.format("Set speed %d", i + 1), Speedget.kb_speeds[i], y);
-	    y = cont.adda(new Label("Combat actions"), cont.sz.x / 2, y + UI.scale(10), 0.5, 0.0).pos("bl").adds(0, 5).y;
-	    for(int i = 0; i < Fightsess.kb_acts.length; i++)
-		y = addbtn(cont, String.format("Combat action %d", i + 1), Fightsess.kb_acts[i], y);
-	    y = addbtn(cont, "Switch targets", Fightsess.kb_relcycle, y);
 	    prev = adda(new PointBind(UI.scale(200)), scroll.pos("bl").adds(0, 10).x(scroll.sz.x / 2), 0.5, 0.0);
 	    prev = adda(new PButton(UI.scale(200), "Back", 27, back), prev.pos("bl").adds(0, 10).x(scroll.sz.x / 2), 0.5, 0.0);
 	    pack();
@@ -602,8 +822,11 @@ public class OptWnd extends Window {
 	    }
 
 	    public void set(KeyMatch key) {
-		super.set(key);
-		cmd.set(key);
+		/* A key that another shortcut of the list already has is refused, with a message. */
+		if(hearthborn.input.GlobalKeys.assign(ui, cmd, key))
+		    super.set(key);
+		else
+		    super.set(cmd.key());
 	    }
 
 	    public void draw(GOut g) {
@@ -640,9 +863,9 @@ public class OptWnd extends Window {
 
 	public PointBind(int w) {
 	    super(w, msg, false);
-	    tooltip = RichText.render("Bind a key to an element not listed above, such as an action-menu " +
+	    tooltip = RichText.render(hearthborn.L10n.tr("Bind a key to an element not listed above, such as an action-menu " +
 				      "button. Click the element to bind, and then press the key to bind to it. " +
-				      "Right-click to stop rebinding.",
+				      "Right-click to stop rebinding."),
 				      300);
 	}
 
@@ -672,9 +895,9 @@ public class OptWnd extends Window {
 		return(true);
 	    }
 	    KeyMatch key = KeyMatch.forevent(ev, ~cmd.modign);
-	    Debug.dump(key);
-	    if(key != null)
-		cmd.set(key);
+	    if(key == null)
+		return(false);
+	    cmd.set(key);
 	    return(true);
 	}
 
@@ -735,32 +958,45 @@ public class OptWnd extends Window {
 
     public OptWnd(boolean gopts) {
 	super(Coord.z, "Options", true);
+	ingame = gopts;
 	main = add(new Panel());
 
-	int y = 0;
+	hearthborn.ui.SettingsSearch search = this.search = hearthborn.ui.SettingsSearch.install(this, UI.scale(420));
+	int y = search.bottom();
 	Widget prev;
-	y = main.add(new PButton(UI.scale(200), "Interface settings", 'v', () -> new InterfacePanel(main)), 0, y).pos("bl").adds(0, 5).y;
+	y = main.add(new PButton(UI.scale(200), "Interface scale", 'i', () -> new InterfacePanel(main)), 0, y).pos("bl").adds(0, 5).y;
 	y = main.add(new PButton(UI.scale(200), "Video settings", 'v', () -> new VideoPanel(ui, main)), 0, y).pos("bl").adds(0, 5).y;
-	y = main.add(new PButton(UI.scale(200), "Audio settings", 'a', () -> new AudioPanel(ui, main)), 0, y).pos("bl").adds(0, 5).y;
-	y = main.add(new PButton(UI.scale(200), "Keybindings", 'k', () -> new BindingPanel(main)), 0, y).pos("bl").adds(0, 5).y;
+	y = main.add(new PButton(UI.scale(200), "Sound and notices", 'a', () -> new AudioPanel(ui, main)), 0, y).pos("bl").adds(0, 5).y;
+	y = main.add(new PButton(UI.scale(200), "Keybindings", 'k', () -> hearthborn.input.GlobalKeys.panel(this)), 0, y).pos("bl").adds(0, 5).y;
+        int customBottom = hearthborn.ui.GeneralSettings.addButton(this, search.bottom());
+        y = Math.max(y,customBottom);
 	y += UI.scale(60);
 	if(gopts) {
 	    if((SteamStore.steamsvc.get() != null) && (Steam.get() != null)) {
 		y = main.add(new Button(UI.scale(200), "Visit store", false).action(() -> {
 			    SteamStore.launch(ui.sess);
-		}), 0, y).pos("bl").adds(0, 5).y;
+		}).look(Button.Look.OUTLINE), 0, y).pos("bl").adds(0, 5).y;
 	    }
 	    y = main.add(new Button(UI.scale(200), "Switch character", false).action(() -> {
 			getparent(GameUI.class).act("lo", "cs");
-	    }), 0, y).pos("bl").adds(0, 5).y;
+	    }).look(Button.Look.OUTLINE), 0, y).pos("bl").adds(0, 5).y;
 	    y = main.add(new Button(UI.scale(200), "Log out", false).action(() -> {
 			getparent(GameUI.class).act("lo");
-	    }), 0, y).pos("bl").adds(0, 5).y;
+	    }).look(Button.Look.DANGER), 0, y).pos("bl").adds(0, 5).y;
 	}
 	y = main.add(new Button(UI.scale(200), "Close", false).action(() -> {
 		    OptWnd.this.hide();
-	}), 0, y).pos("bl").adds(0, 5).y;
-	this.main.pack();
+	}).look(Button.Look.PRIMARY), 0, y).pos("bl").adds(0, 5).y;
+	if(hearthborn.ui.SettingsSidebar.enabled()) {
+	    pane = hearthborn.ui.SettingsSidebar.arrange(this, search);
+	    this.main.pack();
+	    add(pane, pane.c);
+	    pack();
+	} else {
+	    search.align();
+	    this.main.pack();
+	}
+	search.finish();
 
 	chpanel(this.main);
     }

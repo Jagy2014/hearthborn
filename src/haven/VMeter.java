@@ -46,12 +46,33 @@ public class VMeter extends LayerMeter {
     }
 
     public void draw(GOut g) {
-	g.image(bg, Coord.z);
-	int h = (sz.y - UI.scale(6));
+	boolean grown=!sz.equals(bg.sz());
+	int barW=bg.sz().x;
+	Coord bar=grown?Coord.of(Math.min(barW,sz.x),sz.y):sz;
+	if(grown)g.image(bg,Coord.z,bar);
+	else g.image(bg,Coord.z);
+	int h=(bar.y-UI.scale(6));
 	for(Meter m : meters) {
 	    g.chcolor(m.c);
-	    int mh = (int)Math.round(h * m.a);
-	    g.image(fg, new Coord(0, 0), new Coord(0, sz.y - UI.scale(3) - mh), sz.add(0, mh));
+	    int mh=(int)Math.round(h*m.a);
+	    if(grown)g.image(fg,Coord.z,new Coord(0,bar.y-UI.scale(3)-mh),bar,bar);
+	    else g.image(fg,new Coord(0,0),new Coord(0,sz.y-UI.scale(3)-mh),sz.add(0,mh));
 	}
+	g.chcolor();
+	if(grown)hearthborn.ui.FuelReadout.draw(g,this,bar.x);
+    }
+
+    public void attached() {
+	super.attached();
+	Window window=getparent(Window.class);
+	if(!hearthborn.timers.ObjectTimers.largeGrid(window))return;
+	Inventory grid=null;
+	for(Widget child=window.child;child!=null;child=child.next)if(child instanceof Inventory){grid=(Inventory)child;break;}
+	if(grid==null)return;
+	int width=hearthborn.timers.ObjectTimers.oven(window)?hearthborn.ui.FuelReadout.width(bg.sz().x):bg.sz().x;
+	resize(width,grid.sz.y);
+	int edge=grid.c.x+grid.sz.x;
+	if(c.x<edge)move(Coord.of(edge,c.y));
+	window.pack();
     }
 }

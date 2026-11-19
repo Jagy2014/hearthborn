@@ -46,7 +46,7 @@ public class RichText extends Text {
 
     static {
 	Map<Attribute, Object> a = new HashMap<Attribute, Object>();
-	a.put(TextAttribute.FAMILY, "SansSerif");
+	a.put(TextAttribute.FAMILY, hearthborn.UiFonts.family("SansSerif"));
 	a.put(TextAttribute.SIZE, UI.scale(10.0f));
 	a.put(IMAGESRC, ImageSource.res(Resource.local()));
 	std = new Parser(a);
@@ -211,7 +211,9 @@ public class RichText extends Text {
 	private LineMetrics lm() {
 	    Font f = (Font)attrs.get(TextAttribute.FONT);
 	    if(f == null)
-		f = new Font(attrs);
+		f = new Font(hearthborn.UiFonts.scaled(attrs));
+	    else
+		f = hearthborn.UiFonts.scaled(f);
 	    return(f.getLineMetrics("", rs.frc));
 	}
 
@@ -248,8 +250,9 @@ public class RichText extends Text {
 	    if(lm == null) {
 		Font f;
 		if((f = (Font)attrs.get(TextAttribute.FONT)) != null) {
+		    f = hearthborn.UiFonts.scaled(f);
 		} else {
-		    f = new Font(attrs);
+		    f = new Font(hearthborn.UiFonts.scaled(attrs));
 		}
 		lm = f.getLineMetrics("", rs.frc);
 	    }
@@ -278,9 +281,21 @@ public class RichText extends Text {
 	}
 	
 	public TextPart(String str, Map<? extends Attribute, ?> attrs) {
-	    this((str.length() == 0)?(new AttributedString(str)):(new AttributedString(str, attrs)), 0, str.length());
+            this(hearthborn.l10n.TooltipText.translate(str), attrs, true);
+        }
+
+        private TextPart(String str, Map<? extends Attribute, ?> attrs, boolean translated) {
+	    this((str.length() == 0)?(new AttributedString(str)):withFallback(str, hearthborn.UiFonts.scaled(attrs)), 0, str.length());
 	}
 	
+	private static AttributedString withFallback(String str, Map<? extends Attribute, ?> attrs) {
+	    AttributedString ret = new AttributedString(str, attrs);
+	    Object font = attrs.get(java.awt.font.TextAttribute.FONT);
+	    Font base = (font instanceof Font) ? (Font)font : new Font(attrs);
+	    hearthborn.UiFonts.patch(ret, str, base);
+	    return(ret);
+	}
+
 	public TextPart(String str) {
 	    this(new AttributedString(str), 0, str.length());
 	}
@@ -564,7 +579,7 @@ public class RichText extends Text {
 	    } else {
 		Map<Attribute, Object> na = new HashMap<Attribute, Object>(attrs);
 		if(tn == "font") {
-		    na.put(TextAttribute.FAMILY, args[0]);
+		    na.put(TextAttribute.FAMILY, hearthborn.UiFonts.family(args[0]));
 		    if(args.length > 1)
 			na.put(TextAttribute.SIZE, UI.scale(Float.parseFloat(args[1])));
 		} else if(tn == "size") {
@@ -777,21 +792,36 @@ public class RichText extends Text {
 	    Part lp = null;
 	    for(Part p = fp; p != null; p = p.next) {
 		boolean lb = p instanceof Newline;
-		int pw, ph;
+		int pw = 0, ph = 0;
+		int spins = 0;
 		while(true) {
+		    if(++spins > 64)
+			break;
 		    p.x = x;
 		    pw = p.width();
 		    ph = p.height();
-		    if(w > 0) {
-			if(p.x + pw > w) {
-			    p = p.split(w - x);
-			    if(lp == null)
-				fp = p;
-			    else
-				lp.next = p;
-			    lb = true;
+		    if(w > 0 && p.x + pw > w) {
+			Part lead = p.split(Math.max(0, w - x));
+			if(lead.width() <= 0) {
+			    // One glyph wider than the line used to split into an empty
+			    // piece and the same text, and the line walk never advanced.
+			    if(x <= 0)
+				break;
+			    aline(line, y);
+			    x = 0;
+			    y += Math.max(lh, 1);
+			    lh = 0;
+			    line = new LinkedList<Part>();
+			    p = lead.next != null ? lead.next : p;
 			    continue;
 			}
+			p = lead;
+			if(lp == null)
+			    fp = p;
+			else
+			    lp.next = p;
+			lb = true;
+			continue;
 		    }
 		    break;
 		}
@@ -831,7 +861,7 @@ public class RichText extends Text {
 	    if(sz.y < 1) sz = sz.add(0, 1);
 	    BufferedImage img = TexI.mkbuf(sz);
 	    Graphics2D g = img.createGraphics();
-	    if(aa)
+	    if(aa || hearthborn.UiFonts.smoothing())
 		Utils.AA(g);
 	    for(Part p = fp; p != null; p = p.next)
 		p.render(g);

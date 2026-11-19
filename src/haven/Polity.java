@@ -115,9 +115,7 @@ public abstract class Polity extends Widget {
 	}
 
 	protected void drawbg(GOut g) {
-	    g.chcolor(0, 0, 0, 128);
-	    g.frect(Coord.z, sz);
-	    g.chcolor();
+	    hearthborn.ui.UiTheme.panel(g, sz);
 	}
 
 	protected void drawslot(GOut g, Member m, int idx, Area area) {

@@ -77,8 +77,9 @@ public class Warning extends Throwable {
 	if(level >= ERROR) {
 	    /* XXX: Report in some user-visible way. */
 	}
-	if(level >= CRITICAL) {
-	    try(OutputStream fp = Files.newOutputStream(Debug.somedir("haven-errors.log"), StandardOpenOption.APPEND, StandardOpenOption.CREATE)) {
+	if(level >= CRITICAL && !hearthborn.io.Logs.installed()) {
+            try { Files.createDirectories(hearthborn.io.Logs.directory()); } catch(IOException ignored) { }
+	    try(OutputStream fp = Files.newOutputStream(hearthborn.io.Logs.file("error.log"), StandardOpenOption.APPEND, StandardOpenOption.CREATE)) {
 		report(new PrintStream(fp), String.format("%s: ", new Date()));
 	    } catch(IOException e) {
 		new Warning(e, "could not log critical warning").level(ERROR).issue();

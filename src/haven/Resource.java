@@ -30,6 +30,7 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.annotation.*;
 import java.util.*;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.function.*;
 import java.util.regex.*;
 import java.net.*;
@@ -505,7 +506,7 @@ public class Resource implements Serializable {
     public static class Pool {
 	public int nloaders = 2;
 	private final Collection<Loader> loaders = new LinkedList<Loader>();
-	private final List<ResSource> sources = new LinkedList<ResSource>();
+	private final List<ResSource> sources = new CopyOnWriteArrayList<ResSource>();
 	private final Map<String, Resource> cache = new CacheMap<String, Resource>();
 	private final PrioQueue<Queued> queue = new PrioQueue<Queued>();
 	private final Map<String, Queued> queued = new HashMap<String, Queued>();
@@ -636,6 +637,7 @@ public class Resource implements Serializable {
 		}
 	    }
 	    res.done();
+
 	}
 
 	public Named load(String name, int ver, int prio) {
@@ -702,6 +704,17 @@ public class Resource implements Serializable {
 
 	public Named load(String name, int ver) {return(load(name, ver, 0));}
 	public Named load(String name) {return(load(name, -1));}
+
+	public void forget(String name) {
+	    synchronized(cache) {
+		cache.remove(name);
+	    }
+	    synchronized(queue) {
+		Queued previous = queued.remove(name);
+		if(previous != null)
+		    queue.removeid(previous);
+	    }
+	}
 
 	public Indir<Resource> dynres(long id) {
 	    return(load(String.format("dyn/%x", id), 1));
@@ -1211,12 +1224,26 @@ public class Resource implements Serializable {
 	public void init() {}
     }
 
+    public static void refreshTranslations() {
+        Set<Resource> loaded = new HashSet<>();
+        if(_local != null) loaded.addAll(_local.cached());
+        if(_remote != null) loaded.addAll(_remote.cached());
+        for(Resource resource : loaded) {
+            Tooltip tip = resource.layer(tooltip);
+            if(tip != null) tip.t = hearthborn.L10n.resource("tooltip", resource.name, tip.original);
+            Pagina page = resource.layer(pagina);
+            if(page != null) page.refreshTranslation();
+        }
+    }
+
     @LayerName("tooltip")
     public class Tooltip extends Layer {
-	public final String t;
+	public volatile String t;
+        public final String original;
                 
 	public Tooltip(Message buf) {
-	    t = new String(buf.bytes(), Utils.utf8);
+            original = new String(buf.bytes(), Utils.utf8);
+	    t = hearthborn.L10n.resource("tooltip", Resource.this.name, original);
 	}
                 
 	public void init() {}
@@ -1225,11 +1252,14 @@ public class Resource implements Serializable {
     @LayerName("neg")
     public class Neg extends Layer {
 	public Coord cc;
+        public final Coord ac, bc;
 	public Coord[][] ep;
 		
 	public Neg(Message buf) {
 	    cc = cdec(buf);
-	    buf.skip(12);
+            ac = cdec(buf);
+            bc = cdec(buf);
+	    buf.skip(4);
 	    ep = new Coord[8][0];
 	    int en = buf.uint8();
 	    for(int i = 0; i < en; i++) {
@@ -1320,10 +1350,17 @@ public class Resource implements Serializable {
 
     @LayerName("pagina")
     public class Pagina extends Layer {
-	public final String text;
-		
-	public Pagina(Message buf) {
-	    text = new String(buf.bytes(), Utils.utf8);
+        public volatile String text;
+        public final String original;
+
+        public Pagina(Message buf) {
+            original = new String(buf.bytes(), Utils.utf8);
+            refreshTranslation();
+        }
+        private void refreshTranslation() {
+            String translated = hearthborn.L10n.resource("pagina", Resource.this.name, original);
+            String note = hearthborn.L10n.note(Resource.this.name);
+            text = translated + (note.isEmpty() ? "" : "\n\n" + note);
 	}
 		
 	public void init() {}
@@ -1976,6 +2013,7 @@ public class Resource implements Serializable {
     }
 
     public <I, L extends IDLayer<I>> L layer(Class<L> cl, I id) {
+        if(hearthborn.storage.ContainerDecals.skipOffset(this,cl,id))return null;
 	used = true;
 	for(Layer l : layers) {
 	    if(cl.isInstance(l)) {

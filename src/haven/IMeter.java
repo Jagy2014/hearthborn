@@ -30,6 +30,8 @@ import java.awt.Color;
 import java.util.*;
 
 public class IMeter extends LayerMeter {
+    private final hearthborn.ui.MeterReadout readout = new hearthborn.ui.MeterReadout();
+    public void dispose() { readout.dispose(); super.dispose(); }
     public static final Coord off = UI.scale(22, 7);
     public static final Coord fsz = UI.scale(101, 24);
     public static final Coord msz = UI.scale(75, 10);
@@ -45,15 +47,18 @@ public class IMeter extends LayerMeter {
     }
 
     public IMeter(Indir<Resource> bg, List<Meter> meters) {
-	super(fsz);
+	super(hearthborn.ui.StatusScale.size(fsz));
 	this.bg = bg;
 	set(meters);
     }
 
     public void draw(GOut g) {
+        g=hearthborn.ui.StatusScale.graphics(g,fsz);
 	try {
-	    Tex bg = this.bg.get().flayer(Resource.imgc).tex();
-	    g.chcolor(0, 0, 0, 255);
+	    Resource resource=this.bg.get();
+            Tex bg=hearthborn.ui.MeterArtwork.replacement(resource.name);
+            if(bg==null)bg=resource.flayer(Resource.imgc).tex();
+	    g.chcolor(hearthborn.ui.UiTheme.meterTrack());
 	    g.frect(off, msz);
 	    g.chcolor();
 	    for(Meter m : meters) {
@@ -64,6 +69,15 @@ public class IMeter extends LayerMeter {
 	    }
 	    g.chcolor();
 	    g.image(bg, Coord.z);
+            int constitution=ui!=null&&ui.sess!=null&&ui.sess.glob!=null?ui.sess.glob.getcattr("con").comp:0;
+            String tip=hearthborn.ui.MeterReadout.tipText(rawinfo);
+            if(hearthborn.ui.MeterReadout.labeledPercent(tip)==null)
+                tip=hearthborn.ui.MeterReadout.widgetTip(tooltip);
+            if("gfx/hud/meter/häst".equals(resource.name)&&rawinfo!=null&&hearthborn.ui.MeterReadout.labeledPercent(tip)==null){
+                try{tip=hearthborn.ui.MeterReadout.infoText(info());}
+                catch(Loading ignored){}
+            }
+            readout.draw(g, resource.name, meters, constitution, tip);
 	} catch(Loading l) {
 	}
     }

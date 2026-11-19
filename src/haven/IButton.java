@@ -33,7 +33,7 @@ public class IButton extends SIWidget {
     public final BufferedImage up, down, hover;
     public boolean h = false, a = false;
     public Runnable action = null;
-    private UI.Grab d = null;
+    protected UI.Grab d = null;
 
     @RName("ibtn")
     public static class $_ implements Factory {
@@ -52,6 +52,12 @@ public class IButton extends SIWidget {
 	    Indir<Resource> hover = up;
 	    if(args.length > a)
 		hover = ui.sess.getresv(args[a++]);
+            Resource resource=up.get();
+            String name=resource.name.toLowerCase(java.util.Locale.ROOT);
+            boolean characterScreen=ui!=null && ui.root!=null && ui.root.getchild(Charlist.class)!=null;
+            if(name.contains("newchar") || name.contains("charnew") || name.matches(".*/nc[udo]?") ||
+                (characterScreen && name.startsWith("gfx/hud/") && resource.flayer(Resource.imgc).scaled().getWidth()>=UI.scale(150)))
+                return new Button(UI.scale(220),"New character",false);
 	    return(new IButton(up.get().flayer(Resource.imgc).scaled(), down.get().flayer(Resource.imgc).scaled(), hover.get().flayer(Resource.imgc).scaled()));
 	}
     }

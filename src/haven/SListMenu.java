@@ -33,7 +33,6 @@ import java.awt.image.BufferedImage;
 public abstract class SListMenu<I, W extends Widget> extends Widget {
     public static final Text.Foundry bigf = CharWnd.attrf;
     public static final Text.Foundry smallf = new Text.Foundry(Text.fraktur, 14).aa(true);
-    public static final Tex bg = Window.bg;
     public static final IBox obox = Window.wbox;
     public final InnerList box;
     public boolean grab = true;
@@ -120,6 +119,7 @@ public abstract class SListMenu<I, W extends Widget> extends Widget {
 	Coord bgc = new Coord();
 	Coord ctl = obox.btloff();
 	Coord cbr = sz.sub(obox.cisz()).add(ctl);
+	Tex bg = Window.bg();
 	for(bgc.y = ctl.y; bgc.y < cbr.y; bgc.y += bg.sz().y) {
 	    for(bgc.x = ctl.x; bgc.x < cbr.x; bgc.x += bg.sz().x)
 		g.image(bg, bgc, ctl, cbr);

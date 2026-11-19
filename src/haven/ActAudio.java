@@ -37,6 +37,8 @@ public class ActAudio extends State {
     public static final Slot<ActAudio> audio = new State.Slot<>(Slot.Type.SYS, ActAudio.class);
     public final Channel pos;
     public final Channel amb;
+    /** The root warning mixer. A clip here keeps playing after the view drops its positional sounds. */
+    public final Channel warn;
     private final Map<Global, Global> global = new HashMap<Global, Global>();
 
     public haven.render.sl.ShaderMacro shader() {return(null);}
@@ -44,6 +46,7 @@ public class ActAudio extends State {
     public ActAudio(Root root) {
 	this.pos = new Adapter(root.pos);
 	this.amb = new Adapter(root.amb);
+	this.warn = root.warn;
     }
 
     public void apply(Pipe st) {
@@ -170,12 +173,14 @@ public class ActAudio extends State {
     public static class Root {
 	public final Audio.Root sys;
 	public final RootChannel aui;
+	public final RootChannel warn;
 	public final RootChannel pos;
 	public final RootChannel amb;
 
 	public Root(Audio.Root sys) {
 	    this.sys = sys;
 	    aui = new RootChannel("aui", sys.mixer);
+	    warn = new RootChannel("warn", sys.mixer);
 	    pos = new RootChannel("pos", sys.mixer);
 	    amb = new RootChannel("amb", sys.mixer);
 	}

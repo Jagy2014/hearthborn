@@ -35,10 +35,11 @@ public class FlowerMenu extends Widget {
     public static final Color ptc = Color.YELLOW;
     public static final Text.Foundry ptf = new Text.Foundry(Text.dfont, 12);
     public static final IBox pbox = Window.wbox;
-    public static final Tex pbg = Window.bg;
     public static final int ph = UI.scale(30), ppl = 8;
     public Petal[] opts;
     private UI.Grab mg, kg;
+    private int automatic=-1;
+    private Gob gatherTarget;
 
     @RName("sm")
     public static class $_ implements Factory {
@@ -60,7 +61,7 @@ public class FlowerMenu extends Widget {
 	public Petal(String name) {
 	    super(Coord.z);
 	    this.name = name;
-	    text = ptf.render(name, ptc);
+	    text = ptf.render(hearthborn.ui.FlowerChoices.shown(name), ptc);
 	    resize(text.sz().x + UI.scale(25), ph);
 	}
 
@@ -74,7 +75,8 @@ public class FlowerMenu extends Widget {
 
 	public void draw(GOut g) {
 	    g.chcolor(new Color(255, 255, 255, (int)(255 * a)));
-	    g.image(pbg, new Coord(3, 3), new Coord(3, 3), sz.add(new Coord(-6, -6)), UI.scale(pbg.sz()));
+	    Coord inset = new Coord(3, 3);
+	    g.image(Window.bg(), inset, sz.sub(inset.mul(2)));
 	    pbox.draw(g, Coord.z, sz);
 	    g.image(text.tex(), sz.div(2).sub(text.sz().div(2)));
 	}
@@ -210,6 +212,14 @@ public class FlowerMenu extends Widget {
     }
 
     protected void added() {
+        gatherTarget=hearthborn.ui.FlowerChoices.menuTarget(ui);
+        if(gatherTarget!=null && hearthborn.ui.FlowerChoices.pickAll() && java.util.Arrays.stream(opts).anyMatch(p->p.name.equals("Pick"))) {
+            Petal extra=add(new Petal(hearthborn.ui.FlowerChoices.PICK_ALL));extra.num=opts.length;
+            opts=java.util.Arrays.copyOf(opts,opts.length+1);opts[opts.length-1]=extra;
+        }
+        String[] names=java.util.Arrays.stream(opts).map(p->p.name).toArray(String[]::new);
+        GameUI gui=ui.root.getchild(GameUI.class);
+        automatic=hearthborn.scripts.ScriptRunner.flowerPending(gui)?hearthborn.scripts.ScriptRunner.flowerChoice(gui,names):hearthborn.ui.FlowerChoices.choose(names,ui.modflags());
 	if(c.equals(-1, -1))
 	    c = parent.ui.lcc;
 	mg = ui.grabmouse(this);
@@ -218,6 +228,10 @@ public class FlowerMenu extends Widget {
 	new Opening().ntick(0);
     }
 
+    public void tick(double dt) {
+        if(automatic>=0){int selected=automatic;automatic=-1;choose(opts[selected]);}
+        super.tick(dt);
+    }
     public boolean mousedown(MouseDownEvent ev) {
 	if(!anims.isEmpty())
 	    return(true);
@@ -251,6 +265,7 @@ public class FlowerMenu extends Widget {
 	    }
 	    return(true);
 	} else if(key_esc.match(ev)) {
+            hearthborn.scripts.ScriptRunner.cancel(ui.root.getchild(GameUI.class));
 	    choose(null);
 	    kg.remove();
 	    return(true);
@@ -259,10 +274,22 @@ public class FlowerMenu extends Widget {
     }
 
     public void choose(Petal option) {
+        automatic=-1;
+        if(option!=null && option.name.equals(hearthborn.ui.FlowerChoices.PICK_ALL)) {
+            wdgmsg("cl",-1);
+            GameUI gui=ui.root.getchild(GameUI.class);
+            if(gui!=null && gatherTarget!=null)hearthborn.scripts.ShortcutRunner.pickAll(gui,gatherTarget);
+            return;
+        }
 	if(option == null) {
 	    wdgmsg("cl", -1);
 	} else {
-	    wdgmsg("cl", option.num, ui.modflags());
+            GameUI gui=ui.root.getchild(GameUI.class);int modifiers=ui.modflags();
+            if(gui!=null&&gui.map!=null&&hearthborn.navigation.Walking.routeTreeAction(gui.map,gatherTarget,option.name,
+                    ()->wdgmsg("cl",option.num,modifiers),()->wdgmsg("cl",-1))){
+                hide();mg.remove();kg.remove();return;
+            }
+	    wdgmsg("cl", option.num, modifiers);
 	}
     }
 }

@@ -53,6 +53,12 @@ respective licensing details are as follows:
       Their contents are owned by us, Fredrik Tolf and Björn
       Johannessen, and we reserve all rights to them.
 
+ * The unmodified TTF files in `assets/fonts/noto' are Noto Sans,
+   copyright 2022 The Noto Project Authors, licensed under the SIL Open
+   Font License, version 1.1. Their full notice and license are in
+   `assets/fonts/noto/LICENSE', also embedded beside the fonts under
+   `hearthborn/assets/fonts/noto/' in the client JAR.
+
  * The files in the `src/com/jcraft' directory are part of JCraft's
    open source implementation of the OGG and Vorbis multimedia
    formats. They have been extracted into the source tree to support

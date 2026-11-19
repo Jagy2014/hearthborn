@@ -33,9 +33,14 @@ import java.util.function.*;
 import java.lang.reflect.Constructor;
 import haven.render.*;
 
-public abstract class Sprite implements RenderTree.Node {
+public abstract class Sprite implements RenderTree.Node, PView.Render2D {
     public final Resource res;
     public final Owner owner;
+    private Tex tex2d;
+    private static final Coord3f labelPos = new Coord3f(0, 0, 1);
+
+    /** Screen label drawn at this sprite, used for a cheese tray's own stage. */
+    public void setTex2d(Tex tex) { tex2d = tex; }
     public static List<Factory> factories = new LinkedList<Factory>();
     static {
 	factories.add(SpriteLink.sfact);
@@ -160,10 +165,26 @@ public abstract class Sprite implements RenderTree.Node {
     }
 
     public static Sprite create(Owner owner, Resource res, Message sdt) {
+        if(res.name.equals("gfx/fx/cavewarn")){
+            byte[] data=sdt.bytes();
+            Sprite sprite=createUnobserved(owner,res,new MessageBuf(data));
+            hearthborn.mining.Minesweeper.dust(owner,res,data);
+            return sprite;
+        }
+        if(res.name.equals("gfx/fx/dowse")){
+            byte[] data=sdt.bytes();
+            Sprite sprite=createUnobserved(owner,res,new MessageBuf(data));
+            hearthborn.meteor.MeteorTriangulation.effect(owner,data);
+            return sprite;
+        }
+        return createUnobserved(owner,res,sdt);
+    }
+
+    private static Sprite createUnobserved(Owner owner, Resource res, Message sdt) {
 	{
 	    Factory f = res.getcode(Factory.class, false);
 	    if(f != null)
-		return(f.create(owner, res, sdt));
+		return(hearthborn.world.CropSprites.create(f, owner, res, sdt));
 	}
 	for(Factory f : factories) {
 	    Sprite ret = f.create(owner, res, sdt);
@@ -177,6 +198,19 @@ public abstract class Sprite implements RenderTree.Node {
     }
 
     public void draw(GOut g) {}
+
+    public void draw(GOut g, Pipe state) {
+	if(tex2d == null)
+	    return;
+	try {
+	    HomoCoord4f clip = Homo3D.obj2clip(labelPos, state);
+	    if(clip.clipped())
+		return;
+	    Coord sc = clip.toview(Area.sized(g.sz())).round2();
+	    if(sc.isect(Coord.z, g.sz()))
+		g.aimage(tex2d, sc, 0.5, 0.5);
+	} catch(RuntimeException ignored) {}
+    }
 
     public boolean tick(double dt) {
 	return(false);

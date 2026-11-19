@@ -73,9 +73,9 @@ public class FoodInfo extends ItemInfo.Tip {
     }
 
     public void layout(Layout l) {
-	String head = String.format("Energy: $col[128,128,255]{%s%%}, Hunger: $col[255,192,128]{%s\u2030}", Utils.odformat2(end * 100, 2), Utils.odformat2(glut * 1000, 2));
+	String head = String.format("%s: $col[128,128,255]{%s%%}, %s: $col[255,192,128]{%s\u2030}", hearthborn.L10n.text("tooltip", "Energy"), Utils.odformat2(end * 100, 2), hearthborn.L10n.text("tooltip", "Hunger"), Utils.odformat2(glut * 1000, 2));
 	if(cons != 0)
-	    head += String.format(", Satiation: $col[192,192,128]{%s%%}", Utils.odformat2(cons * 100, 2));
+	    head += String.format(", %s: $col[192,192,128]{%s%%}", hearthborn.L10n.text("tooltip", "Satiation"), Utils.odformat2(cons * 100, 2));
 	l.cmp.add(RichText.render(head, 0).img, Coord.of(0, l.cmp.sz.y));
 	for(int i = 0; i < evs.length; i++) {
 	    Color col = Utils.blendcol(evs[i].ev.col, Color.WHITE, 0.5);
@@ -83,12 +83,12 @@ public class FoodInfo extends ItemInfo.Tip {
 		      Coord.of(UI.scale(5), l.cmp.sz.y));
 	}
 	if(sev > 0)
-	    l.cmp.add(RichText.render(String.format("Total: $col[128,192,255]{%s} ($col[128,192,255]{%s}/\u2030 hunger)", Utils.odformat2(sev, 2), Utils.odformat2(sev / (1000 * glut), 2)), 0).img,
+	    l.cmp.add(RichText.render(String.format("%s: $col[128,192,255]{%s} ($col[128,192,255]{%s}/\u2030 %s)", hearthborn.L10n.text("tooltip", "Total"), Utils.odformat2(sev, 2), Utils.odformat2(sev / (1000 * glut), 2), hearthborn.L10n.text("tooltip", "hunger")), 0).img,
 		      Coord.of(UI.scale(5), l.cmp.sz.y));
 	for(int i = 0; i < efs.length; i++) {
 	    BufferedImage efi = ItemInfo.longtip(efs[i].info);
 	    if(efs[i].p != 1)
-		efi = catimgsh(5, efi, RichText.render(String.format("$i{($col[192,192,255]{%d%%} chance)}", (int)Math.round(efs[i].p * 100)), 0).img);
+		efi = catimgsh(5, efi, RichText.render(String.format("$i{($col[192,192,255]{%d%%} %s)}", (int)Math.round(efs[i].p * 100), hearthborn.L10n.text("tooltip", "chance")), 0).img);
 	    l.cmp.add(efi, Coord.of(UI.scale(5), l.cmp.sz.y));
 	}
     }

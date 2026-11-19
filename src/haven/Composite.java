@@ -41,6 +41,28 @@ public class Composite extends Drawable implements EquipTarget {
     public final Resource baseres;
     public final Composited comp;
     public int pseq = -1;
+    private volatile Collection<ResData> currentPoses = Collections.emptyList();
+
+    /** Immutable snapshot of persistent server poses, independent of animation blending. */
+    public Collection<ResData> poseResources() {
+        Collection<ResData> poses = currentPoses;
+        return poses == null ? Collections.emptyList() : poses;
+    }
+
+    /** Most recent persistent poses received from the server, including unloaded poses. */
+    public boolean hasPose(String suffix) {
+        if(currentPoses == null) return false;
+        for(ResData pose : currentPoses)
+            if(pose.res.get().name.endsWith("/" + suffix)) return true;
+        return false;
+    }
+    /** True when any current pose resource name contains the given text. */
+    public boolean poseContains(String part) {
+        if(currentPoses == null || part == null) return false;
+        for(ResData pose : currentPoses)
+            if(pose.res.get().name.contains(part)) return true;
+        return false;
+    }
     public List<MD> nmod;
     public List<ED> nequ;
     private Collection<ResData> nposes = null, tposes = null;
@@ -146,6 +168,7 @@ public class Composite extends Drawable implements EquipTarget {
     }
     
     public void chposes(Collection<ResData> poses, boolean interp) {
+        currentPoses = Collections.unmodifiableList(new ArrayList<>(poses));
 	if(tposes != null)
 	    tposes = null;
 	nposes = poses;
@@ -303,6 +326,7 @@ public class Composite extends Drawable implements EquipTarget {
 	    if(cmp == null)
 		throw(new RuntimeException(String.format("cmpequ on non-composed object: %s", equ)));
 	    cmp.chequ(equ);
+	    hearthborn.world.GobMarks.model(g, equ);
 	}
     }
 }

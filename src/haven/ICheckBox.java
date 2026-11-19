@@ -32,6 +32,18 @@ public class ICheckBox extends ACheckBox {
     public final Tex up, down, hoverup, hoverdown;
     private final BufferedImage img;
     public boolean h;
+    /** Drawn at this fraction of the picture's size (1 = as is); the hit area follows. */
+    private double shrink = 1;
+
+    /** Draws the control {@code side} pixels across at most; never larger than its picture. */
+    public void fit(int side) {
+	Coord full = up.sz();
+	double factor = Math.min(1, side / (double)Math.max(1, Math.max(full.x, full.y)));
+	if(factor == shrink)
+	    return;
+	shrink = factor;
+	resize(factor == 1 ? full : Coord.of(Math.max(1, (int)Math.round(full.x * factor)), Math.max(1, (int)Math.round(full.y * factor))));
+    }
 
     @RName("ichk")
     public static class $_ implements Factory {
@@ -77,10 +89,11 @@ public class ICheckBox extends ACheckBox {
     }
 
     public void draw(GOut g) {
-	if(!state())
-	    g.image(h ? hoverup : up, Coord.z);
+	Tex shown = !state() ? (h ? hoverup : up) : (h ? hoverdown : down);
+	if(shrink == 1)
+	    g.image(shown, Coord.z);
 	else
-	    g.image(h ? hoverdown : down, Coord.z);
+	    g.image(shown, Coord.z, sz);
         super.draw(g);
     }
 
@@ -89,7 +102,10 @@ public class ICheckBox extends ACheckBox {
 	    return(false);
 	if((img == null) || img.getRaster().getNumBands() < 4)
 	    return(true);
-	return(img.getRaster().getSample(c.x, c.y, 3) >= 128);
+	int x = (shrink == 1) ? c.x : (int)(c.x / shrink), y = (shrink == 1) ? c.y : (int)(c.y / shrink);
+	if(x < 0 || y < 0 || x >= img.getWidth() || y >= img.getHeight())
+	    return(false);
+	return(img.getRaster().getSample(x, y, 3) >= 128);
     }
 
     public boolean mousedown(MouseDownEvent ev) {

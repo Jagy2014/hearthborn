@@ -55,7 +55,7 @@ public class TexI implements Tex {
 
     public Coord sz() {return(sz);}
 
-    private ColorTex st = null;
+    private volatile ColorTex st = null;
     public ColorTex st() {
 	ColorTex st = this.st;
 	if(st == null) {
@@ -75,9 +75,12 @@ public class TexI implements Tex {
 						  });
 		    tex.desc(this);
 		    Sampler2D data = new Sampler2D(tex);
-		    data.magfilter(Texture.Filter.NEAREST).minfilter(Texture.Filter.NEAREST);
-		    st = this.st = new ColorTex(data);
+		    // UI textures are also presented at fractional scales and on different monitors.
+            data.magfilter(Texture.Filter.LINEAR).minfilter(Texture.Filter.LINEAR);
+		    this.st = new ColorTex(data);
 		}
+		// Another thread may have initialized the state while we waited.
+		st = this.st;
 	    }
 	}
 	return(st);

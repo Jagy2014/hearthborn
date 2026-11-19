@@ -58,9 +58,14 @@ public abstract class GridList<T> extends Widget {
 	    GridList.this.update();
 	}
 
+	private int theme = -1;
 	public Text rname() {
-	    if(rname == null)
-		rname = catf.render(name);
+	    int generation = hearthborn.ui.UiTheme.generation();
+	    if(rname == null || theme != generation) {
+		if(rname != null) rname.dispose();
+		rname = hearthborn.ui.UiTheme.light() ? hearthborn.ui.UiTheme.groupText(hearthborn.L10n.tr(name)) : catf.render(hearthborn.L10n.tr(name));
+		theme = generation;
+	    }
 	    return(rname);
 	}
     }
@@ -99,7 +104,10 @@ public abstract class GridList<T> extends Widget {
 	update();
     }
 
-    protected void drawbg(GOut g) {}
+    protected void drawbg(GOut g) {
+        if(hearthborn.ui.UiTheme.onPanel(this))
+            hearthborn.ui.UiTheme.panel(g, sz);
+    }
 
     protected void drawsel(GOut g) {
 	g.chcolor(255, 255, 0, 128);

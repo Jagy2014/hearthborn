@@ -32,7 +32,7 @@ import java.util.*;
 public class Charlist extends Widget {
     public static final Coord bsz = UI.scale(289, 96);
     public static final Text.Furnace nf = new PUtils.BlurFurn(new PUtils.TexFurn(new Text.Foundry(Text.fraktur, 20).aa(true), Window.ctex), UI.scale(2), UI.scale(2), Color.BLACK);
-    public static final Text.Furnace df = new PUtils.BlurFurn(Button.tf, UI.scale(2), UI.scale(2), Color.BLACK);
+    public static final Text.Furnace df = new PUtils.BlurFurn(new Text.Foundry(Text.sans, 12, Color.WHITE).aa(true), UI.scale(1), UI.scale(1), Color.BLACK);
     public static final int margin = UI.scale(6);
     public static final int btnw = UI.scale(100);
     public final int height;
@@ -40,6 +40,9 @@ public class Charlist extends Widget {
     public final List<Char> chars = new ArrayList<Char>();
     public final Boxlist list;
     public Avaview avalink;
+    private Button exitClient, changelog;
+    private LoginScreen.StatusLabel serverStatus;
+    private boolean lifting;
     private boolean dirty;
     private boolean showdisc;
 
@@ -63,6 +66,93 @@ public class Charlist extends Widget {
 	resize(new Coord(bsz.x, sad.c.y + sad.sz.y));
     }
 
+    protected void added(){
+        super.added();if(parent!=null)parent.setfocus(this);
+        if(exitClient==null){
+            exitClient=ui.root.add(new Button(UI.scale(200),"Log out of account",false,()->{
+                if(ui.sess!=null)ui.sess.close();
+            }));
+            if(HttpStatus.mond.get()!=null)
+                serverStatus=ui.root.add(new LoginScreen.StatusLabel(HttpStatus.mond.get(),1.0));
+        }
+        if(changelog==null){
+            changelog=ui.root.add(new Button(UI.scale(200),"Changelog",false,()->hearthborn.ui.ChangelogWindow.open(ui)));
+            hearthborn.ui.ChangelogWindow.openIfNew(ui);
+        }
+        if(!lifting)placeExit();
+    }
+    public Button logoutButton(){return exitClient;}
+    public Button changelogButton(){return changelog;}
+    public int firstCharacterTop(){return list.rootpos().y;}
+    private void placeExit(){
+        if(ui==null||ui.root==null)return;
+        if(serverStatus!=null) {
+            Area artwork=hearthborn.ui.LoginArt.characterBounds(ui.root.sz);
+            serverStatus.move(Coord.of(artwork.br.x-serverStatus.sz.x-UI.scale(10),artwork.ul.y+UI.scale(10)));
+            serverStatus.show(tvisible());
+        }
+        placeList();
+        placeAvatar();
+        if(exitClient!=null && exitClient.parent!=null){
+            Button create=null;
+            for(Button button:ui.root.children(Button.class))if(button!=exitClient && button.text!=null && button.text.text.equals(hearthborn.L10n.tr("New character"))){create=button;break;}
+            if(create==null){exitClient.hide();return;}
+            if(exitClient.sz.x!=create.sz.x){
+                exitClient.resize(Coord.of(create.sz.x,exitClient.sz.y));
+                exitClient.redraw();
+            }
+            Coord createPlaced=Coord.of(Math.max(0,Math.min(ui.root.sz.x-create.sz.x,list.rootpos().x)),
+                hearthborn.ui.LoginControls.characterCreateY(ui.root.sz,create.sz));
+            Coord exit=hearthborn.ui.LoginControls.characterLogout(ui.root.sz,exitClient.sz,createPlaced,create.sz);
+            // The server's layout container can clip controls after a monitor change.
+            if(create.parent!=ui.root) {
+                create.unlink();
+                ui.root.add(create);
+            }
+            create.move(createPlaced);
+            exitClient.move(exit);
+            exitClient.show(tvisible()&&create.tvisible());
+            if(changelog!=null && changelog.parent!=null){
+                if(changelog.sz.x!=create.sz.x){
+                    changelog.resize(Coord.of(create.sz.x,changelog.sz.y));
+                    changelog.redraw();
+                }
+                changelog.move(hearthborn.ui.LoginControls.characterLogout(ui.root.sz,changelog.sz,exit,exitClient.sz));
+                changelog.show(tvisible()&&create.tvisible());
+            }
+        }
+    }
+    /** The server's layout box would clip a list moved toward the left edge. */
+    private void placeList(){
+        int x=hearthborn.ui.LoginControls.listLeft(ui.root.sz);
+        if(parent!=ui.root){
+            int y=rootpos().y;
+            lifting=true;
+            unlink();
+            ui.root.add(this,Coord.of(x,y));
+            lifting=false;
+            return;
+        }
+        if(c.x!=x)move(Coord.of(x,c.y));
+    }
+    private void placeAvatar(){
+        if(avalink==null)return;
+        Widget frame=avalink.parent instanceof ProxyFrame?avalink.parent:avalink;
+        if(frame.parent==null||frame.parent==ui.root)return;
+        Coord at=frame.rootpos();
+        frame.unlink();
+        ui.root.add(frame,at);
+    }
+    public void dispose(){if(unverified!=null)unverified.destroy();if(unsubscribed!=null)unsubscribed.destroy();if(donation!=null)donation.destroy();if(serverStatus!=null && serverStatus.parent!=null)serverStatus.destroy();if(exitClient!=null && exitClient.parent!=null)exitClient.destroy();if(changelog!=null && changelog.parent!=null)changelog.destroy();super.dispose();}
+
+    public void wdgmsg(String message,Object... args){
+        if(message.equals("play")&&args.length>0)synchronized(chars){
+            for(Char character:chars)if(character.name.equals(args[0])){hearthborn.ui.WorldIdentity.select(ui.sess,character.disc);break;}
+            ui.root.enteringWorld();
+        }
+        super.wdgmsg(message,args);
+    }
+
     public static class Char {
 	public final String name;
 	public String disc;
@@ -81,6 +171,20 @@ public class Charlist extends Widget {
 	}
     }
 
+    /** The frame of an avatar; a flat theme draws one thin line round the picture, not the wide band of the moulding. */
+    static Frame avatarFrame(Avaview ava) {
+	Frame frame = new Frame(ava.sz, true) {
+		public void drawframe(GOut g) {
+		    if(!hearthborn.ui.FrameSkin.flat()) {super.drawframe(g); return;}
+		    Coord edge = box.btloff();
+		    int unit = Math.max(1, UI.scale(1));
+		    hearthborn.ui.FrameSkin.thin(g, edge.sub(unit, unit), inner().add(unit * 2, unit * 2), 1);
+		}
+	    };
+	frame.add(ava, 0, 0);
+	return(frame);
+    }
+
     public class Charbox extends Widget {
 	public final Char chr;
 	public final Avaview ava;
@@ -89,7 +193,7 @@ public class Charlist extends Widget {
 	public Charbox(Char chr) {
 	    super(bsz);
 	    this.chr = chr;
-	    Widget avaf = adda(Frame.with(this.ava = new Avaview(Avaview.dasz, -1, "avacam"), false), Coord.of(sz.y / 2), 0.5, 0.5);
+	    Widget avaf = adda(avatarFrame(this.ava = new Avaview(Avaview.dasz, -1, "avacam")), Coord.of(sz.y / 2), 0.5, 0.5);
 	    name = add(new ILabel(chr.name, nf), avaf.pos("ur").adds(5, 0));
 	    disc = add(new ILabel("", df), name.pos("bl"));
 	    adda(new Button(UI.scale(100), "Play"), pos("cbr").subs(10, 2), 1.0, 1.0).action(() -> Charlist.this.wdgmsg("play", chr.name));
@@ -104,10 +208,14 @@ public class Charlist extends Widget {
 	}
 
 	public void draw(GOut g) {
-	    if(list.sel == chr)
-		g.chcolor(255, 255, 128, 255);
-	    ISBox.box.draw(g, Coord.z, sz);
-	    g.chcolor();
+	    if(hearthborn.ui.FrameSkin.flat())
+		hearthborn.ui.FrameSkin.thin(g, Coord.z, sz, list.sel == chr ? 2 : 1);
+	    else {
+		if(list.sel == chr)
+		    g.chcolor(255, 255, 128, 255);
+		ISBox.box.draw(g, Coord.z, sz);
+		g.chcolor();
+	    }
 	    super.draw(g);
 	}
 
@@ -140,32 +248,24 @@ public class Charlist extends Widget {
 	}
     }
 
-    protected void added() {
-	parent.setfocus(this);
-    }
 
     private void checkdisc() {
-	String one = null;
-	boolean f = true;
-	showdisc = false;
-	synchronized(chars) {
-	    for(Char c : chars) {
-		if(f) {
-		    one = c.disc;
-		    f = false;
-		} else {
-		    if(!Utils.eq(one, c.disc)) {
-			showdisc = true;
-			break;
-		    }
-		}
-	    }
-	}
+        showdisc = true;
     }
 
+
+    private hearthborn.ui.AccountStatusFlag unverified,unsubscribed,donation;
+    private void accountBadges(){
+        if(ui==null||parent==null||avalink==null)return;
+        if(unverified==null){unverified=ui.root.add(new hearthborn.ui.AccountStatusFlag(false,false));unsubscribed=ui.root.add(new hearthborn.ui.AccountStatusFlag(true,false));donation=ui.root.add(hearthborn.ui.AccountStatusFlag.donation());}
+        unverified.show(tvisible()&&!hearthborn.ui.AccountStatusFlag.hasStatus(ui,false));
+        unsubscribed.show(tvisible()&&!hearthborn.ui.AccountStatusFlag.hasStatus(ui,true));
+        donation.show(tvisible());
+    }
     private int scrolltgt = -1;
     private double scrollval = -1;
     public void tick(double dt) {
+        accountBadges();placeExit();
 	if(scrolltgt >= 0) {
 	    if(scrollval < 0)
 		scrollval = list.scrollval();

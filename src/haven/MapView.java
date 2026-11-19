@@ -40,7 +40,7 @@ import haven.MCache.OverlayInfo;
 import haven.render.sl.Uniform;
 import haven.render.sl.Type;
 
-public class MapView extends PView implements DTarget, Console.Directory {
+public class MapView extends PView implements DTarget, Console.Directory, Widget.CursorQuery.Handler {
     public static boolean clickdb = false;
     public long plgob = -1;
     public Coord2d cc;
@@ -69,12 +69,32 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	void mmousemove(Coord mc);
     }
 
+    public static class CameraDirection {
+        public final float elevation,angle;
+        public CameraDirection(float elevation,float angle){this.elevation=elevation;this.angle=angle;}
+    }
+
     public abstract class Camera implements Pipe.Op {
 	protected haven.render.Camera view = new haven.render.Camera(Matrix4f.identity());
 	protected Projection proj = new Projection(Matrix4f.identity());
 	
 	public Camera() {
 	    resized();
+	}
+
+	/** Where the eye of the camera is, in render coordinates. */
+	public Coord3f eye() {
+	    Matrix4f inv = haven.render.Transform.rxinvert(view.fin(Matrix4f.id));
+	    return(Coord3f.of(inv.m[12], inv.m[13], inv.m[14]));
+	}
+
+	/** The heights above the horizon, in radians, that the bottom and the top edge of the view look at, along its middle. */
+	public float[] skyWindow() {
+	    Matrix4f inv = haven.render.Transform.rxinvert(view.fin(Matrix4f.id));
+	    float centre = (float)Math.asin(Math.max(-1f, Math.min(1f, -inv.m[10])));
+	    float m = proj.fin(Matrix4f.id).m[5];
+	    float half = (m > 1e-6f) ? (float)Math.atan(1f / m) : 0.5f;
+	    return(new float[] {centre - half, centre + half});
 	}
 
 	public boolean keydown(KeyDownEvent ev) {
@@ -93,7 +113,7 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	public void resized() {
 	    float field = 0.5f;
 	    float aspect = ((float)sz.y) / ((float)sz.x);
-	    proj = Projection.frustum(-field, field, -aspect * field, aspect * field, 1, 2000);
+	    proj = Projection.frustum(-field, field, -aspect * field, aspect * field, 1, hearthborn.ui.CameraSettings.FAR);
 	}
 
 	public void apply(Pipe p) {
@@ -103,6 +123,13 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	
 	public abstract float angle();
 	public abstract void tick(double dt);
+
+        /** Native zoom parameter; following cameras couple zoom to elevation. */
+        public Float zoom(){return null;}
+        public void zoom(float value){}
+        public void roomZoom(){}
+        public CameraDirection orientation(){return null;}
+        public void orientation(CameraDirection direction){}
 
 	public String stats() {return("N/A");}
     }
@@ -115,6 +142,8 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	private float angl, tangl;
 	private Coord dragorig = null;
 	private float anglorig;
+	/* With the wide view on, the camera may also pull back past the usual limit (extra, a multiple of the usual distance) and tilt down towards the horizon (tilt, radians off the usual pitch). */
+	private float extra = 1f, textra = 1f, tilt = 0f, ttilt = 0f, tiltorig;
 	
 	public FollowCam() {
 	    elev = telev = (float)Math.PI / 6.0f;
@@ -128,6 +157,7 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	
 	public boolean click(Coord c) {
 	    anglorig = tangl;
+	    tiltorig = ttilt;
 	    dragorig = c;
 	    return(true);
 	}
@@ -135,6 +165,28 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	public void drag(Coord c) {
 	    tangl = anglorig + ((float)(c.x - dragorig.x) / 100.0f);
 	    tangl = tangl % ((float)Math.PI * 2.0f);
+	    if(wide())
+		ttilt = Math.max(0f, Math.min(tiltorig + ((float)(c.y - dragorig.y) / 100.0f), maxtilt()));
+	}
+
+	/** Whether the camera may leave the usual limits: when the sky is shown. */
+	private boolean wide() {
+	    return(hearthborn.world.Sky.enabled());
+	}
+
+	/** How far the pitch may drop below the usual: down to the horizon, or lower when the option allows. */
+	private float maxtilt() {
+	    return(Math.max(0f, telev - hearthborn.ui.CameraSettings.minElevation()));
+	}
+
+	/** How far the camera may pull back past the usual limit. */
+	private float maxextra() {
+	    return(Math.max(1f, hearthborn.ui.CameraSettings.MAX_PERSPECTIVE / dist(maxang)));
+	}
+
+	/** The pitch the view really has. */
+	float pitch() {
+	    return(elev - tilt);
 	}
 
 	private double f0 = 0.2, f1 = 0.5, f2 = 0.9;
@@ -148,13 +200,26 @@ public class MapView extends PView implements DTarget, Console.Directory {
 
 	private float dist(float elev) {
 	    float da = (float)Math.atan(ca * field(elev));
-	    return((float)(((cd - (h / Math.tan(elev))) * Math.sin(elev - da) / Math.sin(da)) - (h / Math.sin(elev))));
+	    return(hearthborn.ui.CameraSettings.distance((float)(((cd - (h / Math.tan(elev))) * Math.sin(elev - da) / Math.sin(da)) - (h / Math.sin(elev))), sz.x));
 	}
 
 	public void tick(double dt) {
-	    elev += (telev - elev) * (float)(1.0 - Math.pow(500, -dt));
+	    float cf = (float)(1.0 - Math.pow(500, -dt));
+	    if(!wide()) {
+		ttilt = 0f; textra = 1f;
+	    } else {
+		ttilt = Math.max(0f, Math.min(ttilt, maxtilt()));
+		textra = Math.max(1f, Math.min(textra, maxextra()));
+	    }
+	    elev += (telev - elev) * cf;
 	    if(Math.abs(telev - elev) < 0.0001)
 		elev = telev;
+	    tilt += (ttilt - tilt) * cf;
+	    if(Math.abs(ttilt - tilt) < 0.0001)
+		tilt = ttilt;
+	    extra += (textra - extra) * cf;
+	    if(Math.abs(textra - extra) < 0.0001)
+		extra = textra;
 	    
 	    float dangl = tangl - angl;
 	    while(dangl >  Math.PI) dangl -= (float)(2 * Math.PI);
@@ -184,19 +249,42 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	    }
 	    
 	    float field = field(elev);
-	    view = haven.render.Camera.pointed(curc.add(camoff).add(0.0f, 0.0f, h), dist(elev), elev, angl);
-	    proj = Projection.frustum(-field, field, -ca * field, ca * field, 1, 2000);
+	    view = haven.render.Camera.pointed(curc.add(camoff).add(0.0f, 0.0f, h), dist(elev) * extra, pitch(), angl);
+	    proj = Projection.frustum(-field, field, -ca * field, ca * field, 1, wide() ? hearthborn.ui.CameraSettings.FAR : 2000);
 	}
 
 	public float angle() {
 	    return(angl);
 	}
+
+        public Float zoom(){return telev;}
+        public void zoom(float value){elev=telev=value;}
+        public CameraDirection orientation(){return new CameraDirection(telev,tangl);}
+        public void orientation(CameraDirection direction){elev=telev=direction.elevation;angl=tangl=direction.angle;}
+        public void roomZoom(){
+            extra=textra=1f;tilt=ttilt=0f;
+            float low=.001f,high=maxang;
+            for(int i=0;i<32;i++){float middle=(low+high)/2;if(dist(middle)<mindist)low=middle;else high=middle;}
+            zoom(Math.min(maxang,high*1.02f*1.02f*1.02f));
+        }
 	
 	private static final float maxang = (float)(Math.PI / 2 - 0.1);
 	private static final float mindist = 50.0f;
 	public boolean wheel(MouseWheelEvent ev) {
+	    float step = (float)hearthborn.ui.WheelSettings.camera(ev.s);
+	    if(wide()) {
+		/* Out past the usual limit, and back in through it before the usual zoom starts again. */
+		if((step > 0) && (telev >= maxang)) {
+		    textra = Math.min(textra + (step * textra * 0.05f), maxextra());
+		    return(true);
+		}
+		if((step < 0) && (textra > 1f)) {
+		    textra = Math.max(textra + (step * textra * 0.05f), 1f);
+		    return(true);
+		}
+	    }
 	    float fe = telev;
-	    telev += ev.s * telev * 0.02f;
+	    telev += step * telev * 0.02f;
 	    if(telev > maxang)
 		telev = maxang;
 	    if(dist(telev) < mindist)
@@ -205,7 +293,7 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	}
 
 	public String stats() {
-	    return(String.format("%f %f %f", elev, dist(elev), field(elev)));
+	    return(String.format("%f %f %f", pitch(), dist(elev) * extra, field(elev)));
 	}
     }
     static {camtypes.put("follow", FollowCam.class);}
@@ -217,7 +305,15 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	private Coord dragorig = null;
 	private float elevorig, anglorig;
 
+        public Float zoom(){return dist;}
+        public void zoom(float value){dist=hearthborn.ui.CameraSettings.perspective(value);}
+        public CameraDirection orientation(){return new CameraDirection(elev,angl);}
+        public void orientation(CameraDirection direction){elev=direction.elevation;angl=direction.angle;}
+        public void roomZoom(){zoom(80);}
+
 	public void tick(double dt) {
+            if(elev < hearthborn.ui.CameraSettings.minElevation()) elev = hearthborn.ui.CameraSettings.minElevation();
+            dist = hearthborn.ui.CameraSettings.perspective(dist);
 	    Coord3f cc = getcc().invy();
 	    view = haven.render.Camera.pointed(cc.add(camoff).add(0.0f, 0.0f, 15f), dist, elev, angl);
 	}
@@ -235,17 +331,17 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	
 	public void drag(Coord c) {
 	    elev = elevorig - ((float)(c.y - dragorig.y) / 100.0f);
-	    if(elev < 0.0f) elev = 0.0f;
+	    if(elev < hearthborn.ui.CameraSettings.minElevation()) elev = hearthborn.ui.CameraSettings.minElevation();
 	    if(elev > (Math.PI / 2.0)) elev = (float)Math.PI / 2.0f;
 	    angl = anglorig + ((float)(c.x - dragorig.x) / 100.0f);
 	    angl = angl % ((float)Math.PI * 2.0f);
 	}
 
 	public boolean wheel(MouseWheelEvent ev) {
-	    float d = dist + (float)(ev.s * 25);
+	    float d = dist + (float)(hearthborn.ui.WheelSettings.camera(ev.s) * 25);
 	    if(d < 5)
 		d = 5;
-	    dist = d;
+	    dist = hearthborn.ui.CameraSettings.perspective(d);
 	    return(true);
 	}
     }
@@ -260,8 +356,15 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	private final float pi2 = (float)(Math.PI * 2);
 	private Coord3f cc = null;
 
+        public Float zoom(){return tdist;}
+        public void zoom(float value){dist=tdist=hearthborn.ui.CameraSettings.perspective(value);}
+        public CameraDirection orientation(){return new CameraDirection(telev,tangl);}
+        public void orientation(CameraDirection direction){elev=telev=direction.elevation;angl=tangl=direction.angle;}
+        public void roomZoom(){zoom(80);}
+
 	public void tick(double dt) {
 	    float cf = (1f - (float)Math.pow(500, -dt * 3));
+            if(telev < hearthborn.ui.CameraSettings.minElevation()) telev = hearthborn.ui.CameraSettings.minElevation();
 	    angl = angl + ((tangl - angl) * cf);
 	    while(angl > pi2) {angl -= pi2; tangl -= pi2; anglorig -= pi2;}
 	    while(angl < 0)   {angl += pi2; tangl += pi2; anglorig += pi2;}
@@ -270,6 +373,8 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	    elev = elev + ((telev - elev) * cf);
 	    if(Math.abs(telev - elev) < 0.0001) elev = telev;
 
+            tdist = hearthborn.ui.CameraSettings.perspective(tdist);
+            dist = hearthborn.ui.CameraSettings.perspective(dist);
 	    dist = dist + ((tdist - dist) * cf);
 	    if(Math.abs(tdist - dist) < 0.0001) dist = tdist;
 
@@ -294,16 +399,16 @@ public class MapView extends PView implements DTarget, Console.Directory {
 
 	public void drag(Coord c) {
 	    telev = elevorig - ((float)(c.y - dragorig.y) / 100.0f);
-	    if(telev < 0.0f) telev = 0.0f;
+	    if(telev < hearthborn.ui.CameraSettings.minElevation()) telev = hearthborn.ui.CameraSettings.minElevation();
 	    if(telev > (Math.PI / 2.0)) telev = (float)Math.PI / 2.0f;
 	    tangl = anglorig + ((float)(c.x - dragorig.x) / 100.0f);
 	}
 
 	public boolean wheel(MouseWheelEvent ev) {
-	    float d = tdist + (float)(ev.s * 25);
+	    float d = tdist + (float)(hearthborn.ui.WheelSettings.camera(ev.s) * 25);
 	    if(d < 5)
 		d = 5;
-	    tdist = d;
+	    tdist = hearthborn.ui.CameraSettings.perspective(d);
 	    return(true);
 	}
     }
@@ -320,12 +425,19 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	private float anglorig;
 	protected Coord3f cc, jc;
 
+        public Float zoom(){return field;}
+        public void zoom(float value){field=hearthborn.ui.CameraSettings.field(value,sz.x);}
+        public CameraDirection orientation(){return new CameraDirection(elev,angl);}
+        public void orientation(CameraDirection direction){elev=direction.elevation;angl=direction.angle;}
+        public void roomZoom(){zoom(80);}
+
 	public void tick2(double dt) {
 	    this.cc = getcc().invy();
 	}
 
 	public void tick(double dt) {
 	    tick2(dt);
+            field = hearthborn.ui.CameraSettings.field(field, sz.x);
 	    float aspect = ((float)sz.y) / ((float)sz.x);
 	    Matrix4f vm = haven.render.Camera.makepointed(new Matrix4f(), cc.add(camoff).add(0.0f, 0.0f, 15f), dist, elev, angl);
 	    if(exact) {
@@ -376,6 +488,11 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	private final float pi2 = (float)(Math.PI * 2);
 	private double tf = 1.0;
 
+        public Float zoom(){return tfield;}
+        public void zoom(float value){super.zoom(value);tfield=field;}
+        public CameraDirection orientation(){return new CameraDirection(elev,tangl);}
+        public void orientation(CameraDirection direction){super.orientation(direction);tangl=angl;}
+
 	public SOrthoCam(String... args) {
 	    PosixArgs opt = PosixArgs.getopt(args, "enift:Z:");
 	    for(char c : opt.parsed()) {
@@ -403,13 +520,11 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	}
 
 	public void tick2(double dt) {
+            tfield = hearthborn.ui.CameraSettings.field(tfield, sz.x);
 	    dt *= tf;
 	    float cf = 1f - (float)Math.pow(500, -dt);
-	    Coord3f mc = getcc().invy();
-	    if((cc == null) || (Math.hypot(mc.x - cc.x, mc.y - cc.y) > 250))
-		cc = mc;
-	    else if(!exact || (mc.dist(cc) > 2))
-		cc = cc.add(mc.sub(cc).mul(cf));
+	    // Stay on the character. Easing the view behind a run made the world feel heavy.
+	    cc = getcc().invy();
 
 	    angl = angl + ((tangl - angl) * cf);
 	    while(angl > pi2) {angl -= pi2; tangl -= pi2; anglorig -= pi2;}
@@ -442,23 +557,22 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	}
 
 	private void chfield(float nf) {
-	    tfield = nf;
-	    tfield = Math.max(Math.min(tfield, sz.x * (float)Math.sqrt(2) / 8f), 50);
+	    tfield = hearthborn.ui.CameraSettings.field(nf, sz.x);
 	    if(tfield > 100)
 		release();
 	}
 
 	public boolean wheel(MouseWheelEvent ev) {
-	    chfield(tfield + (float)ev.s * 10);
+	    chfield(tfield + (float)hearthborn.ui.WheelSettings.camera(ev.s) * 10);
 	    return(true);
 	}
 
 	public boolean keydown(KeyDownEvent ev) {
 	    if(kb_camleft.key().match(ev)) {
-		tangl = (float)(Math.PI * 0.5 * (Math.floor((tangl / (Math.PI * 0.5)) - 0.51) + 0.5));
+		tangl = isometric ? (float)(Math.PI * 0.5 * (Math.floor((tangl / (Math.PI * 0.5)) - 0.51) + 0.5)) : tangl - (float)(Math.PI * 0.2);
 		return(true);
 	    } else if(kb_camright.key().match(ev)) {
-		tangl = (float)(Math.PI * 0.5 * (Math.floor((tangl / (Math.PI * 0.5)) + 0.51) + 0.5));
+		tangl = isometric ? (float)(Math.PI * 0.5 * (Math.floor((tangl / (Math.PI * 0.5)) + 0.51) + 0.5)) : tangl + (float)(Math.PI * 0.2);
 		return(true);
 	    } else if(kb_camin.key().match(ev)) {
 		chfield(tfield - 50);
@@ -496,6 +610,7 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	basic.add(new Outlines(false));
 	basic.add(this.gobs = new Gobs());
 	basic.add(this.terrain = new Terrain());
+	hearthborn.map.OreHighlight.attach(this, glob);
 	this.clickmap = new ClickMap();
 	clmaptree.add(clickmap);
 	setcanfocus(true);
@@ -509,7 +624,11 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	super.envdispose();
     }
 
+    private final hearthborn.world.SiegePointers siegePointers=new hearthborn.world.SiegePointers();
     public void dispose() {
+        siegePointers.dispose();
+        hearthborn.map.CollisionOverlay.dispose(this);
+        hearthborn.map.HiddenBoxes.dispose(this);
 	gobs.slot.remove();
 	clmaplist.dispose();
 	clobjlist.dispose();
@@ -718,6 +837,18 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	}
     }
 
+    @Override public void wdgmsg(String message,Object... args){
+        if(hearthborn.mining.MiningSafety.command(this,message,args))super.wdgmsg(message,args);
+    }
+
+    public boolean getcurs(CursorQuery ev){
+        Resource bowCursor=hearthborn.combat.BowCombat.cursor(getparent(GameUI.class));
+        if(bowCursor!=null){ev.set(bowCursor);return true;}
+        if(selection!=null&&selection.localCompleted!=null){ev.set(hearthborn.ui.AreaSelectionCursor.resource());return true;}
+        if(hearthborn.quality.QualityRoster.recording(getparent(GameUI.class))){ev.set(hearthborn.quality.QualityRoster.cursor());return true;}
+        if(!minesweeperMarking)return false;ev.set(hearthborn.mining.Minesweeper.cursor());return true;
+    }
+    public boolean minesweeperMarking;
     public final Terrain terrain;
     public class Terrain extends MapRaster {
 	final Grid main = new Grid<MapMesh>() {
@@ -727,10 +858,14 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	    };
 	final Grid flavobjs = new Grid<RenderTree.Node>(false) {
 		RenderTree.Node getcut(Coord cc) {
-		    return(map.getfo(cc));
+                    if(hearthborn.world.FlavorObjects.silent())return hearthborn.world.FlavorObjects.empty();
+		    return(hearthborn.world.FlavorObjects.node(map.getfo(cc)));
 		}
 	    };
 
+	final Grid<RenderTree.Node> minesweeper=new Grid<RenderTree.Node>(true) {
+            RenderTree.Node getcut(Coord cc){return hearthborn.mining.Minesweeper.getcut(ui,cc);}
+        };
 	private Terrain() {
 	}
 
@@ -739,12 +874,14 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	    if(area != null) {
 		main.tick();
 		flavobjs.tick();
+                minesweeper.tick();
 	    }
 	}
 
 	public void added(RenderTree.Slot slot) {
 	    slot.add(main);
 	    slot.add(flavobjs);
+            slot.add(minesweeper);
 	    super.added(slot);
 	}
 
@@ -857,9 +994,13 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	    ol.tick();
     }
 
-    private static final Material gridmat = new Material(new BaseColor(255, 255, 255, 48), States.maskdepth, new MapMesh.OLOrder(null),
-							 Location.xlate(new Coord3f(0, 0, 0.5f))   /* Apparently, there is no depth bias for lines. :P */
-							 );
+    /** The grid's material, in the colour of the setting; it is made again each time the grid is shown. */
+    private static Material gridmat() {
+	java.awt.Color c = hearthborn.ui.WorldDisplay.gridColor();
+	return(new Material(new BaseColor(c.getRed(), c.getGreen(), c.getBlue(), c.getAlpha()), States.maskdepth, new MapMesh.OLOrder(null),
+			    Location.xlate(new Coord3f(0, 0, 0.5f))   /* Apparently, there is no depth bias for lines. :P */
+			    ));
+    }
     private class GridLines extends MapRaster {
 	final Grid grid = new Grid<RenderTree.Node>() {
 		RenderTree.Node getcut(Coord cc) {
@@ -876,7 +1017,7 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	}
 
 	public void added(RenderTree.Slot slot) {
-	    slot.ostate(gridmat);
+	    slot.ostate(gridmat());
 	    slot.add(grid);
 	    super.added(slot);
 	}
@@ -887,6 +1028,13 @@ public class MapView extends PView implements DTarget, Console.Directory {
     }
 
     GridLines gridlines = null;
+    /** Draws the grid again when its colour was changed. */
+    public void refreshgrid() {
+	if(gridlines != null) {
+	    showgrid(false);
+	    showgrid(true);
+	}
+    }
     public void showgrid(boolean show) {
 	if((gridlines == null) && show) {
 	    basic.add(gridlines = new GridLines());
@@ -941,6 +1089,18 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	}
     }
 
+    public void globalCamera(String action) {
+        if(action.equals("CAM_RESET")){camera=restorecam();return;}
+        if(action.startsWith("CAM_ZOOM")){int amount=action.endsWith("IN")?-1:1;camera.wheel(new MouseWheelEvent(Coord.z,amount,amount));return;}
+        if(action.startsWith("CAM_SNAP")) {
+            double desired=action.endsWith("WEST")?0:action.endsWith("EAST")?Math.PI:action.endsWith("NORTH")?Math.PI/2:Math.PI*1.5;
+            if(camera.click(Coord.z)){camera.drag(Coord.of((int)(Utils.cangle(desired-camera.angle())*100),0));camera.release();}
+        } else if(camera.click(Coord.z)) {
+            int x=action.endsWith("LEFT")?-20:action.endsWith("RIGHT")?20:0;
+            int y=action.endsWith("UP")?-20:action.endsWith("DOWN")?20:0;
+            camera.drag(Coord.of(x,y));camera.release();
+        }
+    }
     public String camstats() {
 	String cc;
 	try {
@@ -1019,12 +1179,21 @@ public class MapView extends PView implements DTarget, Console.Directory {
 
     public DirLight amblight = null;
     private RenderTree.Slot s_amblight = null;
+    private Object[] amblightKey = null;
     private void amblight() {
 	synchronized(glob) {
 	    if(glob.lightamb != null) {
-		amblight = new DirLight(glob.lightamb, glob.lightdif, glob.lightspc, Coord3f.o.sadd((float)glob.lightelev, (float)glob.lightang, 1f));
+		Object[] key = {hearthborn.ui.WorldDisplay.light(glob.lightamb), hearthborn.ui.WorldDisplay.light(glob.lightdif), hearthborn.ui.WorldDisplay.light(glob.lightspc), glob.lightelev, glob.lightang};
+		/* A new light object every tick replaces the shadow map and the light slot, which makes the whole scene re-evaluate its state every frame. */
+		if(Arrays.equals(key, amblightKey) && (amblight != null))
+		    return;
+		amblightKey = key;
+		amblight = new DirLight((Color)key[0], (Color)key[1], (Color)key[2], Coord3f.o.sadd((float)glob.lightelev, (float)glob.lightang, 1f));
 		amblight.prio(100);
 	    } else {
+		if((amblightKey == null) && (amblight == null))
+		    return;
+		amblightKey = null;
 		amblight = null;
 	    }
 	}
@@ -1097,6 +1266,7 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	    return(idx);
 	}, RenderContext.slot, Light.lights);
 
+    private hearthborn.world.Sky sky;
     private final Map<RenderTree.Node, RenderTree.Slot> rweather = new HashMap<>();
     private void updweather() {
 	Glob.Weather[] wls = glob.weather().toArray(new Glob.Weather[0]);
@@ -1109,6 +1279,7 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	}
 	Collection<RenderTree.Node> old =new ArrayList<>(rweather.keySet());
 	for(Glob.Weather w : wls) {
+            if(hearthborn.ui.WorldDisplay.hide(w)) continue;
 	    if(w instanceof RenderTree.Node) {
 		RenderTree.Node n = (RenderTree.Node)w;
 		old.remove(n);
@@ -1617,15 +1788,27 @@ public class MapView extends PView implements DTarget, Console.Directory {
     }
 
     protected void maindraw(Render out) {
+        hearthborn.map.CollisionOverlay.update(this);
+        hearthborn.map.HiddenBoxes.update(this);
 	drawsmap(out);
 	super.maindraw(out);
     }
 
     private Loading camload = null, lastload = null;
+    private void requestVisible(Coord2d at) {
+	if(at == null || glob == null || glob.map == null)
+	    return;
+	glob.map.reqarea(at.floor(tilesz).sub(MCache.cutsz.mul(view + 1)),
+			 at.floor(tilesz).add(MCache.cutsz.mul(view + 1)));
+    }
     public void draw(GOut g) {
 	Loader.Future<Plob> placing = this.placing;
 	if((placing != null) && placing.done())
 	    placing.get().gtick(g.out);
+	requestVisible(cc);
+	Gob self = player();
+	if(self != null && self.rc != null && (cc == null || self.rc.dist(cc) > tilesz.x))
+	    requestVisible(self.rc);
 	glob.map.sendreqs();
 	if((olftimer != 0) && (olftimer < Utils.rtime()))
 	    unflashol();
@@ -1633,18 +1816,20 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	    if(camload != null)
 		throw(new Loading(camload));
 	    undelay(delayed, g);
+	    hearthborn.cheese.CheeseRacks.draw(this, g);
 	    super.draw(g);
+
+	    hearthborn.timers.ObjectTimers.draw(this, g);
+            siegePointers.draw(this,g);
 	    undelay(delayed2, g);
 	    poldraw(g);
 	    partydraw(g);
-	    glob.map.reqarea(cc.floor(tilesz).sub(MCache.cutsz.mul(view + 1)),
-			     cc.floor(tilesz).add(MCache.cutsz.mul(view + 1)));
 	} catch(Loading e) {
 	    e.boostprio(6);
 	    lastload = e;
 	    String text = e.getMessage();
 	    if(text == null)
-		text = "Loading...";
+		text = hearthborn.L10n.tr("Loading...");
 	    g.chcolor(Color.BLACK);
 	    g.frect(Coord.z, sz);
 	    g.chcolor(Color.WHITE);
@@ -1677,6 +1862,8 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	checkload();
 	camload = null;
 	try {
+            GameUI gui=getparent(GameUI.class);
+            if(gui!=null&&!gui.prepareCamera(this))throw new Loading();
 	    if((shake = shake * Math.pow(100, -dt)) < 0.01)
 		shake = 0;
 	    camoff.x = (float)((Math.random() - 0.5) * shake);
@@ -1691,6 +1878,9 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	amblight();
 	updsmap(amblight);
 	updweather();
+	if(sky == null)
+	    sky = new hearthborn.world.Sky(this, glob);
+	sky.tick(dt);
 	synchronized(glob.map) {
 	    terrain.tick();
 	    oltick();
@@ -1722,16 +1912,18 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	boolean freerot = false;
 
 	public void adjust(Plob plob, Coord pc, Coord2d mc, int modflags) {
+	    Gob pl = plob.mv().player();
+	    double angle = ((pl != null) && !freerot) ? Math.round(plob.rc.angle(pl.rc) / (Math.PI / 2)) * (Math.PI / 2) : plob.a;
 	    Coord2d nc;
-	    if((modflags & UI.MOD_SHIFT) == 0)
-		nc = mc.floor(tilesz).mul(tilesz).add(tilesz.div(2));
-	    else if(plobpgran > 0)
+	    if((modflags & UI.MOD_SHIFT) == 0) {
+		Coord2d slot = hearthborn.world.TrellisPlace.slot(plob, mc, tilesz, plobpgran, angle);
+		nc = slot != null ? slot : mc.floor(tilesz).mul(tilesz).add(tilesz.div(2));
+	    } else if(plobpgran > 0)
 		nc = mc.div(tilesz).mul(plobpgran).roundf().div(plobpgran).mul(tilesz);
 	    else
 		nc = mc;
-	    Gob pl = plob.mv().player();
 	    if((pl != null) && !freerot)
-		plob.move(nc, Math.round(plob.rc.angle(pl.rc) / (Math.PI / 2)) * (Math.PI / 2));
+		plob.move(nc, angle);
 	    else
 		plob.move(nc);
 	}
@@ -1744,7 +1936,7 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	    if((modflags & UI.MOD_SHIFT) == 0)
 		na = (Math.PI / 4) * (Math.round(plob.a / (Math.PI / 4)) + data.a);
 	    else
-		na = plob.a + data.s * Math.PI / plobagran;
+		na = plob.a + hearthborn.ui.WheelSettings.rotation(data.s) * Math.PI / plobagran;
 	    na = Utils.cangle(na);
 	    plob.move(na);
 	    return(true);
@@ -1819,6 +2011,14 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	olftimer = Utils.rtime() + tm;
     }
 
+    /** The resource is read only after the server's placement preview has loaded. */
+    public String placementResource() {
+        Loader.Future<Plob> current=placing;
+        if(current==null)return null;
+        if(!current.done())throw new Loading();
+        return current.get().getattr(Drawable.class).getres().name;
+    }
+
     public void uimsg(String msg, Object... args) {
 	if(msg == "place") {
 	    Loader.Future<Plob> placing = this.placing;
@@ -1890,8 +2090,8 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	    boolean sel = Utils.bv(args[0]);
 	    synchronized(this) {
 		if(selection != null) {
-		    selection.destroy();
-		    selection = null;
+		    if(selection.localCompleted!=null)cancelLocalArea(selection);
+                    else{selection.destroy();selection=null;}
 		}
 		if(sel) {
 		    Coord max = (args.length > 1) ? (Coord)args[1] : null;
@@ -1981,20 +2181,81 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	protected void nohit(Coord pc) {}
     }
 
+    private static Gob clicked(ClickData inf) {
+	if(inf == null)
+	    return(null);
+	if(inf.ci instanceof Gob.GobClick)
+	    return(((Gob.GobClick)inf.ci).gob);
+	if(inf.ci instanceof Composited.CompositeClick)
+	    return(((Composited.CompositeClick)inf.ci).gi.gob);
+	for(Object node : inf.array()) {
+	    if(node instanceof Gob)
+		return((Gob)node);
+	}
+	return(null);
+    }
+
+    private long clickSequence;
+
+    /** A pending GPU pick must not revive movement after a newer command. */
+    public void cancelPendingClicks() {clickSequence++;}
+
     private class Click extends Hittest {
 	int clickb;
+        private final int clickmods;
+        private final long sequence;
+        private final boolean bowPick;
 	
 	private Click(Coord c, int b) {
 	    super(c);
 	    clickb = b;
+            clickmods = ui.modflags();
+            sequence = ++clickSequence;
+            bowPick = hearthborn.combat.BowCombat.picking(getparent(GameUI.class));
 	}
 	
 	protected void hit(Coord pc, Coord2d mc, ClickData inf) {
-	    Object[] args = {pc, mc.floor(posres), clickb, ui.modflags()};
+            if(sequence != clickSequence)return;
+            if(bowPick){hearthborn.combat.BowCombat.pick(getparent(GameUI.class),clicked(inf),clickb);return;}
+            if(minesweeperMarking){
+                if(clickb==1)hearthborn.mining.Minesweeper.cycleAtPoint(mc,getparent(GameUI.class));
+                else if(clickb==3)hearthborn.mining.Minesweeper.pinAtPoint(mc,getparent(GameUI.class));
+                return;
+            }
+	    Gob gob = clicked(inf);
+            GameUI qualityGui=getparent(GameUI.class);
+            if(qualityGui!=null&&gob!=null&&clickb==1)qualityGui.inspect.clicked(gob);
+            if(hearthborn.quality.QualityRoster.recording(qualityGui)){
+                if(gob==null)return;
+                boolean vessel=hearthborn.quality.RosterStore.isVesselGob(gob);
+                if(!vessel&&!hearthborn.quality.RosterStore.isBuildingGob(gob)){
+                    ui.error(hearthborn.L10n.tr("This object has no recordable quality."));return;
+                }
+                if(vessel) wdgmsg("click",pc,mc.floor(posres),3,0);
+                hearthborn.quality.QualityRoster.picked(qualityGui,gob);
+                Object[] qualityArgs={pc,mc.floor(posres),vessel?3:1,0};
+                if(inf!=null)qualityArgs=Utils.extend(qualityArgs,hearthborn.ui.ItemProtection.clickargs(ui,inf));
+                wdgmsg("click",qualityArgs);return;
+            }
+	    if(clickb==3)hearthborn.ui.FlowerChoices.remember(ui,gob);
+	    if(gob != null && clickb == 3)
+		hearthborn.timers.ObjectTimers.clicked(gob);
+            if(inf==null && clickb==1 && Utils.getprefb("hearthborn/world/center-clicks",false))mc=Coord2d.of(mc.floor(MCache.tilesz)).mul(MCache.tilesz).add(MCache.tilesz.div(2));
+            if(gob != null) hearthborn.quality.QualityRoster.picked(getparent(GameUI.class),gob);
+            if(gob!=null&&clickb==3)hearthborn.planner.ClaimSurvey.clickedEntrance(getparent(GameUI.class),gob);
+            hearthborn.combat.BootSwitch.world(getparent(GameUI.class),gob,clickb);
+	    Object[] args = {pc, mc.floor(posres), clickb, clickmods};
 	    if(inf != null)
-		args = Utils.extend(args, inf.clickargs());
+		args = Utils.extend(args, hearthborn.ui.ItemProtection.clickargs(ui,inf));
+            if(hearthborn.navigation.Walking.requested(clickmods)) {
+                if(inf==null && clickb==1 && hearthborn.navigation.Walking.start(MapView.this,mc,args))return;
+                Coord2d goal=hearthborn.navigation.Walking.interactionPoint(gob,inf,mc);
+                if(gob!=null && clickb==3 && hearthborn.navigation.Walking.start(MapView.this,goal,args,gob))return;
+            }
 	    wdgmsg("click", args);
 	}
+
+	protected void nohit(Coord pc) {}
     }
     
     public void grab(Grabber grab) {
@@ -2007,18 +2268,47 @@ public class MapView extends PView implements DTarget, Console.Directory {
     }
     
     private UI.Grab camdrag = null;
+    private Coord cameraDragOrigin;
 
     public boolean mousedown(MouseDownEvent ev) {
+        GameUI bowGui=getparent(GameUI.class);
+        if(hearthborn.combat.BowCombat.picking(bowGui)&&(ev.b==1||ev.b==3)){
+            hearthborn.navigation.Walking.cancel(this);
+            if(ev.b==3)hearthborn.combat.BowCombat.manual(bowGui);
+            else {parent.setfocus(this);new Click(ev.c,1).run();}
+            return true;
+        }
+        if(ev.b==1)hearthborn.combat.BowCombat.move(bowGui);
+        else if(ev.b==3)hearthborn.combat.BowCombat.manual(bowGui);
+        if(hearthborn.quality.QualityRoster.recording(getparent(GameUI.class))&&(ev.b==1||ev.b==3)){
+            if(ev.b==3)hearthborn.quality.QualityRoster.cancelAdd(getparent(GameUI.class));
+            else {hearthborn.navigation.Walking.cancel(this);parent.setfocus(this);new Click(ev.c,1).run();}
+            return true;
+        }
+        if(minesweeperMarking&&(ev.b==1||ev.b==3)){
+            hearthborn.navigation.Walking.cancel(this);parent.setfocus(this);
+            new Click(ev.c,ev.b).run();return true;
+        }
+        hearthborn.navigation.Walking.cancel(this);
+        GameUI gui = getparent(GameUI.class);
+        if(ev.b==1||ev.b==3)hearthborn.scripts.ScriptRunner.manualFieldInput(gui);
+        if(gui != null) gui.dreamHarvester.cancel();
+        if(ev.b==1 || ev.b==3)hearthborn.quality.QualityRoster.mapPick(this,ev.c);
 	parent.setfocus(this);
 	Loader.Future<Plob> placing_l = this.placing;
 	if(ev.b == 2) {
 	    if((camdrag == null) && camera.click(ev.c)) {
-		camdrag = ui.grabmouse(this);
+		cameraDragOrigin=ev.c;
+                camdrag = ui.grabmouse(this);
 	    }
 	} else if((placing_l != null) && placing_l.done()) {
 	    Plob placing = placing_l.get();
-	    if(placing.lastmc != null)
-		wdgmsg("place", placing.rc.floor(posres), (int)Math.round(placing.a * 32768 / Math.PI), ev.b, ui.modflags());
+	    if(placing.lastmc != null) {
+                hearthborn.timers.ClaimTimers.placing(this,placing,ev.b);
+                hearthborn.storage.StonePileColors.placing(this,placing,ev.b);
+		wdgmsg("place", placing.rc.floor(posres), (int)Math.round(placing.a * 32768 / Math.PI), ev.b,
+                    ev.b==1?hearthborn.storage.StockpileActions.itemModifiers(placing,ui.modflags()):ui.modflags());
+            }
 	} else if((grab != null) && grab.mmousedown(ev.c, ev.b)) {
 	} else {
 	    new Click(ev.c, ev.b).run();
@@ -2031,7 +2321,7 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	    grab.mmousemove(ev.c);
 	Loader.Future<Plob> placing_l = this.placing;
 	if(camdrag != null) {
-	    camera.drag(ev.c);
+	    camera.drag(hearthborn.ui.CameraSettings.drag(ev.c,cameraDragOrigin));
 	} else if((placing_l != null) && placing_l.done()) {
 	    Plob placing = placing_l.get();
 	    if((placing.lastmc == null) || !placing.lastmc.equals(ev.c)) {
@@ -2041,6 +2331,7 @@ public class MapView extends PView implements DTarget, Console.Directory {
     }
     
     public boolean mouseup(MouseUpEvent ev) {
+        if(minesweeperMarking&&(ev.b==1||ev.b==3))return true;
 	if(ev.b == 2) {
 	    if(camdrag != null) {
 		camera.release();
@@ -2066,27 +2357,44 @@ public class MapView extends PView implements DTarget, Console.Directory {
     }
     
     public boolean drop(final Coord cc, Coord ul) {
+        final int modifiers=ui.modflags();
+        final boolean protect=hearthborn.ui.ItemProtection.protectDrop(modifiers);
 	new Hittest(cc) {
 	    public void hit(Coord pc, Coord2d mc, ClickData inf) {
-		wdgmsg("drop", pc, mc.floor(posres), ui.modflags());
+		if(hearthborn.ui.ItemProtection.protectWater(ui.sess.glob.map,mc,modifiers))ui.msg(hearthborn.L10n.tr("The item was not dropped into water. Hold Ctrl to drop it anyway."));
+		else if(protect)wdgmsg("click",pc,mc.floor(posres),1,modifiers);
+                else wdgmsg("drop", pc, mc.floor(posres), modifiers);
 	    }
 	}.run();
 	return(true);
     }
     
-    public boolean iteminteract(Coord cc, Coord ul) {
-	new Hittest(cc) {
-	    public void hit(Coord pc, Coord2d mc, ClickData inf) {
-		Object[] args = {pc, mc.floor(posres), ui.modflags()};
+
+    private class ItemInteract extends Hittest {
+        private final int modifiers;
+        ItemInteract(Coord cc){super(cc);modifiers=ui.modflags();}
+	    protected void hit(Coord pc, Coord2d mc, ClickData inf) {
+                Gob target=clicked(inf);
+		Object[] args = {pc, mc.floor(posres), hearthborn.storage.StockpileActions.itemModifiers(target,modifiers)};
 		if(inf != null)
-		    args = Utils.extend(args, inf.clickargs());
+		    args = Utils.extend(args, hearthborn.ui.ItemProtection.clickargs(ui,inf));
+                hearthborn.storage.StonePileColors.itemact(MapView.this,target,mc);
 		wdgmsg("itemact", args);
 	    }
-	}.run();
+    }
+
+    public boolean iteminteract(Coord cc, Coord ul) {
+	new ItemInteract(cc).run();
 	return(true);
     }
 
     public boolean keydown(KeyDownEvent ev) {
+        if(ev.code==KeyEvent.VK_ESCAPE&&selection!=null&&selection.localCompleted!=null){cancelLocalArea(selection);return true;}
+        if(ev.code==KeyEvent.VK_ESCAPE)hearthborn.combat.BowCombat.manual(getparent(GameUI.class));
+        else if(ev.code==KeyEvent.VK_W||ev.code==KeyEvent.VK_A||ev.code==KeyEvent.VK_S||ev.code==KeyEvent.VK_D)hearthborn.combat.BowCombat.move(getparent(GameUI.class));
+        if(ev.code==KeyEvent.VK_ESCAPE||ev.code==KeyEvent.VK_W||ev.code==KeyEvent.VK_A||ev.code==KeyEvent.VK_S||ev.code==KeyEvent.VK_D)hearthborn.scripts.ScriptRunner.manualFieldInput(getparent(GameUI.class));
+        if(ev.code==KeyEvent.VK_ESCAPE && minesweeperMarking){minesweeperMarking=false;hearthborn.quality.QualityRoster.releaseIfInspect(getparent(GameUI.class));return true;}
+        if(ev.code==KeyEvent.VK_ESCAPE || ev.code==KeyEvent.VK_W || ev.code==KeyEvent.VK_A || ev.code==KeyEvent.VK_S || ev.code==KeyEvent.VK_D)hearthborn.navigation.Walking.cancel(this);
 	Loader.Future<Plob> placing_l = this.placing;
 	if((placing_l != null) && placing_l.done()) {
 	    Plob placing = placing_l.get();
@@ -2095,8 +2403,7 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	    if((ev.code == KeyEvent.VK_RIGHT) && placing.adjust.rotate(placing, new MouseWheelEvent(Coord.z, 1, 1), ui.modflags()))
 		return(true);
 	}
-	if(camera.keydown(ev))
-	    return(true);
+
 	return(super.keydown(ev));
     }
 
@@ -2113,6 +2420,7 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	if(selection != null) {
 	    if(selection.tt != null)
 		return(selection.tt);
+            if(selection.localCompleted!=null)return hearthborn.L10n.tr("Select an area: hold the left mouse button and drag. Escape cancels.");
 	}
 	return(super.tooltip(c, prev));
     }
@@ -2172,7 +2480,38 @@ public class MapView extends PView implements DTarget, Console.Directory {
 
 	    public Material mat() {return(mat);}
 	};
+    /** Whether a local or server-requested area selector is active. */
+    public boolean hasAreaSelection(){synchronized(this){return selection!=null;}}
+    /** Complete only a real server-requested selector, using its normal inclusive tile endpoints. */
+    public boolean submitServerArea(Area area,int modifiers){
+        synchronized(this){
+            if(selection==null||selection.localCompleted!=null)return false;
+            if(!area.positive()||selection.max!=null&&(area.sz().x>selection.max.x||area.sz().y>selection.max.y))
+                throw new IllegalStateException("The selected planting section exceeds the server area limit.");
+            selection.selected(area.ul,area.br.sub(1,1),modifiers);return true;
+        }
+    }
+    /** Release a script-owned server selector after stopping its server action; retain local selection. */
+    public void cancelServerArea(){synchronized(this){if(selection!=null&&selection.localCompleted==null){selection.destroy();selection=null;}}}
+    /** Client-only area selection; never sends a selection action to the server. */
+    public Runnable selectLocalArea(java.util.function.Consumer<Area> completed) {
+        return selectLocalArea(completed,()->{});
+    }
+    public Runnable selectLocalArea(java.util.function.Consumer<Area> completed,Runnable cancelled) {
+        synchronized(this) {
+            if(selection!=null)throw new IllegalStateException("Finish the current area selection first.");
+            Selector local=new Selector(null,completed,cancelled);selection=local;
+            return () -> cancelLocalArea(local);
+        }
+    }
+    private void cancelLocalArea(Selector local){
+        synchronized(this){if(selection!=local)return;local.destroy();selection=null;}
+        local.localCancelled.run();
+    }
+
     public class Selector implements Grabber {
+        private final java.util.function.Consumer<Area> localCompleted;
+        private final Runnable localCancelled;
 	public final Coord max;
 	public Coord sc;
 	public int modflags;
@@ -2194,9 +2533,10 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	    grab(xl);
 	}
 
-	public Selector(Coord max) {
-	    this.max = max;
-	}
+        public Selector(Coord max) {this(max,null,()->{});}
+        private Selector(Coord max,java.util.function.Consumer<Area> completed,Runnable cancelled) {
+            this.max=max;this.localCompleted=completed;this.localCancelled=cancelled;
+        }
 
 	public boolean mmousedown(Coord mc, int button) {
 	    synchronized(MapView.this) {
@@ -2227,6 +2567,7 @@ public class MapView extends PView implements DTarget, Console.Directory {
 	}
 
 	public boolean mmouseup(Coord mc, int button) {
+            if(localCompleted!=null&&button!=1)return false;
 	    synchronized(MapView.this) {
 		if(sc != null) {
 		    Coord ec = getec(mc);
@@ -2234,8 +2575,8 @@ public class MapView extends PView implements DTarget, Console.Directory {
 		    tt = null;
 		    glob.map.remove(ol);
 		    mgrab.remove();
-		    wdgmsg("sel", sc, ec, modflags);
-		    sc = null;
+                Coord start=sc;sc=null;
+                selected(start,ec,modflags);
 		}
 		return(true);
 	    }
@@ -2256,6 +2597,14 @@ public class MapView extends PView implements DTarget, Console.Directory {
 		}
 	    }
 	}
+
+        protected void selected(Coord start,Coord end,int modifiers){
+            if(localCompleted==null){wdgmsg("sel",start,end,modifiers);return;}
+            destroy();selection=null;
+            Coord first=Coord.of(Math.min(start.x,end.x),Math.min(start.y,end.y));
+            Coord last=Coord.of(Math.max(start.x,end.x)+1,Math.max(start.y,end.y)+1);
+            localCompleted.accept(new Area(first,last));
+        }
 
 	public void destroy() {
 	    synchronized(MapView.this) {

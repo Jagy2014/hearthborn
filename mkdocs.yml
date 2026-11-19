@@ -1,0 +1,99 @@
+site_name: Hearthborn Client
+site_url: https://jagy2014.github.io/hearthborn/
+site_description: Documentation for the Hearthborn custom Haven & Hearth client
+repo_url: https://github.com/Jagy2014/hearthborn
+repo_name: Jagy2014/hearthborn
+edit_uri: edit/main/docs/
+docs_dir: docs
+theme:
+  name: material
+  language: en
+  logo: images/hearthborn.png
+  favicon: images/hearthborn.png
+  features:
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - navigation.indexes
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+  palette:
+    - scheme: default
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - scheme: slate
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+extra_css:
+  - stylesheets/extra.css
+plugins:
+  - search
+  - i18n:
+      docs_structure: suffix
+      languages:
+        - locale: en
+          default: true
+          name: English
+          build: true
+        - locale: ru
+          name: Русский
+          build: true
+          nav_translations:
+            Home: Главная
+            Interface & controls: Интерфейс и управление
+            Customizable interface: Настраиваемый интерфейс
+            Action Search: Поиск действий
+            Sky: Небо
+            Production & management: Производство и управление
+            Quality Roster: Журнал качества
+            Cattle Roster: Журнал животных
+            Village & Claim Planner: Планировщик деревни и владений
+            Cheese Assistant: Помощник сыровара
+            Automatic Timers: Автоматические таймеры
+            Storage & stockpiles: Хранилища и склады
+            Automation & Xtensions: Автоматизация и Xtensions
+            Navigation & exploration: Навигация и исследование
+            Improved Pathfinding: Поиск пути
+            Mapping & Exports: Карта и экспорт
+            Session Trail: Маршрут сессии
+            Map Icons & Settings: Значки и настройки карты
+            Meteorite Triangulation: Поиск метеоритов
+            Mining & combat: Шахты и бой
+            Minesweeper & mining safety: Сапёр и безопасность шахт
+            Combat Assistance: Помощь в бою
+            Changelog: Журнал изменений
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+nav:
+  - Home: index.md
+  - Interface & controls:
+      - Customizable interface: features/interface.md
+      - Action Search: features/action-search.md
+      - Sky: features/sky.md
+  - Production & management:
+      - Storage & stockpiles: features/storage.md
+      - Quality Roster: features/quality-roster.md
+      - Cattle Roster: features/cattle-roster.md
+      - Village & Claim Planner: features/claim-plan.md
+      - Cheese Assistant: features/cheese.md
+      - Automatic Timers: features/timers.md
+      - Automation & Xtensions: features/scripts.md
+  - Navigation & exploration:
+      - Improved Pathfinding: features/pathfinding.md
+      - Mapping & Exports: features/mapping.md
+      - Session Trail: features/session-trail.md
+      - Map Icons & Settings: features/map-icons.md
+      - Meteorite Triangulation: features/meteorite.md
+  - Mining & combat:
+      - Minesweeper & mining safety: features/mining-safety.md
+      - Combat Assistance: features/combat.md
+  - Changelog: changelog.md

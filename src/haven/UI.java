@@ -43,6 +43,7 @@ import haven.render.Environment;
 import haven.render.Render;
 
 public class UI {
+    public volatile int fps;
     public static int MOD_SHIFT = KeyMatch.S, MOD_CTRL = KeyMatch.C, MOD_META = KeyMatch.M, MOD_SUPER = KeyMatch.SUPER;
     public final Windeye wnd;
     public RootWidget root;
@@ -54,6 +55,8 @@ public class UI {
     public Coord mc = Coord.z, lcc = Coord.z;
     public Session sess;
     public boolean modshift, modctrl, modmeta, modsuper;
+    public boolean spaceHeld;
+    private int compactKeyHeld=-1;
     public Object lasttip;
     public double lastevent, lasttick;
     public Widget mouseon;
@@ -457,6 +460,7 @@ public class UI {
     }
 
     public void newwidget(int id, String type, Object... cargs) throws InterruptedException {
+	hearthborn.ui.PlaceNames.notice(this, type, cargs);
 	submitcmd(new Command(new NewWidget(id, type, cargs)).dep(id, true));
     }
 
@@ -569,7 +573,7 @@ public class UI {
 	}
 
 	public boolean handle(E ev) {
-	    Coord xl = ev.c.add(ev.target.rootpos()).sub(wdg.rootpos());
+	    Coord xl = wdg.rootxlate(ev.target.rootpos(ev.c));
 	    @SuppressWarnings("unchecked")
 	    E dev = (E)ev.derive(xl);
 	    return(bk.handle(dev));
@@ -616,14 +620,27 @@ public class UI {
     public boolean dispatch(Widget to, Event ev) {
 	try(CPUProfile.Current prof = CPUProfile.begin(ev)) {
 	    ev.target = to;
+            if(to==root&&ev instanceof MouseDownEvent)
+                hearthborn.ui.XtensionsMenu.outsideClick(this,((MouseDownEvent)ev).c);
 	    ev.grabbed = true;
 	    for(Grab<?> g : grabs) {
+                if(hearthborn.map.DetachedMap.domain(g.owner)!=null)continue;
+                if(!hearthborn.ui.CombatLayout.visible(g.owner)&&!(ev instanceof MouseUpEvent))continue;
 		if(g.check(ev))
 		    return(true);
 	    }
 	    ev.grabbed = false;
 	    return(ev.dispatch(to));
 	}
+    }
+
+    public boolean dispatchWithin(Widget to,Event event) {
+        event.target=to;event.grabbed=true;
+        for(Grab<?> grab:grabs) {
+            for(Widget widget=grab.owner;widget!=null;widget=widget.parent)
+                if(widget==to){if(grab.check(event))return true;break;}
+        }
+        event.grabbed=false;return event.dispatch(to);
     }
 
     public <E extends Event> E dispatchq(Widget to, E ev) {
@@ -633,13 +650,18 @@ public class UI {
 
     public class DstWidget implements Runnable, Serializable {
 	public final int id;
+	public final int rootid;
 
-	private DstWidget(int id) {
+	private DstWidget(int id, int rootid) {
 	    this.id = id;
+	    this.rootid = rootid;
 	}
 
 	public void run() {
 	    synchronized(UI.this) {
+		Widget root = getwidget(rootid);
+		if(root instanceof Window)
+		    ((Window)root).prepareDestroy();
 		Widget wdg = getwidget(id);
 		if(wdg != null)
 		    destroy(wdg);
@@ -652,6 +674,10 @@ public class UI {
     }
 
     public void destroy(int id) {
+        destroy(id, id);
+    }
+
+    private void destroy(int id, int rootid) {
 	synchronized(shadowchildren) {
 	    Integer parent = shadowparents.remove(id);
 	    if(parent != null) {
@@ -659,9 +685,9 @@ public class UI {
 		    throw(new AssertionError(String.format("mismatched shadow-tree indices when removing %d from %d", id, parent)));
 	    }
 	    for(Integer child : new ArrayList<>(shadowchildren.getall(id))) {
-		destroy(child);
+		destroy(child, rootid);
 	    }
-	    Command cmd = new Command(new DstWidget(id)).dep(id, true);
+	    Command cmd = new Command(new DstWidget(id, rootid)).dep(id, true);
 	    if(parent != null)
 		cmd.dep(parent, true);
 	    submitcmd(cmd);
@@ -669,11 +695,23 @@ public class UI {
     }
 	
     public void wdgmsg(Widget sender, String msg, Object... args) {
+        hearthborn.combat.BowCombat.input(sender,msg,args);
+        hearthborn.scripts.ScriptRunner.fieldInput(sender,msg,args);
+        hearthborn.mining.MiningSafety.action(sender,msg,args);
+        hearthborn.storage.StonePileColors.selected(sender,msg);
+        hearthborn.storage.StonePileColors.transfer(sender,msg,args);
+        hearthborn.ui.StockpileCursor.taking(sender,msg,args);
+        if(hearthborn.inventory.BulkPut.input(sender,msg,args))return;
+        if("act".equals(msg)){
+            GameUI gui=sender instanceof GameUI?(GameUI)sender:sender.getparent(GameUI.class);
+            if(gui!=null)gui.inspect.action(args);
+        }
 	int id = widgetid(sender);
 	if(id < 0) {
 	    new Warning("wdgmsg sender (%s) is not in rwidgets, message is %s", sender.getClass().getName(), msg).issue();
 	    return;
 	}
+        if(rcvr != null)hearthborn.meteor.MeteorTriangulation.outgoing(this,sender,msg,args);
 	if(rcvr != null)
 	    rcvr.rcvmsg(id, msg, args);
     }
@@ -774,7 +812,7 @@ public class UI {
     }
 
     public static class ErrorMessage extends SimpleMessage {
-	public static final Color color = new Color(192, 0, 0);
+	public static final Color color = Color.RED;
 	public static final Audio.Clip sfx = Audio.resclip(Resource.local().loadwait("sfx/error"));
 
 	public ErrorMessage(String msg) {super(msg);}
@@ -817,11 +855,22 @@ public class UI {
     }
 
     public void msg(Notice msg) {
+        hearthborn.combat.BowCombat.notice(this,msg);
+        if(msg!=null && hearthborn.ui.LoginSiegeCheck.clear(msg.message()))return;
+        if(msg!=null)hearthborn.timers.ObjectTimers.notice(this,msg.message());
+        if(msg!=null)hearthborn.timers.ClaimTimers.notice(this,msg.message());
+        if(msg!=null)hearthborn.scripts.ScriptRunner.notice(this,msg.message());
+        if(msg!=null)hearthborn.meteor.StarFall.notice(this,msg.message());
+        msg=hearthborn.world.RealTime.wrap(this,msg);
 	dispatch(root, new NoticeEvent(msg));
     }
 
     public void msg(String msg, Color color, Audio.Clip sfx) {
 	msg(new SimpleMessage(msg, color, sfx));
+    }
+
+    public void success(String msg) {
+        msg(new InfoMessage(msg, new Color(140, 235, 155), null));
     }
 
     public void error(String msg) {
@@ -832,6 +881,8 @@ public class UI {
 	msg(new InfoMessage(msg));
     }
 
+    private final Set<Key.Mod> heldMods = EnumSet.noneOf(Key.Mod.class);
+
     private void setmods(Set<Key.Mod> mods) {
 	modshift = mods.contains(Key.Mod.SHIFT);
 	modctrl = mods.contains(Key.Mod.CONTROL);
@@ -839,17 +890,70 @@ public class UI {
 	modsuper = mods.contains(Key.Mod.SUPER);
     }
 
+    /** Option and Command survive a mouse event that arrives without them. macOS drops Option on the click. Shift does not: a stuck Shift transfers furnace items. */
+    private void rememberKeys(Set<Key.Mod> mods) {
+	heldMods.clear();
+	if(mods != null) heldMods.addAll(mods);
+	setmods(heldMods);
+    }
+
+    private void rememberPointer(Set<Key.Mod> mods) {
+	setmods(pointerMods(mods, heldMods));
+    }
+
+    public static Set<Key.Mod> pointerMods(Set<Key.Mod> event, Set<Key.Mod> held) {
+	EnumSet<Key.Mod> combined = EnumSet.noneOf(Key.Mod.class);
+	if(event != null) combined.addAll(event);
+	if(held != null) for(Key.Mod mod : held) if(mod != Key.Mod.SHIFT) combined.add(mod);
+	return(combined);
+    }
+
+    /** The key itself is the modifier, even when the event mask leaves it out. */
+    private void holdModifier(int code, boolean down) {
+	Key.Mod mod = code == KeyEvent.VK_ALT ? Key.Mod.ALT : code == KeyEvent.VK_META ? Key.Mod.META : null;
+	if(mod == null) return;
+	if(down) heldMods.add(mod); else heldMods.remove(mod);
+	setmods(heldMods);
+    }
+
     private Grab[] c(Collection<Grab> g) {return(g.toArray(new Grab[0]));}
 
     public void keydown(Toolkit.KeyDownEvent ev) {
-	setmods(ev.mods());
-	if(!dispatch(root, new KeyDownEvent(ev)))
-	    dispatch(root, new GlobKeyEvent(ev));
+	rememberKeys(ev.mods());
+        KeyDownEvent key = new KeyDownEvent(ev);
+        holdModifier(key.code, true);
+        if(grabs.stream().anyMatch(grab->grab.owner instanceof KeyMatch.Capture)){
+            KeyMatch.traceCapture(key);dispatch(root,key);return;
+        }
+        GameUI searchGame=root.getchild(GameUI.class);
+        if(key.code==java.awt.event.KeyEvent.VK_ESCAPE)hearthborn.combat.BowCombat.manual(searchGame);
+        if(key.code==java.awt.event.KeyEvent.VK_ESCAPE && hearthborn.storage.ContainerContents.cancel(searchGame))return;
+        if(searchGame!=null&&hearthborn.ui.CombatLayout.KEY.key().match(key)){
+            if(compactKeyHeld!=key.code){compactKeyHeld=key.code;searchGame.compactLayout.toggle();}
+            spaceHeld=false;return;
+        }
+        if(searchGame!=null && GameUI.matchesActionSearch(key)
+                && grabs.stream().noneMatch(grab->grab.owner instanceof KeyMatch.Capture)) {
+            searchGame.toggleActionSearch();return;
+        }
+        if(key.code==java.awt.event.KeyEvent.VK_ESCAPE)hearthborn.scripts.ShortcutRunner.cancel(root.getchild(GameUI.class));
+        if(hearthborn.scripts.DreamHarvester.escape(this, key.code)) return;
+        if(key.code==java.awt.event.KeyEvent.VK_ESCAPE && hearthborn.quality.QualityRoster.cancelAdd(root.getchild(GameUI.class)))return;
+        boolean handled=dispatch(root,key);
+        if(key.code==java.awt.event.KeyEvent.VK_SPACE)spaceHeld=!handled;
+	if(!handled) {
+            GlobKeyEvent global=new GlobKeyEvent(ev);
+            if(!hearthborn.input.GlobalKeys.handle(this,global))dispatch(root,global);
+        }
     }
 	
     public void keyup(Toolkit.KeyUpEvent ev) {
-	setmods(ev.mods());
-	dispatch(root, new KeyUpEvent(ev));
+	rememberKeys(ev.mods());
+	KeyUpEvent key=new KeyUpEvent(ev);
+        holdModifier(key.code, false);
+        if(key.code==compactKeyHeld)compactKeyHeld=-1;
+        if(key.code==java.awt.event.KeyEvent.VK_SPACE)spaceHeld=false;
+        dispatch(root, key);
     }
 
     private static int buttonid(MouseBtn btn) {
@@ -862,23 +966,43 @@ public class UI {
 	return(0);
     }
 
+    private Coord displaySize;
+    public void refreshScale(){if(displaySize!=null)resizeDisplay(displaySize);}
+    /** Keep drawing and pointer events in the same logical coordinate space. */
+    public Coord screenToUI(Coord point) {
+        return displaySize==null?point:hearthborn.ui.LiveScale.point(point,displaySize,root.sz);
+    }
+    public void resizeDisplay(Coord physical) {
+        Coord logical=hearthborn.ui.LiveScale.logicalSize(physical).div(hearthborn.ui.HudInterfaceScale.forUI(this)).max(Coord.of(1,1));
+        if(!root.sz.equals(logical) || !java.util.Objects.equals(displaySize,physical)) {
+            Coord oldDisplay=displaySize==null?root.sz:displaySize;
+            Coord mouse=hearthborn.ui.LiveScale.point(mc,root.sz,oldDisplay);
+            Coord click=hearthborn.ui.LiveScale.point(lcc,root.sz,oldDisplay);
+            if(!root.sz.equals(logical))root.resize(logical);
+            if(hearthborn.ui.HudInterfaceScale.forUI(this)!=1)hearthborn.ui.HudInterfaceScale.fit(this);
+            mc=hearthborn.ui.LiveScale.point(mouse,physical,logical);
+            lcc=hearthborn.ui.LiveScale.point(click,physical,logical);
+        }
+        displaySize=physical;
+    }
+
     public void mousedown(Toolkit.MouseDownEvent ev) {
-	setmods(ev.mods());
+	rememberPointer(ev.mods());
 	int button = buttonid(ev.button());
 	if(button > 0)
-	    dispatch(root, new Widget.MouseDownEvent(lcc = mc = ev.wndc(), button));
+	    dispatch(root, new Widget.MouseDownEvent(lcc = mc = screenToUI(ev.wndc()), button));
     }
 	
     public void mouseup(Toolkit.MouseUpEvent ev) {
-	setmods(ev.mods());
+	rememberPointer(ev.mods());
 	int button = buttonid(ev.button());
 	if(button > 0)
-	    dispatch(root, new Widget.MouseUpEvent(mc = ev.wndc(), button));
+	    dispatch(root, new Widget.MouseUpEvent(mc = screenToUI(ev.wndc()), button));
     }
 	
     public void mousemove(Toolkit.MouseMoveEvent ev) {
-	setmods(ev.mods());
-	dispatch(root, new Widget.MouseMoveEvent(mc = ev.wndc()));
+	rememberPointer(ev.mods());
+	dispatch(root, new Widget.MouseMoveEvent(mc = screenToUI(ev.wndc())));
     }
 
     public void mousehover(Coord c) {
@@ -886,9 +1010,9 @@ public class UI {
     }
 	
     public void mousewheel(Toolkit.MouseWheelEvent ev) {
-	setmods(ev.mods());
+	rememberPointer(ev.mods());
 	if(ev.axis() == Toolkit.MouseWheelEvent.Axis.VERT)
-	    dispatch(root, new Widget.MouseWheelEvent(mc = ev.wndc(), ev.amount(), ev.subamount()));
+	    dispatch(root, new Widget.MouseWheelEvent(mc = screenToUI(ev.wndc()), ev.amount() * hearthborn.ui.WheelSettings.direction(), ev.subamount() * hearthborn.ui.WheelSettings.direction()));
     }
 
     public static enum Cursor {
@@ -903,6 +1027,7 @@ public class UI {
     }
 
     private Widget prevtt = null;
+    public Widget tooltipOwner() { return prevtt; }
     public Object tooltip(Coord c) {
 	Widget.TooltipQuery q = dispatchq(root, new Widget.TooltipQuery(c, prevtt));
 	prevtt = q.from;
@@ -946,6 +1071,10 @@ public class UI {
 
     public void sfx(Audio.CS clip) {
 	audio.aui.add(clip);
+    }
+    public void warning(Audio.CS clip) {
+	if(audio == null) {sfx(clip); return;}
+	audio.warn.add(clip);
     }
     public void sfx(Audio.Clip clip) {
 	sfx(clip.stream());
@@ -1080,7 +1209,7 @@ public class UI {
 	if(uiscale.get() != null)
 	    return(uiscale.get());
 	initscale();
-	double scale = Utils.getprefd("uiscale", defscale);
+	double scale = Utils.getprefd("hearthborn/interface-scale",Utils.getprefd("uiscale", defscale));
 	scale = Math.max(Math.min(scale, maxscale), 1.0);
 	return(scale);
     }

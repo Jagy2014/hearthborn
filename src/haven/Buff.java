@@ -69,7 +69,7 @@ public class Buff extends Widget implements ItemInfo.ResOwner, Bufflist.Managed 
 
     public List<ItemInfo> info() {
 	if(info == null) {
-	    info = ItemInfo.buildinfo(this, rawinfo);
+	    info = hearthborn.l10n.TooltipText.render(() -> ItemInfo.buildinfo(this, rawinfo));
 	    Resource.Pagina pag = res.get().layer(Resource.pagina);
 	    if(pag != null)
 		info.add(new ItemInfo.Pagina(this, pag.text));
@@ -96,8 +96,13 @@ public class Buff extends Widget implements ItemInfo.ResOwner, Bufflist.Managed 
     }
 
     private final AttrCache<Double> ameteri = new AttrCache<>(this::info, AttrCache.map1(AMeterInfo.class, minf -> minf::ameter));
+
+    public Double ameter() {
+	return(ameteri.get());
+    }
     private final AttrCache<Tex> nmeteri = new AttrCache<>(this::info, AttrCache.map1s(GItem.NumberInfo.class, ninf -> new TexI(GItem.NumberInfo.numrender(ninf.itemnum(), ninf.numcolor()))));
     private final AttrCache<Double> cmeteri = new AttrCache<>(this::info, AttrCache.map1(GItem.MeterInfo.class, minf -> minf::meter));
+    private final hearthborn.ui.MeterPercent progress = new hearthborn.ui.MeterPercent();
 
     public void draw(GOut g) {
 	g.chcolor(255, 255, 255, a);
@@ -116,13 +121,7 @@ public class Buff extends Widget implements ItemInfo.ResOwner, Bufflist.Managed 
 	    if(nmeter != null)
 		g.aimage(nmeter, imgoff.add(img.sz()).sub(1, 1), 1, 1, nmeter.sz());
 	    Double cmeter = cmeteri.get();
-	    if(cmeter != null) {
-		double m = Utils.clip(cmeter, 0.0, 1.0);
-		g.chcolor(255, 255, 255, a / 2);
-		Coord ccc = img.sz().div(2);
-		g.prect(imgoff.add(ccc), ccc.inv(), img.sz().sub(ccc), Math.PI * 2 * m);
-		g.chcolor(255, 255, 255, a);
-	    }
+            progress.draw(g, imgoff.add(img.sz().div(2)), cmeter == null ? 0 : Utils.clip(cmeter, 0.0, 1.0), false);
 	} catch(Loading e) {}
     }
 
@@ -155,11 +154,11 @@ public class Buff extends Widget implements ItemInfo.ResOwner, Bufflist.Managed 
 	    hoverstart = now;
 	if(now - hoverstart < 1.0) {
 	    if(shorttip == null)
-		shorttip = new TexI(shorttip());
+		shorttip = new TexI(hearthborn.l10n.TooltipText.render(() -> shorttip()));
 	    return(shorttip);
 	} else {
 	    if(longtip == null)
-		longtip = new TexI(longtip());
+		longtip = new TexI(hearthborn.l10n.TooltipText.render(() -> longtip()));
 	    return(longtip);
 	}
     }
@@ -209,8 +208,15 @@ public class Buff extends Widget implements ItemInfo.ResOwner, Bufflist.Managed 
 	}
     }
 
+    public int layoutOrder() {return(1);}
+
     public boolean mousedown(MouseDownEvent ev) {
 	wdgmsg("cl", ev.c.sub(imgoff), ev.b, ui.modflags());
 	return(true);
+    }
+
+    public void dispose() {
+	progress.dispose();
+	super.dispose();
     }
 }

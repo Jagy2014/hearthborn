@@ -65,7 +65,8 @@ public class Loading extends RuntimeException implements Waitable {
     public String getMessage() {
 	if(rec != null)
 	    return(rec.getMessage());
-	return(super.getMessage());
+	String message=super.getMessage();
+        return message==null?null:hearthborn.L10n.tr(message);
     }
 
     public static class UnwaitableEvent extends RuntimeException {

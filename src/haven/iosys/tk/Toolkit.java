@@ -58,6 +58,10 @@ public interface Toolkit {
     public static interface CloseRequest extends Event {
     }
 
+    /** The system asked the program to quit (Cmd+Q on macOS); the program decides whether it does. */
+    public static interface QuitRequest extends Event {
+    }
+
     public static interface KeyEvent extends Event {
 	public String string();
 	public Key key();

@@ -37,7 +37,7 @@ import static haven.PUtils.*;
 
 public class CharWnd extends Window {
     public static final RichText.Foundry ifnd = new RichText.Foundry(RichText.IMAGESRC, RichText.ImageSource.legacy,
-								     java.awt.font.TextAttribute.FAMILY, "SansSerif",
+								     java.awt.font.TextAttribute.FAMILY, hearthborn.UiFonts.family("SansSerif"),
 								     java.awt.font.TextAttribute.SIZE, UI.scale(9)).aa(true);
     public static final Text.Furnace catf = new BlurFurn(new TexFurn(new Text.Foundry(Text.fraktur, 25).aa(true), Window.ctex), UI.scale(3), UI.scale(2), new Color(96, 48, 0));
     public static final Text.Furnace failf = new BlurFurn(new TexFurn(new Text.Foundry(Text.fraktur, 25).aa(true), Resource.loadimg("gfx/hud/fontred")), UI.scale(3), UI.scale(2), new Color(96, 48, 0));
@@ -56,6 +56,8 @@ public class CharWnd extends Window {
     public FightWnd fight;
     public WoundWnd wound;
     public QuestWnd quest;
+    private final Tabs hearthbornTabs;
+    private final Widget[] hearthbornTabButtons;
     public final Tabs.Tab battrtab, sattrtab, skilltab, fighttab, woundtab, questtab;
     public int exp, enc;
 
@@ -157,8 +159,13 @@ public class CharWnd extends Window {
 	public void settext(String text) {
 	    super.settext(text);
 	    if(oc != null)
-		move(oc.add(-sz.x, 0));
+                super.move(oc.add(-sz.x, 0));
 	}
+
+        public void move(Coord position) {
+            if(oc != null) oc = oc.add(position.sub(c));
+            super.move(position);
+        }
 
 	public void tick(double dt) {
 	    update();
@@ -191,9 +198,7 @@ public class CharWnd extends Window {
 	}
 
 	public void drawbg(GOut g) {
-	    g.chcolor(0, 0, 0, 128);
-	    g.frect(Coord.z, sz);
-	    g.chcolor();
+	    hearthborn.ui.UiTheme.panel(g, sz);
 	}
 
 	public Coord marg() {return(UI.scale(10, 10));}
@@ -295,6 +300,7 @@ public class CharWnd extends Window {
 		Resource.Pagina pag = attr.res().get().layer(Resource.pagina);
 		if(pag != null)
 		    binfo.add(new ItemInfo.Pagina(this, pag.text));
+		hearthborn.ui.AttributeHelp.add(this, binfo);
 		if(!binfo.isEmpty())
 		    binfo.add(new ItemInfo.Name(this, attr.res().get().flayer(Resource.tooltip).t));
 		this.binfo = binfo;
@@ -314,7 +320,7 @@ public class CharWnd extends Window {
 		try {
 		    if(info.isEmpty())
 			return(null);
-		    tipimg = new TexI(ItemInfo.longtip(info));
+		    tipimg = new TexI(hearthborn.l10n.TooltipText.attribute(() -> ItemInfo.longtip(info)));
 		    tipinfo = info;
 		} catch(Loading l) {
 		    return("...");
@@ -339,7 +345,7 @@ public class CharWnd extends Window {
     public CharWnd(Glob glob) {
 	super(UI.scale(new Coord(300, 290)), "Character Sheet");
 
-	Tabs tabs = new Tabs(new Coord(15, 10), UI.scale(506, 315), this);
+	Tabs tabs = hearthbornTabs = new Tabs(UI.scale(15, 10), UI.scale(506, 315), this);
         battrtab = tabs.add();
         sattrtab = tabs.add();
 	skilltab = tabs.add();
@@ -362,6 +368,25 @@ public class CharWnd extends Window {
 		    tabs.showtab(tab);
 		}
 
+		private int look = -1;
+		public void draw(GOut g) {
+		    if(look != hearthborn.ui.UiTheme.generation()) {
+			look = hearthborn.ui.UiTheme.generation();
+			redraw();
+		    }
+		    super.draw(g);
+		}
+
+		/* On parchment the picture sits in a flat frame instead of the gold ornament. */
+		public void draw(BufferedImage buf) {
+		    if(!hearthborn.ui.UiTheme.light()) {
+			super.draw(buf);
+			return;
+		    }
+		    boolean hot = h || (d != null);
+		    hearthborn.ui.LightSkin.pictureButton(buf, up, hot, a && h);
+		}
+
 		protected void depress() {
 		    ui.sfx(Button.clbtdown.stream());
 		}
@@ -371,17 +396,23 @@ public class CharWnd extends Window {
 		}
 	    }
 
-	    this.addhl(new Coord(tabs.c.x, tabs.c.y + tabs.sz.y + UI.scale(10)), tabs.sz.x,
+            hearthbornTabButtons = new Widget[] {
 		new TB("battr", battrtab, "Base Attributes"),
 		new TB("sattr", sattrtab, "Abilities"),
 		new TB("skill", skilltab, "Lore & Skills"),
 		new TB("fgt",   fighttab, "Martial Arts & Combat Schools"),
 		new TB("wound", woundtab, "Health & Wounds"),
 		new TB("quest", questtab, "Quest Log")
-	    );
+            };
+            this.addhl(new Coord(tabs.c.x, tabs.c.y + tabs.sz.y + UI.scale(10)), tabs.sz.x, hearthbornTabButtons);
 	}
 
 	resize(contentsz().add(UI.scale(15, 10)));
+    }
+
+    public void tick(double dt) {
+        super.tick(dt);
+        hearthborn.ui.CharacterLayout.fit(this, hearthbornTabs, hearthbornTabButtons);
     }
 
     public void addchild(Widget child, Object... args) {

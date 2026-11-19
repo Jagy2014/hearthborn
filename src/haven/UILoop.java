@@ -79,7 +79,7 @@ public abstract class UILoop implements Console.Directory {
     public UI newui(UI.Runner fun) {
 	if(audio == null)
 	    audio = new Audio.Root(audiosink());
-	UI prevui, newui = new UI(wnd, audio, new Coord(wnd.size()), fun);
+	UI prevui, newui = new UI(wnd, audio, hearthborn.ui.LiveScale.logicalSize(wnd.size()), fun);
 	newui.env = this.env;
 	newui.cons.add(this);
 	synchronized(uilock) {
@@ -107,12 +107,19 @@ public abstract class UILoop implements Console.Directory {
     private Object prevtooltip = null;
     private Indir<Tex> prevtooltex = null;
     private Disposable freetooltex = null;
+    private boolean prevframed = false;
     private void drawtooltip(UI ui, GOut g) {
 	Object tooltip;
-	synchronized(ui) {
-	    tooltip = ui.tooltip(ui.mc);
+	hearthborn.UiFonts.beginTip();
+	try {
+	    synchronized(ui) {
+		tooltip = ui.tooltip(ui.mc);
+	    }
+	} finally {
+	    hearthborn.UiFonts.endTip();
 	}
 	Indir<Tex> tt = null;
+	boolean framed = prevframed;
 	if(Utils.eq(tooltip, prevtooltip)) {
 	    tt = prevtooltex;
 	} else {
@@ -123,8 +130,15 @@ public abstract class UILoop implements Console.Directory {
 	    prevtooltip = null;
 	    prevtooltex = null;
 	    Disposable free = null;
+	    framed = false;
+	    hearthborn.UiFonts.beginTip();
+	    try {
 	    if(tooltip != null) {
-		if(tooltip instanceof Text) {
+		if(tooltip instanceof hearthborn.ui.FramedTip) {
+		    Tex t = ((hearthborn.ui.FramedTip)tooltip).text;
+		    tt = () -> t;
+		    framed = true;
+		} else if(tooltip instanceof Text) {
 		    Tex t = ((Text)tooltip).tex();
 		    tt = () -> t;
 		} else if(tooltip instanceof Tex) {
@@ -136,32 +150,82 @@ public abstract class UILoop implements Console.Directory {
 		    tt = c;
 		} else if(tooltip instanceof String) {
 		    if(((String)tooltip).length() > 0) {
-			Tex r = new TexI(Text.render((String)tooltip).img, false);
+			Tex r = new TexI(Text.std.renderwrap((String)tooltip,Math.max(UI.scale(120),Math.min(UI.scale(340),g.sz().x-UI.scale(40)))).img, false);
 			tt = () -> r;
 			free = r;
 		    }
 		}
 	    }
+	    } finally {
+		hearthborn.UiFonts.endTip();
+	    }
 	    prevtooltip = tooltip;
 	    prevtooltex = tt;
+	    prevframed = framed;
 	    freetooltex = free;
 	}
-	Tex tex = (tt == null) ? null : tt.get();
+	Tex tex;
+	hearthborn.UiFonts.beginTip();
+	try {
+	    tex = (tt == null) ? null : tt.get();
+	} finally {
+	    hearthborn.UiFonts.endTip();
+	}
 	if(tex != null) {
-	    Coord sz = tex.sz();
-	    Coord pos = ui.mc.sub(sz).sub(curshotspot);
-	    if(pos.x < 0)
-		pos.x = 0;
-	    if(pos.y < 0)
-		pos.y = 0;
-	    Coord br = pos.add(sz);
-	    Coord m = UI.scale(2, 2);
-	    g.chcolor(244, 247, 21, 192);
-	    g.rect2(pos.sub(m).sub(1, 1), br.add(m));
-	    g.chcolor(35, 35, 35, 192);
-	    g.frect2(pos.sub(m), br.add(m));
-	    g.chcolor();
-	    g.image(tex, pos);
+	    Coord margin = framed ? UI.scale(6, 4) : Coord.z;
+	    Coord tsz = tex.sz();
+	    Coord sz = framed ? tsz.add(Window.wbox.bisz()).add(margin.mul(2)) : tsz;
+	    Coord edge = UI.scale(16, 16);
+	    /* Below and to the right of the pointer, clear of the arrow; above it only when there is no room underneath. */
+	    Coord pos = ui.mc.add(UI.scale(8), UI.scale(26));
+	    if(pos.y + sz.y > g.sz().y - edge.y)
+		pos = Coord.of(pos.x, ui.mc.y - sz.y - UI.scale(8));
+	    if(pos.x < edge.x)
+		pos.x = edge.x;
+	    if(pos.y < edge.y)
+		pos.y = edge.y;
+	    if(pos.x + sz.x > g.sz().x - edge.x)
+		pos.x = Math.max(edge.x, g.sz().x - edge.x - sz.x);
+	    if(pos.y + sz.y > g.sz().y - edge.y)
+		pos.y = Math.max(edge.y, g.sz().y - edge.y - sz.y);
+            if(ui.tooltipOwner() instanceof hearthborn.ui.EquipmentStrip) {
+                pos=((hearthborn.ui.EquipmentStrip)ui.tooltipOwner()).tooltipPosition(ui.mc,sz,g.sz());
+            } else if(ui.tooltipOwner() instanceof hearthborn.ui.AccountStatusFlag) {
+                pos=((hearthborn.ui.AccountStatusFlag)ui.tooltipOwner()).tooltipPosition(ui.mc,sz,g.sz());
+            } else if(ui.tooltipOwner() instanceof Cal) {
+                pos=hearthborn.ui.CalendarInfo.tooltipPosition(ui.mc,sz,g.sz());
+            } else {
+                hearthborn.map.MapToolbar bar=hearthborn.map.MapToolbar.containing(ui.tooltipOwner());
+                if(bar!=null)
+                    pos=bar.tooltipPosition(ui.tooltipOwner(),sz,g.sz());
+            }
+	    if(hearthborn.ui.UiTheme.light()) {
+		/* The tip of a light theme is inverted: a dark brown plate, a thin wood-coloured line, cream text. */
+		Coord m = framed ? Coord.z : UI.scale(4, 3);
+		Coord box = pos.sub(m), boxsz = sz.add(m.mul(2));
+		g.chcolor(hearthborn.ui.Parchment.TIP_BG.getRed(), hearthborn.ui.Parchment.TIP_BG.getGreen(), hearthborn.ui.Parchment.TIP_BG.getBlue(), 246);
+		g.frect(box, boxsz);
+		g.chcolor(hearthborn.ui.Parchment.FRAME);
+		g.rect(box, boxsz);
+		g.chcolor(hearthborn.ui.Parchment.TIP_TEXT);
+		g.image(tex, framed ? pos.add(Window.wbox.btloff()).add(margin) : pos, tsz);
+		g.chcolor();
+	    } else if(framed) {
+		g.chcolor(18, 16, 12, 235);
+		g.frect(pos.add(Window.wbox.btloff()), sz.sub(Window.wbox.bisz()));
+		g.chcolor();
+		Window.wbox.draw(g, pos, sz);
+		g.image(tex, pos.add(Window.wbox.btloff()).add(margin), tsz);
+	    } else {
+		Coord br = pos.add(sz);
+		Coord m = UI.scale(2, 2);
+		g.chcolor(244, 247, 21, 192);
+		g.rect2(pos.sub(m).sub(1, 1), br.add(m));
+		g.chcolor(35, 35, 35, 192);
+		g.frect2(pos.sub(m), br.add(m));
+		g.chcolor();
+		g.image(tex, pos, tsz);
+	    }
 	}
 	ui.lasttip = tooltip;
     }
@@ -170,7 +234,12 @@ public abstract class UILoop implements Console.Directory {
     private final Map<Cursor, Coord> curshotspots = new WeakHashMap<>();
     private Object lastcursor = null;
     private Coord curshotspot = Coord.z;
+    private double cursorScale=1;
     protected void drawcursor(UI ui, GOut g) {
+        double scale=hearthborn.ui.LiveScale.ratio()*hearthborn.ui.HudInterfaceScale.forUI(ui);
+        if(scale!=cursorScale) {
+            cursors.clear();curshotspots.clear();lastcursor=null;cursorScale=scale;
+        }
 	Object curs;
 	synchronized(ui) {
 	    curs = ui.getcurs(ui.mc);
@@ -180,21 +249,21 @@ public abstract class UILoop implements Console.Directory {
 	    if(curscaps == null) {
 		if(!(lastcursor instanceof Resource))
 		    wnd.cursor(Cursor.Std.NONE);
-		curshotspot = UI.scale(res.flayer(Resource.negc).cc);
+		curshotspot = UI.scale(hearthborn.ui.CursorAim.point(res));
 		Coord dc = ui.mc.sub(curshotspot);
 		g.image(res.flayer(Resource.imgc), dc);
 	    } else {
 		if(curs != lastcursor) {
 		    Cursor tkc = cursors.get(res);
 		    if(tkc == null) {
-			Coord hotspot = res.flayer(Resource.negc).cc;
+			Coord hotspot = hearthborn.ui.CursorAim.point(res);
 			BufferedImage img = res.flayer(Resource.imgc).img;
 			Coord sz = PUtils.imgsz(img);
 			Coord tsz;
 			if(curscaps.pref != 0) {
 			    tsz = sz.mul(curscaps.pref).div(sz.max());
 			} else {
-			    tsz = UI.scale(sz);
+			    tsz = UI.scale(sz).mul(scale);
 			    if((tsz.x > curscaps.max) || (tsz.y > curscaps.max))
 				tsz = tsz.mul(curscaps.max).div(tsz.max());
 			}
@@ -266,7 +335,7 @@ public abstract class UILoop implements Console.Directory {
 	Pipe base = basestate();
 	base.prep(FragColor.blend(new BlendMode()));
 	Area wnd = Area.sized(ui.root.sz);
-	base.prep(new States.Viewport(wnd)).prep(new Ortho2D(wnd));
+	base.prep(new States.Viewport(Area.sized(this.wnd.size()))).prep(new Ortho2D(wnd));
 	base.prep(new FrameInfo());
 	buf.clear(base, FragColor.fragcol, FColor.BLACK);
 	GOut g = new GOut(buf, base, wnd.sz());
@@ -346,12 +415,12 @@ public abstract class UILoop implements Console.Directory {
 
     protected class Dropper implements DropHandler {
 	public Action drophover(DropHoverEvent ev) {
-	    if(DropTarget.drophover(ui.root, ev.wndc(), SystemDrop.of(ev)))
+	    if(DropTarget.drophover(ui.root, ui.screenToUI(ev.wndc()), SystemDrop.of(ev)))
 		return(DropHandler.Action.COPY);
 	    return(null);
 	}
 	public boolean dropped(DroppedEvent ev) {
-	    return(DropTarget.dropthing(ui.root, ev.wndc(), SystemDrop.of(ev)));
+	    return(DropTarget.dropthing(ui.root, ui.screenToUI(ev.wndc()), SystemDrop.of(ev)));
 	}
     }
 
@@ -401,6 +470,7 @@ public abstract class UILoop implements Console.Directory {
 
     protected void framedone(Frame f) {
 	updstats(f);
+        f.ui.fps = fps;
     }
 
     public static class Frame {
@@ -428,6 +498,7 @@ public abstract class UILoop implements Console.Directory {
 		CPUProfile.phase(prof, "dsp");
 		if(rprofc != null) rprofc.new Part("tick", out);
 		if(gprof  != null) gprof.part(out, "tick");
+                ui.resizeDisplay(loop.wnd.size());
 		loop.dispatch(ui);
 		CPUProfile.phase(prof, "stick");
 		if(ui.sess != null) {
@@ -438,9 +509,7 @@ public abstract class UILoop implements Console.Directory {
 		ui.tick();
 		ui.gtick(out);
 		ui.mousehover(ui.mc);
-		Coord sz = loop.wnd.size();
-		if(!ui.root.sz.equals(sz))
-		    ui.root.resize(sz);
+                ui.resizeDisplay(loop.wnd.size());
 	    }
 	}
 
@@ -533,6 +602,7 @@ public abstract class UILoop implements Console.Directory {
     }
 
     private void run() {
+	ThreadQos.interactive();
 	Render buf = null;
 	try {
 	    Frame prevframe = null;

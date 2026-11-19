@@ -133,6 +133,7 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 	}
 
 	public void added(RenderTree.Slot slot) {
+            if(hearthborn.storage.ContainerDecals.decal(this))slot.ostate(MixColor.slot.nil);
 	    slot.add(spr);
 	    if(slots == null)
 		slots = new ArrayList<>(1);
@@ -436,6 +437,16 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 	this.id = id;
 	if(id < 0)
 	    virtual = true;
+	setattr(new hearthborn.world.GobMarks(this));
+	setattr(new hearthborn.world.PlayerWarnings(this));
+	setattr(new hearthborn.combat.FighterMark(this));
+        setattr(new hearthborn.storage.ContainerLook(this));
+        setattr(new hearthborn.world.PlantGrowth(this));
+        setattr(new hearthborn.world.ObjectNameLabel(this));
+        setattr(new hearthborn.world.StructureWear(this));
+        setattr(new hearthborn.world.StationQuality(this));
+        setattr(new hearthborn.storage.ContainerContents(this));
+        setattr(new hearthborn.world.ObjectHeight(this));
     }
 
     public Gob(Glob glob, Coord2d c) {
@@ -476,6 +487,10 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 
     void removed() {
 	removed = true;
+        hearthborn.world.PlayerWarnings.lostSight(this);
+        hearthborn.ui.NearbySiegeCheck.lostSight(this);
+        hearthborn.world.GobMarks marks=getattr(hearthborn.world.GobMarks.class);
+        if(marks!=null)marks.lostSight();
     }
 
     private void deferred() {
@@ -606,6 +621,11 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 		return(cl);
 	    cl = p.asSubclass(GAttrib.class);
 	}
+    }
+
+    /** Snapshot under the same monitor as OCache's attribute updates. */
+    public synchronized Collection<GAttrib> attributes() {
+        return new ArrayList<>(attr.values());
     }
 
     public <C extends GAttrib> C getattr(Class<C> c) {
@@ -767,6 +787,7 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 
     public void removed(RenderTree.Slot slot) {
 	slots.remove(slot);
+        if(slots.isEmpty())hearthborn.world.PlayerWarnings.lostSight(this);
     }
 
     private Waitable.Queue updwait = null;

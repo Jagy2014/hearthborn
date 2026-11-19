@@ -46,8 +46,11 @@ public class AudioSprite {
 	    public Sprite create(Sprite.Owner owner, Resource res, Message sdt) {
 		{
 		    Audio.Clip clip = randoom(res, "cl");
-		    if(clip != null)
+		    if(clip != null) {
+			if(hearthborn.audio.Whistle.matches(res))
+			    return(new hearthborn.audio.Whistle.Tone(owner, res, clip));
 			return(new ClipSprite(owner, res, clip));
+		    }
 		}
 		{
 		    List<Audio.Clip> clips = clips(res, "rep");

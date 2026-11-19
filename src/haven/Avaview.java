@@ -74,10 +74,36 @@ public class Avaview extends PView {
 	makeproj();
     }
 
+    private boolean characterPreview;
+    private Coord previewOriginalSize;
+    public void fitCharacterPreview(Button logout) {
+        if(!characterPreview) {
+            previewOriginalSize=sz;
+            characterPreview=true;
+            // Give tall headgear room above the original preview without shrinking the model.
+            resize(Coord.of(sz.x,sz.y+sz.y/2));
+            makeproj();
+        }
+        Widget frame=parent instanceof ProxyFrame?parent:this;
+        if(logout!=null && logout.tvisible() && frame.parent!=null) {
+            // Anchor the feet on the foreground shore of the character artwork.
+            Area artwork=hearthborn.ui.LoginArt.characterBounds(ui.root.sz);
+            Coord shore=artwork.ul.add(Coord.of((int)(artwork.sz().x*0.60),(int)(artwork.sz().y*0.95)));
+            int top=Math.max(0,shore.y-UI.scale(35)-sz.y+previewOriginalSize.y/12);
+            int localY=top-frame.parent.rootpos().y-c.y+(frame==this?c.y:0);
+            int mid=shore.x;
+            int rootX=mid-frame.sz.x/2;
+            int limit=ui==null||ui.root==null?rootX:Math.max(0,ui.root.sz.x-frame.sz.x);
+            rootX=Math.max(0,Math.min(limit,rootX));
+            frame.move(Coord.of(rootX-frame.parent.rootpos().x,localY));
+        }
+    }
+
     protected void makeproj() {
-	float field = 0.5f;
+	float field = characterPreview ? 0.45f : 0.5f;
 	float aspect = ((float)sz.y) / ((float)sz.x);
-	basic(Projection.class, Projection.frustum(-field, field, -aspect * field, aspect * field, 1, 5000));
+	float shift=characterPreview&&previewOriginalSize!=null?(sz.y-previewOriginalSize.y)/(float)sz.x*field:0;
+        basic(Projection.class, Projection.frustum(-field, field, -aspect * field+shift, aspect * field+shift, 1, 5000));
     }
 
     public void uimsg(String msg, Object... args) {
@@ -223,6 +249,7 @@ public class Avaview extends PView {
     }
 
     public void tick(double dt) {
+
 	super.tick(dt);
 	if(comp != null) {
 	    comp.tick(dt);
@@ -241,7 +268,15 @@ public class Avaview extends PView {
 	return(clearcolor);
     }
 
+    private boolean rootPreviewPass;
+    public void drawCharacterPreview(GOut root) {
+        rootPreviewPass=true;
+        try {draw(root.reclip(rootpos(),sz));}
+        finally {rootPreviewPass=false;}
+    }
+
     public void draw(GOut g) {
+        if(characterPreview && !rootPreviewPass)return;
 	boolean drawn = false;
 	try {
 	    if(avagob != -1) {
@@ -266,7 +301,9 @@ public class Avaview extends PView {
 		updcomp();
 		super.draw(g);
 	    } catch(Loading e) {
-		g.image(missing, Coord.z, sz);
+                if(!characterPreview && getparent(Charlist.class)==null &&
+                   (ui==null || ui.root.findchild(Charlist.class)==null))
+                    g.image(missing, Coord.z, sz);
 	    }
 	}
     }

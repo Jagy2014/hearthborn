@@ -198,6 +198,10 @@ public class Bootstrap implements UI.Receiver, UI.Runner {
 	public ConnectError(Throwable cause) {this(cause.getMessage(), cause);}
     }
 
+    protected AuthClient authclient() throws IOException {
+        return new AuthClient(server);
+    }
+
     public class Connector {
 	public AuthMech authmech = null;
 	public SocketAddress authaddr = null;
@@ -215,7 +219,7 @@ public class Bootstrap implements UI.Receiver, UI.Runner {
 	public Session connect(UI ui) throws InterruptedException {
 	    if(auth == null) {
 		ui.uimsg(1, "prg", "Authenticating...");
-		try(AuthClient cl = new AuthClient(server)) {
+		try(AuthClient cl = authclient()) {
 		    auth = authmech.authenticate(cl);
 		    if(Connection.encrypt.get())
 			auth.acct.alias(cl.getalias());
@@ -224,11 +228,17 @@ public class Bootstrap implements UI.Receiver, UI.Runner {
 		} catch(ClosedByInterruptException e) {
 		    throw(new InterruptedException());
 		} catch(UnknownHostException e) {
-		    throw(new ConnectError("Could not locate server"));
+		    throw(new ConnectError("Could not locate server. Check your internet connection and try again.", e));
+		} catch(SocketTimeoutException e) {
+                    throw(new ConnectError("Connection timed out. Check your internet connection and try again.", e));
 		} catch(ConnectException e) {
-		    throw(new ConnectError("Could not connect to server"));
+		    throw(new ConnectError("Could not connect to server. Check your internet connection and try again.", e));
+                } catch(NoRouteToHostException e) {
+                    throw(new ConnectError("Could not connect to server. Check your internet connection and try again.", e));
+                } catch(javax.net.ssl.SSLException e) {
+                    throw(new ConnectError("Could not establish a secure connection to the server. Please try again.", e));
 		} catch(IOException e) {
-		    throw(new RuntimeException(e));
+		    throw(new ConnectError("Connection to the authentication server was interrupted. Please try again.", e));
 		}
 	    }
 	    try {
@@ -244,7 +254,7 @@ public class Bootstrap implements UI.Receiver, UI.Runner {
 			for(InetAddress addr : InetAddress.getAllByName(server.host))
 			    addrs.add(new InetSocketAddress(addr, gameport.get()));
 			if(addrs.isEmpty())
-			    throw(new UnknownHostException(ea.host));
+			    throw(new UnknownHostException(server.host));
 		    } else {
 			for(NamedSocketAddress addr : hosts) {
 			    for(InetAddress host : InetAddress.getAllByName(addr.host))

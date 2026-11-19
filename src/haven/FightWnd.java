@@ -43,6 +43,8 @@ public class FightWnd extends Widget {
     public final Action[] order;
     public int usesave;
     private final Text[] saves;
+    private boolean activeSchoolKnown;
+    private int requestedSchool=-1;
     private final ImageInfoBox info;
     private final Label count;
     private final Map<Indir<Resource>, Object[]> actrawinfo = new HashMap<>();
@@ -114,7 +116,7 @@ public class FightWnd extends Widget {
 	    List<ItemInfo> info = info();
 	    l.cmp.add(rendericon(), Coord.z);
 	    ItemInfo.Name nm = ItemInfo.find(ItemInfo.Name.class, info);
-	    l.cmp.add(namef.render(nm.str.text).img, new Coord(0, l.cmp.sz.y + UI.scale(10)));
+	    l.cmp.add(namef.render(hearthborn.L10n.resource("tooltip", res.get().name, nm.str.text)).img, new Coord(0, l.cmp.sz.y + UI.scale(10)));
 	    l.cmp.sz = l.cmp.sz.add(0, UI.scale(10));
 	    for(ItemInfo inf : info) {
 		if((inf != nm) && (inf instanceof ItemInfo.Tip)) {
@@ -145,7 +147,24 @@ public class FightWnd extends Widget {
 	    super(sz, attrf.height() + UI.scale(2));
 	}
 
-	protected List<Action> items() {return(acts);}
+        private List<Action> visible = new ArrayList<>();
+        private hearthborn.ui.CombatCategories.Category category = hearthborn.ui.CombatCategories.Category.All;
+        private boolean filterDirty = true;
+        public void category(hearthborn.ui.CombatCategories.Category category) {
+            this.category = category; filterDirty = true;
+        }
+        protected List<Action> items() { return visible; }
+        private void filter() {
+            List<Action> next = new ArrayList<>();
+            try {
+                for(Action action : acts) if(category.matches(action.res.get().name)) next.add(action);
+            } catch(Loading loading) { return; }
+            java.text.Collator names = java.text.Collator.getInstance(java.util.Locale.forLanguageTag(hearthborn.L10n.language()));
+            next.sort((a, b) -> names.compare(a.name == null ? "" : a.name, b.name == null ? "" : b.name));
+            visible = next; filterDirty = false;
+            if(!visible.contains(sel)) change(visible.isEmpty() ? null : visible.get(0));
+            reset(); scrollval(0);
+        }
 
 	protected Widget makeitem(Action act, int idx, Coord sz) {
 	    return(new Item(sz, act));
@@ -170,7 +189,10 @@ public class FightWnd extends Widget {
 
 	    public void tick(double dt) {
 		if((item.u != this.u) || (item.a != this.a))
-		    use.settext(String.format("%d/%d", this.u = item.u, this.a = item.a));
+                {
+                    use.settext(String.format("%d/%d", this.u = item.u, this.a = item.a));
+                    use.setcolor(hearthborn.ui.CombatCategories.usageColor(item.u, item.a));
+                }
 		super.tick(dt);
 	    }
 
@@ -265,9 +287,11 @@ public class FightWnd extends Widget {
 			loading = true;
 		    }
 		}
-		Collections.sort(acts, Comparator.comparing(act -> act.name));
-	    }
-	    super.tick(dt);
+                Collections.sort(acts, Comparator.comparing(act -> act.name));
+                filterDirty = true;
+            }
+            if(filterDirty) filter();
+            super.tick(dt);
 	}
 
 	public void draw(GOut g) {
@@ -309,7 +333,6 @@ public class FightWnd extends Widget {
 	return(-1);
     }
 
-    public static final String[] keys = {"1", "2", "3", "4", "5", "\u21e71", "\u21e72", "\u21e73", "\u21e74", "\u21e75"};
     public class BView extends Widget implements DropTarget {
 	private UI.Grab grab;
 	private Action drag;
@@ -319,11 +342,11 @@ public class FightWnd extends Widget {
 	private boolean anim = false;
 
 	private BView() {
-	    super(new Coord(((invsq.sz().x + UI.scale(2)) * (order.length - 1)) + (UI.scale(10) * ((order.length - 1) / 5)), 0).add(invsq.sz()));
+	    super(new Coord(((invsq.sz().x + UI.scale(2)) * (order.length - 1)) + (UI.scale(10) * ((order.length - 1) / 5)), 0).add(invsq.sz()).add(0, 2 * (Text.std.height() + UI.scale(2))));
 	}
 
 	private Coord itemc(int i) {
-	    return(new Coord(((invsq.sz().x + UI.scale(2)) * i) + (UI.scale(10) * (i / 5)), 0));
+	    return(new Coord(((invsq.sz().x + UI.scale(2)) * i) + (UI.scale(10) * (i / 5)), Text.std.height() + UI.scale(2)));
 	}
 
 	private int citem(Coord c) {
@@ -334,11 +357,13 @@ public class FightWnd extends Widget {
 	    return(-1);
 	}
 
-	final Tex[] keys = new Tex[10];
-	{
-	    for(int i = 0; i < 10; i++)
-		this.keys[i] = Text.render(FightWnd.keys[i]).tex();
-	}
+        private final Tex[] keys = new Tex[order.length], quantities = new Tex[order.length];
+        private final String[] keyNames = new String[order.length], quantityNames = new String[order.length];
+        public void dispose() {
+            for(Tex key : keys) if(key != null) key.dispose();
+            for(Tex quantity : quantities) if(quantity != null) quantity.dispose();
+            super.dispose();
+        }
 	public void draw(GOut g) {
 	    int[] reo = null;
 	    if(anim) {
@@ -365,9 +390,26 @@ public class FightWnd extends Widget {
 			g.image(tex, ic);
 		    }
 		} catch(Loading l) {}
-		g.chcolor(156, 180, 158, 255);
-		g.aimage(keys[i], c.add(invsq.sz().sub(UI.scale(2), 0)), 1, 1);
-		g.chcolor();
+                String keyName = i < Fightsess.kb_acts.length ? Fightsess.kb_acts[i].key().name() : "";
+                if(!Objects.equals(keyNames[i], keyName)) {
+                    if(keys[i] != null) keys[i].dispose();
+                    keys[i] = Text.render(keyNames[i] = keyName).tex();
+                }
+                String quantity = act == null ? "" : act.u + "/" + act.a;
+                if(!Objects.equals(quantityNames[i], quantity)) {
+                    if(quantities[i] != null) quantities[i].dispose();
+                    quantities[i] = Text.render(quantityNames[i] = quantity).tex();
+                }
+                int center = c.x + invsq.sz().x / 2;
+                g.chcolor(0, 0, 0, 180);
+                g.frect(Coord.of(c.x, 0), Coord.of(invsq.sz().x, Text.std.height() + UI.scale(2)));
+                g.chcolor();
+                g.aimage(keys[i], Coord.of(center, 0), .5, 0);
+                if(act != null) {
+                    g.chcolor(hearthborn.ui.CombatCategories.usageColor(act.u, act.a));
+                    g.aimage(quantities[i], Coord.of(center, c.y + invsq.sz().y + UI.scale(2)), .5, 0);
+                    g.chcolor();
+                }
 	    }
 	}
 
@@ -575,6 +617,11 @@ public class FightWnd extends Widget {
 	}
     }
 
+    public boolean activateSaved(int n) {
+        if(n<0||n>=nsave||saves[n]==null||saves[n]==unused)return false;
+        load(n);use(n);return true;
+    }
+
     public void load(int n) {
 	wdgmsg("load", n);
     }
@@ -596,10 +643,11 @@ public class FightWnd extends Widget {
     }
 
     public void use(int n) {
+        requestedSchool=n;
 	wdgmsg("use", n);
     }
 
-    private Text unused = new Text.Foundry(attrf.font.deriveFont(java.awt.Font.ITALIC)).aa(true).render("Unused save");
+    private Text unused = new Text.Foundry(attrf.font.deriveFont(java.awt.Font.ITALIC)).aa(true).render(hearthborn.L10n.tr("Unused save"));
     public FightWnd(int nsave, int nact, int max) {
 	super(Coord.z);
 	this.nsave = nsave;
@@ -610,17 +658,20 @@ public class FightWnd extends Widget {
 	    saves[i] = unused;
 
 	Widget p;
-	info = add(new ImageInfoBox(UI.scale(new Coord(223, 160))), UI.scale(new Coord(5, 35)).add(wbox.btloff()));
+	Coord box = wbox.btloff();
+	info = add(new ImageInfoBox(UI.scale(new Coord(380, 190))), UI.scale(new Coord(5, 35)).add(box));
 	Frame.around(this, Collections.singletonList(info));
 
-	add(CharWnd.settip(new Img(CharWnd.catf.render("Martial Arts & Combat Schools").tex()), "gfx/hud/chr/tips/combat"), 0, 0);
-	actlist = add(new Actions(UI.scale(250, 160)), UI.scale(new Coord(245, 35)).add(wbox.btloff()));
-	Frame.around(this, Collections.singletonList(actlist));
+	add(CharWnd.settip(hearthborn.ui.UiTheme.heading(hearthborn.L10n.text("label", "Martial Arts & Combat Schools")), "gfx/hud/chr/tips/combat"), 0, 0);
+	Coord listc = Coord.of(info.pos("ur").x + UI.scale(17), info.c.y);
+	actlist = add(new Actions(UI.scale(250, 160)), listc.add(0, UI.scale(30)));
+	add(new hearthborn.ui.CombatCategories(actlist::category), listc);
+	actFrame = Frame.around(this, Collections.singletonList(actlist));
 
-	p = add(new BView(), UI.scale(5, 208));
+	p = add(new BView(), UI.scale(5, 238));
 	count = add(new Label(""), p.pos("ur").adds(10, 0));
 
-	savelist = add(new Savelist(UI.scale(370, 60)), p.pos("bl").adds(0, 2).add(wbox.btloff()));
+	savelist = add(new Savelist(UI.scale(370, 60)), p.pos("bl").adds(0, 10).add(wbox.btloff()));
 	p = Frame.around(this, Collections.singletonList(savelist));
 	p = add(new Button(UI.scale(110), "Load", false).action(() -> {
 		    load(savelist.sel);
@@ -637,12 +688,33 @@ public class FightWnd extends Widget {
 	pack();
     }
 
+    private Frame actFrame;
+
+    /** Stretch the action list and its frame so the tab fills a wider character window. */
+    public void fitWidth(int width) {
+	int extra = width - sz.x;
+	if(extra <= 0)
+	    return;
+	Coord grow = Coord.of(extra, 0);
+	actlist.resize(actlist.sz.add(grow));
+	actFrame.resize(actFrame.sz.add(grow));
+	resize(sz.add(grow));
+    }
+
     public Action findact(int resid) {
 	for(Action act : acts) {
 	    if(act.id == resid)
 		return(act);
 	}
 	return(null);
+    }
+
+    private Text schoolName(String name) {
+        if(name.matches("(?i)Saved school [0-9]+")) {
+            String number = name.substring(name.lastIndexOf(' ') + 1);
+            return new hearthborn.l10n.LocalizedText(name, attrf.render(hearthborn.L10n.tr("School") + " " + number));
+        }
+        return attrf.render(name);
     }
 
     public void uimsg(String nm, Object... args) {
@@ -686,16 +758,23 @@ public class FightWnd extends Widget {
 	    for(int i = 0; i < nsave; i++) {
 		if((fl & (1 << i)) != 0) {
 		    if(args[i + 1] instanceof String)
-			saves[i] = attrf.render((String)args[i + 1]);
+			saves[i] = schoolName((String)args[i + 1]);
 		    else
-			saves[i] = attrf.render(String.format("Saved school %d", i + 1));
+			saves[i] = new hearthborn.l10n.LocalizedText(String.format("Saved school %d", i + 1),
+                            attrf.render(hearthborn.L10n.format("Saved school %d", i + 1)));
 		} else {
 		    saves[i] = unused;
 		}
 	    }
 	} else if(nm == "use") {
-	    usesave = Utils.iv(args[0]);
-	    savelist.change(Integer.valueOf(usesave));
+            int previous=usesave;
+            usesave = Utils.iv(args[0]);
+            savelist.change(Integer.valueOf(usesave));
+            if((requestedSchool==usesave||activeSchoolKnown&&previous!=usesave)&&usesave>=0&&usesave<nsave&&saves[usesave]!=unused){
+                GameUI gui=getparent(GameUI.class);
+                if(gui!=null)gui.ui.msg(hearthborn.L10n.format("Activated combat school %d: %s",usesave+1,hearthborn.l10n.LocalizedText.shown(saves[usesave])));
+            }
+            requestedSchool=-1;activeSchoolKnown=true;
 	} else if(nm == "max") {
 	    maxact = Utils.iv(args[0]);
 	    recount();

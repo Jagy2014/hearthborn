@@ -33,8 +33,10 @@ import static haven.CharWnd.*;
 import static haven.PUtils.*;
 
 public class SAttrWnd extends Widget {
+    private Frame attributeFrame;
+    private final hearthborn.ui.AttributeColumns columns = new hearthborn.ui.AttributeColumns();
     public final Collection<SAttr> attrs;
-    private final Coord studyc;
+    private Coord studyc;
     private CharWnd chr;
     private int scost;
 
@@ -47,11 +49,13 @@ public class SAttrWnd extends Widget {
 
     public class SAttr extends CharWnd.AttrWdg {
 	public final Text rnm;
+	private Text inkName;
+	private int inkGeneration = -1;
 	public final Tex img;
 	public final Color bg;
 	public int tbv, cost;
 	private final IButton add, sub;
-	private Text ct;
+        private final hearthborn.ui.AttributeValues summary = new hearthborn.ui.AttributeValues();
 	private int cbv, ccv;
 
 	private SAttr(Glob glob, String attr, Color bg) {
@@ -82,20 +86,53 @@ public class SAttrWnd extends Widget {
 		}
 		if(tbv > 0)
 		    c = tbuff;
-		ct = attrf.render(Integer.toString(ccv + tbv), c);
+
 		updcost();
 	    }
+            summary.update(this, tbv, dt);
 	}
 
 	public void draw(GOut g) {
-	    g.chcolor(bg);
+	    g.chcolor(hearthborn.ui.UiTheme.row(bg));
 	    g.frect(Coord.z, sz);
 	    g.chcolor();
 	    super.draw(g);
 	    Coord cn = new Coord(0, sz.y / 2);
 	    g.aimage(img, cn.add(5, 0), 0, 0.5);
-	    g.aimage(rnm.tex(), cn.add(img.sz().x + UI.scale(10), 1), 0, 0.5);
-	    g.aimage(ct.tex(), cn.add(sub.c.x - UI.scale(5), 1), 1, 0.5);
+	    g.aimage(name().tex(), cn.add(img.sz().x + UI.scale(10), 1), 0, 0.5);
+            summary.draw(g, cn.y + UI.scale(1));
+	}
+
+	private Text name() {
+	    if(!hearthborn.ui.UiTheme.light())
+		return(rnm);
+	    if((inkName == null) || (inkGeneration != hearthborn.ui.UiTheme.generation())) {
+		if(inkName != null)
+		    inkName.dispose();
+		inkName = attrf.render(rnm.text, hearthborn.ui.UiTheme.INK);
+		inkGeneration = hearthborn.ui.UiTheme.generation();
+	    }
+	    return(inkName);
+	}
+
+        public void resize(Coord size) {
+            super.resize(size);
+            if(add != null) {
+                add.move(Coord.of(size.x - UI.scale(5) - add.sz.x, (size.y - add.sz.y) / 2));
+                sub.move(Coord.of(add.c.x - UI.scale(5) - sub.sz.x, (size.y - sub.sz.y) / 2));
+            }
+        }
+
+        public Object tooltip(Coord c, Widget previous) {
+            if(c.isect(add.c, add.sz) || c.isect(sub.c, sub.sz)) return "";
+            return super.tooltip(c, previous);
+        }
+
+        public void dispose() {
+	    if(inkName != null)
+		inkName.dispose();
+	    summary.dispose();
+	    super.dispose();
 	}
 
 	private void updcost() {
@@ -110,6 +147,7 @@ public class SAttrWnd extends Widget {
 	    tbv += a;
 	    ccv = 0;
 	    updcost();
+            summary.update(this, tbv, 0);
 	}
 
 	public void reset() {
@@ -137,47 +175,8 @@ public class SAttrWnd extends Widget {
 	super.attached();
     }
 
-    public static class StudyInfo extends Widget {
-	public final Widget study;
-	public int texp, tw, tenc;
-
-	private StudyInfo(Coord sz, Widget study) {
-	    super(sz);
-	    this.study = study;
-	    Widget plbl, pval;
-	    plbl = add(new Label("Attention:"), UI.scale(2, 2));
-	    pval = adda(new RLabel<Pair<Integer, Integer>>(() -> new Pair<>(tw, (ui == null) ? 0 : ui.sess.glob.getcattr("int").comp),
-							   n -> String.format("%,d/%,d", n.a, n.b),
-							   new Color(255, 192, 255, 255)),
-			plbl.pos("br").adds(0, 2).x(sz.x - UI.scale(2)), 1.0, 0.0);
-	    plbl = add(new Label("Experience cost:"), pval.pos("bl").adds(0, 2).xs(2));
-	    pval = adda(new RLabel<Integer>(() -> tenc, Utils::thformat, new Color(255, 255, 192, 255)),
-			plbl.pos("br").adds(0, 2).x(sz.x - UI.scale(2)), 1.0, 0.0);
-	    pval = adda(new RLabel<Integer>(() -> texp, Utils::thformat, new Color(192, 192, 255, 255)),
-			pos("cbr").subs(2, 2), 1.0, 1.0);
-	    plbl = adda(new Label("Learning points:"), pval.pos("ul").subs(0, 2).xs(2), 0.0, 1.0);
-	}
-
-	private void upd() {
-	    int texp = 0, tw = 0, tenc = 0;
-	    for(GItem item : study.children(GItem.class)) {
-		try {
-		    Curiosity ci = ItemInfo.find(Curiosity.class, item.info());
-		    if(ci != null) {
-			texp += ci.exp;
-			tw += ci.mw;
-			tenc += ci.enc;
-		    }
-		} catch(Loading l) {
-		}
-	    }
-	    this.texp = texp; this.tw = tw; this.tenc = tenc;
-	}
-
-	public void tick(double dt) {
-	    upd();
-	    super.tick(dt);
-	}
+    public static class StudyInfo extends hearthborn.ui.StudyReport {
+        public StudyInfo(Coord size, Widget study) {super(size, study);}
     }
 
     private void buy() {
@@ -196,9 +195,27 @@ public class SAttrWnd extends Widget {
 	    attr.reset();
     }
 
+    public void tick(double dt) {
+        super.tick(dt);
+        java.util.List<hearthborn.ui.AttributeValues> values = new ArrayList<>();
+        int nameWidth = 0;
+        for(SAttr row : attrs) {
+            values.add(row.summary);
+            nameWidth = Math.max(nameWidth, row.img.sz().x + UI.scale(10) + row.rnm.sz().x);
+        }
+        int delta = columns.fit(this, attrs, attributeFrame, values, nameWidth, UI.scale(55));
+        studyc = studyc.add(delta, 0);
+    }
+
+    /** The study report's words use the same larger face as the settings window. */
+    private static <T extends Label> T big(T label) {
+	label.settingsFace();
+	return(label);
+    }
+
     public SAttrWnd(Glob glob) {
 	Widget prev;
-	prev = add(CharWnd.settip(new Img(catf.render("Abilities").tex()), "gfx/hud/chr/tips/sattr"), Coord.z);
+	prev = add(CharWnd.settip(hearthborn.ui.UiTheme.heading(hearthborn.L10n.text("label", "Abilities")), "gfx/hud/chr/tips/sattr"), Coord.z);
 	attrs = new ArrayList<>();
 	SAttr aw;
 	attrs.add(aw = add(new SAttr(glob, "unarmed", every), prev.pos("bl").adds(5, 0).add(wbox.btloff())));
@@ -214,18 +231,18 @@ public class SAttrWnd extends Widget {
 	attrs.add(aw = add(new SAttr(glob, "farming", every), aw.pos("bl")));
 	attrs.add(aw = add(new SAttr(glob, "survive", other), aw.pos("bl")));
 	attrs.add(aw = add(new SAttr(glob, "lore", every), aw.pos("bl")));
-	Widget lframe = Frame.around(this, attrs);
+	Widget lframe = attributeFrame = Frame.around(this, attrs);
 
-	prev = add(CharWnd.settip(new Img(catf.render("Study Report").tex()), "gfx/hud/chr/tips/study"), width, 0);
+	prev = add(CharWnd.settip(hearthborn.ui.UiTheme.heading(hearthborn.L10n.text("label", "Study Report")), "gfx/hud/chr/tips/study"), width, 0);
 	studyc = prev.pos("bl").adds(5, 0);
 	Widget bframe = adda(new Frame(new Coord(attrw, UI.scale(105)), true), prev.pos("bl").adds(5, 0).x, lframe.pos("br").y, 0.0, 1.0);
 	int rx = bframe.pos("iur").subs(10, 0).x;
-	prev = add(new Label("Experience points:"), bframe.pos("iul").adds(10, 5));
-	adda(enclabel(), new Coord(rx, prev.pos("ul").y), 1.0, 0.0);
-	prev = add(new Label("Learning points:"), prev.pos("bl").adds(0, 2));
-	adda(explabel(), new Coord(rx, prev.pos("ul").y), 1.0, 0.0);
-	prev = add(new Label("Learning cost:"), prev.pos("bl").adds(0, 2));
-	adda(new RLabel<Integer>(() -> scost, Utils::thformat, n -> (n > chr.exp) ? debuff : Color.WHITE), new Coord(rx, prev.pos("ul").y), 1.0, 0.0);
+	prev = add(big(new Label("Experience points:")), bframe.pos("iul").adds(10, 5));
+	adda(big(enclabel()), new Coord(rx, prev.pos("ul").y), 1.0, 0.0);
+	prev = add(big(new Label("Learning points:")), prev.pos("bl").adds(0, 2));
+	adda(big(explabel()), new Coord(rx, prev.pos("ul").y), 1.0, 0.0);
+	prev = add(big(new Label("Learning cost:")), prev.pos("bl").adds(0, 2));
+	adda(big(new RLabel<Integer>(() -> scost, Utils::thformat, n -> (n > chr.exp) ? debuff : Color.WHITE)), new Coord(rx, prev.pos("ul").y), 1.0, 0.0);
 	prev = adda(new Button(UI.scale(75), "Buy").action(this::buy), bframe.pos("ibr").subs(5, 5), 1.0, 1.0);
 	adda(new Button(UI.scale(75), "Reset").action(this::reset), prev.pos("bl").subs(5, 0), 1.0, 1.0);
 	pack();
@@ -234,6 +251,7 @@ public class SAttrWnd extends Widget {
     public void addchild(Widget child, Object... args) {
 	String place = (args[0] instanceof String) ? (((String)args[0]).intern()) : null;
 	if(place == "study") {
+            hearthborn.ui.StudyProgress.register(child);
 	    add(child, studyc.add(wbox.btloff()));
 	    Widget f = Frame.around(this, Collections.singletonList(child));
 	    Widget inf = add(new StudyInfo(new Coord(attrw - child.sz.x - wbox.bisz().x - UI.scale(5), child.sz.y), child), child.pos("ur").add(wbox.bisz().x + UI.scale(5), 0));

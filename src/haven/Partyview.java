@@ -37,6 +37,7 @@ public class Partyview extends Widget {
     public final Party party;
     public final long ign;
     private final Button leave;
+    private final int width;
     private Map<Member, MemberView> avs = Collections.emptyMap();
     private Map<Long, Member> om = null;
 
@@ -51,6 +52,7 @@ public class Partyview extends Widget {
 	super(Coord.of(Avaview.dasz.x + Window.wbox.bisz().x, 140));
 	this.party = party;
 	this.ign = ign;
+	this.width = sz.x;
 	this.leave = add(new Button(sz.x, "Leave"), Coord.z);
 	this.leave.settip("Leave party");
 	pack();
@@ -99,7 +101,7 @@ public class Partyview extends Widget {
     }
 
     private void update() {
-	int asz = (sz.x - marg) / 2;
+	int asz = (width - marg) / 2;
 	if(party.memb != this.om) {
 	    Map<Member, MemberView> old = new HashMap<>(this.avs);
 	    Map<Member, MemberView> avs = null;
@@ -121,13 +123,13 @@ public class Partyview extends Widget {
 	    Collections.sort(order, Comparator.comparing(m -> m.seq));
 	    int i = 0;
 	    for(Member m : order) {
-		avs.get(m).move(leave.pos("bl").add((i % 2) * (sz.x - asz), (i / 2) * (asz + marg) + marg));
+		avs.get(m).move(leave.pos("bl").add((i % 2) * (width - asz), (i / 2) * (asz + marg) + marg));
 		i++;
 	    }
 	    this.om = party.memb;
 	    this.avs = avs;
-	    if(leave.show(!avs.isEmpty()))
-		pack();
+            leave.show(!avs.isEmpty());
+            pack();
 	}
 	for(Map.Entry<Member, MemberView> e : avs.entrySet())
 	    e.getValue().color = e.getKey().col;
@@ -135,8 +137,11 @@ public class Partyview extends Widget {
 
     public void tick(double dt) {
 	update();
+        hearthborn.ui.PartyLayout.place(this);
 	super.tick(dt);
     }
+
+    public void presize(){hearthborn.ui.PartyLayout.place(this);}
 
     public void wdgmsg(Widget sender, String msg, Object... args) {
 	if(sender == leave) {

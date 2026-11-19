@@ -59,7 +59,7 @@ public class MapPrefs extends AbstractPreferences {
 	List<String> buf = new ArrayList<>();
 	for(Map.Entry<? super String, ? super String> ent : props.entrySet()) {
 	    if((ent.getKey() instanceof String) && (ent.getValue() instanceof String))
-		buf.add((String)ent.getValue());
+		buf.add((String)ent.getKey());
 	}
 	return(buf.toArray(new String[0]));
     }

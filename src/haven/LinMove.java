@@ -50,7 +50,8 @@ public class LinMove extends Moving {
 
     public void ctick(double dt) {
 	if(!ts) {
-	    t += dt * 0.9;
+	    // Full pace. The old nine-tenths step made a run feel heavy even though the camera stayed locked.
+	    t += dt;
 	    if(!Double.isNaN(e) && (t > e)) {
 		t = e;
 	    } else if(t > lt + MAXOVER) {
@@ -58,6 +59,17 @@ public class LinMove extends Moving {
 		ts = true;
 	    }
 	}
+    }
+
+    public void move(Coord2d c) {
+	// A teleport sets the gob down far from the step still being played.
+	// Leaving that step makes the camera and the map stay at the old place.
+	if(c.dist(s.add(v.mul(t))) <= MCache.tilesz.x * 4) return;
+	s = c;
+	v = Coord2d.z;
+	t = lt = 0;
+	e = 0;
+	ts = true;
     }
 
     public void sett(double t) {

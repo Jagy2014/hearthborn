@@ -36,6 +36,18 @@ public class RootWidget extends ConsoleHost implements UI.Notice.Handler, Widget
     Profile guprof, grprof, ggprof;
     private Text lastmsg;
     private double msgtime;
+    private boolean characterBackdrop;
+    private boolean characterSelected;
+
+    public void beginCharacterSession() {
+        characterBackdrop=true;
+        characterSelected=false;
+    }
+
+    public void enteringWorld() {
+        characterBackdrop=true;
+        characterSelected=true;
+    }
 	
     public RootWidget(UI ui, Coord sz) {
 	super(ui, new Coord(0, 0), sz);
@@ -79,7 +91,47 @@ public class RootWidget extends ConsoleHost implements UI.Notice.Handler, Widget
     }
 
     public void draw(GOut g) {
-	super.draw(g);
+        boolean signingIn=findchild(LoginScreen.class)!=null;
+        GameUI game=findchild(GameUI.class);
+        Charlist characters=findchild(Charlist.class);
+        if(signingIn || (game!=null && game.map!=null)) {
+            characterBackdrop=false;
+            characterSelected=false;
+        } else if(characters!=null)characterBackdrop=true;
+        // RemoteUI starts the backdrop before server widgets arrive and keeps it
+        // until the map widget arrives, including transfers to a fresh UI.
+        if(characterBackdrop && !signingIn) {
+            if(characterSelected || characters==null) {
+                // Server widgets continue receiving normal draws during the transition.
+                super.draw(g);
+                hearthborn.ui.LoginArt.drawCharacters(g,sz);
+                hearthborn.ui.LoginArt.drawLoading(g,sz);
+            } else {
+                Avaview preview=null;
+                for(Avaview candidate:children(Avaview.class))
+                    if(candidate.tvisible() && (preview==null || (long)candidate.sz.x*candidate.sz.y>(long)preview.sz.x*preview.sz.y))preview=candidate;
+                // Server account badges may be inside a fixed-width layout container.
+                // Position and draw them in root coordinates, outside that container's clip.
+                java.util.List<hearthborn.ui.AccountStatusFlag> badges=new java.util.ArrayList<>();
+                for(hearthborn.ui.AccountStatusFlag badge:children(hearthborn.ui.AccountStatusFlag.class))badges.add(badge);
+                for(hearthborn.ui.AccountStatusFlag badge:badges) {
+                    if(badge.parent!=this) {
+                        Coord at=badge.rootpos();
+                        badge.unlink();
+                        add(badge,at);
+                    }
+                }
+                if(preview!=null && preview.sz.y>UI.scale(200) && characters!=null)preview.fitCharacterPreview(characters.logoutButton());
+                for(hearthborn.ui.AccountStatusFlag badge:badges)badge.tick(0);
+                characterChildren(g,true);
+                hearthborn.ui.LoginArt.drawCharacters(g,sz);
+                characterChildren(g,false);
+                if(preview!=null && preview.sz.y>UI.scale(200) && characters!=null)preview.drawCharacterPreview(g);
+                /* The changelog is read on its own: above everything else, the big character picture included. */
+                for(Widget w=child;w!=null;w=w.next)
+                    if(w.visible && w instanceof hearthborn.ui.ChangelogWindow)w.draw(g.reclip(xlate(w.c,true),w.sz));
+            }
+        } else super.draw(g);
 	if(cmdline != null) {
 	    drawcmd(g, new Coord(UI.scale(20), sz.y - UI.scale(20)));
 	} else if(lastmsg != null) {
@@ -93,6 +145,24 @@ public class RootWidget extends ConsoleHost implements UI.Notice.Handler, Widget
 		g.image(lastmsg.tex(), msgc);
 	    }
 	}
+    }
+
+    private void characterChildren(GOut g,boolean background) {
+        for(Widget w=child,next;w!=null;w=next) {
+            next=w.next;
+            if(!w.visible || w instanceof hearthborn.ui.AccountStatusFlag || (!background && (w instanceof hearthborn.ui.NewsPopup || w instanceof hearthborn.ui.ChangelogWindow)))continue;
+            boolean painting=!(w instanceof Charlist) && !(w instanceof hearthborn.ui.ChangelogWindow) && w.findchild(Charlist.class)==null
+                && !(w instanceof Avaview) && !(w instanceof Button) && !(w instanceof IButton)
+                && w.sz.x>=UI.scale(500) && w.sz.y>=UI.scale(280);
+            if(painting==background)w.draw(g.reclip(xlate(w.c,true),w.sz));
+        }
+        if(!background)for(Widget w=child;w!=null;w=w.next) {
+            if(w.visible && w instanceof hearthborn.ui.AccountStatusFlag)w.draw(g.reclip(xlate(w.c,true),w.sz));
+        }
+        /* The news come last: above the account badges, which are drawn over the rest. */
+        if(!background)for(Widget w=child;w!=null;w=w.next) {
+            if(w.visible && w instanceof hearthborn.ui.NewsPopup)w.draw(g.reclip(xlate(w.c,true),w.sz));
+        }
     }
 
     public void uimsg(String msg, Object... args) {

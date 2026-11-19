@@ -420,10 +420,10 @@ public class DynresWindow extends Window {
 	    boolean menuhover = (menu != null) && (menu.parent != null) && menu.rootarea().contains(ui.mc);
 	    if((hovering || menuhover) && (menu == null)) {
 		menu = SListMenu.of(UI.scale(250, 200), null,
-				    Arrays.asList(SListMenu.Action.of("Paint Sketch", () -> craft(false)),
-						  SListMenu.Action.of("Paint Masterpiece", () -> craft(true)),
-						  SListMenu.Action.of("Copy to clipboard", this::copy),
-						  SListMenu.Action.of("Remove", this::delete)))
+				    Arrays.asList(SListMenu.Action.of(hearthborn.L10n.tr("Paint Sketch"), () -> craft(false)),
+						  SListMenu.Action.of(hearthborn.L10n.tr("Paint Masterpiece"), () -> craft(true)),
+						  SListMenu.Action.of(hearthborn.L10n.tr("Copy to clipboard"), this::copy),
+						  SListMenu.Action.of(hearthborn.L10n.tr("Remove"), this::delete)))
 		    .addat(this, pos("cbl"));
 	    } else if(!(hovering || menuhover) && (menu != null)) {
 		menu.reqdestroy();
@@ -433,7 +433,7 @@ public class DynresWindow extends Window {
 	}
 
 	public void setinfo(int fields, float outline) {
-	    settip(String.format("Fields: %,d\nContours: %.2f", fields, outline), true);
+	    settip(String.format("%s: %,d\n%s: %.2f", hearthborn.L10n.tr("Fields"), fields, hearthborn.L10n.tr("Contours"), outline), true);
 	}
     }
 

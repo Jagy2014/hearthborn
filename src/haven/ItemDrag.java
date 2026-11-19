@@ -36,10 +36,32 @@ public class ItemDrag extends WItem {
     }
 
     protected void added() {
-	this.c = parent.ui.mc.add(doff.inv());
+	this.c = parent.ui.mc.sub(hearthborn.ui.HudInterfaceScale.toParent(this,doff));
 	ui.grabmouse(this);
     }
+
+    public void tick(double dt) {
+	if(ui != null)
+	    this.c = ui.mc.sub(hearthborn.ui.HudInterfaceScale.toParent(this,doff));
+	super.tick(dt);
+    }
     
+    public void draw(GOut g) {
+        GameUI gui=getparent(GameUI.class);
+        if(gui!=null&&(hearthborn.scripts.ScriptRunner.hideFuelCursor(gui,item)))return;
+        super.draw(g);
+    }
+
+    public Object tooltip(Coord c, Widget prev) {
+	if(hearthborn.ui.StockpileCursor.shows(item)) return super.tooltip(c, prev);
+	return null;
+    }
+
+    public boolean tooltip(TooltipQuery ev) {
+	if(hearthborn.ui.StockpileCursor.shows(item)) return super.tooltip(ev);
+	return ev.set(null, this);
+    }
+
     public void drawmain(GOut g, GSprite spr) {
 	g.chcolor(255, 255, 255, 128);
 	super.drawmain(g, spr);
@@ -49,25 +71,25 @@ public class ItemDrag extends WItem {
     public boolean mousedown(MouseDownEvent ev) {
 	if(!ev.grabbed)
 	    return(false);
-	if(ui.modctrl && !ui.modshift && !ui.modmeta) {
+	if(!hearthborn.ui.ItemProtection.drops() && ui.modctrl && !ui.modshift && !ui.modmeta) {
 	    /* XXX */
 	    GameUI gui = getparent(GameUI.class);
 	    if((gui != null) && (gui.map != null)) {
 		ui.modctrl = false;
-		return(ev.derive(gui.map.rootxlate(ev.c.add(rootpos()))).dispatch(gui.map));
+		return(ev.derive(gui.map.rootxlate(rootpos(ev.c))).dispatch(gui.map));
 	    }
 	}
 	if(ev.b == 1) {
-	    if(ui.dispatchq(parent, new Drop(ev.c.add(this.c), this)).handled)
+	    if(ui.dispatchq(parent, new Drop(hearthborn.ui.HudInterfaceScale.toParent(this,ev.c).add(this.c), this)).handled)
 		return(true);
 	} else if(ev.b == 3) {
-	    if(ui.dispatchq(parent, new Interact(ev.c.add(this.c), this)).handled)
+	    if(ui.dispatchq(parent, new Interact(hearthborn.ui.HudInterfaceScale.toParent(this,ev.c).add(this.c), this)).handled)
 		return(true);
 	}
 	return(false);
     }
 
     public void mousemove(MouseMoveEvent ev) {
-	this.c = this.c.add(ev.c.sub(doff));
+	this.c = this.c.add(hearthborn.ui.HudInterfaceScale.toParent(this,ev.c.sub(doff)));
     }
 }

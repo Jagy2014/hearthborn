@@ -62,19 +62,31 @@ public class Scrollbar extends Widget {
 	    val = ctl.scrollval();
 	}
 	if(vis()) {
-	    int cx = (sflarp.sz().x / 2) - (schain.sz().x / 2);
-	    int eh = sz.y + chcut, ch = schain.sz().y;
-	    int n = Math.max((eh + ch - 1) / ch, 2);
-	    for(int i = 0; i < n; i++)
-		g.image(schain, Coord.of(cx, ((eh - ch) * i) / (n - 1)));
+	    int tw = Math.max(2, UI.scale(5)), x = (sz.x - tw) / 2, th = thumb();
+	    g.chcolor(hearthborn.ui.UiPalette.scrollTrack());
+	    g.frect(Coord.of(x, 0), Coord.of(tw, sz.y));
 	    double a = (double)val / (double)(max - min);
-	    int fy = (int)((sz.y - sflarp.sz().y) * a);
-	    g.image(sflarp, new Coord(0, fy));
+	    int fy = (int)((sz.y - th) * a);
+	    g.chcolor(hearthborn.ui.UiPalette.scrollThumb(over || drag != null));
+	    g.frect(Coord.of(x, fy), Coord.of(tw, th));
+	    g.chcolor();
 	}
     }
 
+    private boolean over;
+
+    /** The length of the thumb: a fixed stretch, never more than half the track. */
+    private int thumb() {
+	return(Math.max(Math.min(UI.scale(36), sz.y / 2), 1));
+    }
+
+    public boolean mousehover(MouseHoverEvent ev, boolean hovering) {
+	over = hovering;
+	return(super.mousehover(ev, hovering));
+    }
+
     private void update(Coord c) {
-	double a = (double)(c.y - (sflarp.sz().y / 2)) / (double)(sz.y - sflarp.sz().y);
+	double a = (double)(c.y - (thumb() / 2)) / (double)Math.max(1, sz.y - thumb());
 	if(a < 0)
 	    a = 0;
 	if(a > 1)

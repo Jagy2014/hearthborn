@@ -31,12 +31,15 @@ import java.awt.Graphics;
 import java.awt.image.BufferedImage;
 
 public class Cal extends Widget {
+    private final hearthborn.ui.CalendarInfo calendarInfo = new hearthborn.ui.CalendarInfo();
+    private final hearthborn.meteor.MeteorShower meteors=new hearthborn.meteor.MeteorShower();
     public static final double hbr = UI.scale(20.0);
-    static final Tex bg = Resource.loadtex("gfx/hud/calendar/glass");
     static final Tex[] dlnd = new Tex[4];
     static final Tex[] nlnd = new Tex[4];
     static final Resource.Image dsky = Resource.loadrimg("gfx/hud/calendar/daysky");
     static final Resource.Image nsky = Resource.loadrimg("gfx/hud/calendar/nightsky");
+    static final Coord sceneOffset = hearthborn.ui.CalendarArtwork.sceneOffset();
+    static final TexI bg = hearthborn.ui.CalendarArtwork.frame(dsky.ssz);
     static final Resource.Anim sun = Resource.local().loadwait("gfx/hud/calendar/sun").layer(Resource.animc);
     static final Resource.Anim moon = Resource.local().loadwait("gfx/hud/calendar/moon").layer(Resource.animc);
 
@@ -51,26 +54,37 @@ public class Cal extends Widget {
 	super(bg.sz());
     }
 
+    public void tick(double dt){
+        super.tick(dt);
+        GameUI gui=getparent(GameUI.class);
+        meteors.tick(dt,!Fightsess.active&&gui!=null&&gui.starFall!=null&&gui.starFall.showerActive());
+    }
+
     public void draw(GOut g) {
+	if(Fightsess.active)
+	    return;
 	Astronomy a = ui.sess.glob.ast;
 	long now = System.currentTimeMillis();
-	g.image(a.night ? nsky : dsky, Coord.z);
+	g.image(a.night ? nsky : dsky, sceneOffset);
+        if(a.night)meteors.draw(g,nsky.scaled(),UI.scale(nsky.o).add(sceneOffset));
 	int mp = (int)Math.round(a.mp * (double)moon.f.length) % moon.f.length;
 	Resource.Image moon = Cal.moon.f[mp][0];
 	Resource.Image sun = Cal.sun.f[(int)((now / Cal.sun.d) % Cal.sun.f.length)][0];
-	Coord mc = Coord.sc((a.dt + 0.25) * 2 * PI, hbr).add(sz.div(2)).sub(moon.ssz.div(2));
-	Coord sc = Coord.sc((a.dt + 0.75) * 2 * PI, hbr).add(sz.div(2)).sub(sun.ssz.div(2));
+	Coord mc = Coord.sc((a.dt + 0.25) * 2 * PI, hbr).add(dsky.ssz.div(2)).add(sceneOffset).sub(moon.ssz.div(2));
+	Coord sc = Coord.sc((a.dt + 0.75) * 2 * PI, hbr).add(dsky.ssz.div(2)).add(sceneOffset).sub(sun.ssz.div(2));
 	g.chcolor(a.mc);
 	g.image(moon, mc);
 	g.chcolor();
 	g.image(sun, sc);
-	g.image((a.night ? nlnd : dlnd)[a.is], Coord.z);
+	g.image((a.night ? nlnd : dlnd)[a.is], sceneOffset);
 	g.image(bg, Coord.z);
     }
 
     public boolean checkhit(Coord c) {
-	return(Utils.checkhit(dsky.scaled(), c.sub(dsky.o)));
+	return(Utils.checkhit(dsky.scaled(), c.sub(UI.scale(dsky.o)).sub(sceneOffset)) || Utils.checkhit(bg.back,c));
     }
+
+    public void dispose() { meteors.dispose(); calendarInfo.dispose(); super.dispose(); }
 
     private static String ord(int i) {
 	if(((i % 100) / 10) != 1) {
@@ -85,7 +99,8 @@ public class Cal extends Widget {
     }
 
     public Object tooltip(Coord c, Widget prev) {
-	Astronomy a = ui.sess.glob.ast;
-	return(String.format("%s day of the %s month of the %s year", ord((int)Math.floor(a.md) + 1), ord((int)Math.floor(a.ym) + 1), ord((int)Math.floor(a.years) + 1)));
+	if(Fightsess.active)
+	    return(null);
+        return calendarInfo.tooltip(ui, getparent(GameUI.class));
     }
 }

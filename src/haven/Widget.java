@@ -177,8 +177,13 @@ public class Widget {
 		ver = Integer.parseInt(name.substring(p + 1));
 		name = name.substring(0, p);
 	    }
+            if(name.equals("ui/fadein"))return (ui,args)->hearthborn.ui.Fadein.mkwidget(ui,args);
+            if(name.equals("ui/fainted"))return (ui,args)->new hearthborn.ui.KnockoutWindow();
+            if(name.equals("ui/death"))return (ui,args)->hearthborn.ui.DeathScreen.mkwidget(ui,args);
 	    Indir<Resource> res = Resource.remote().load(name, ver);
-	    return(res.get().getcode(Factory.class, true));
+	    Factory factory=res.get().getcode(Factory.class, true);
+            if(name.equals("ui/grainslot"))return (ui,args)->hearthborn.ui.GrainQuality.attach(factory.create(ui,args));
+            return factory;
 	}
     }
 
@@ -486,11 +491,11 @@ public class Widget {
     public Coord parentpos(Widget in) {
 	if(in == this)
 	    return(Coord.z);
-	return(parent.xlate(parent.parentpos(in).add(c), true));
+	return(parent.parentpos(in,parent.xlate(c,true)));
     }
 
     public Coord parentpos(Widget in, Coord c) {
-	return(parentpos(in).add(c));
+	return(parentpos(in).add(hearthborn.ui.HudInterfaceScale.point(c,hearthborn.ui.HudInterfaceScale.toAncestor(this,in))));
     }
 
     public Coord rootpos() {
@@ -498,11 +503,11 @@ public class Widget {
     }
     
     public Coord rootpos(Coord c) {
-	return(rootpos().add(c));
+	return(parentpos(ui.root,c));
     }
 
     public Coord rootxlate(Coord c) {
-	return(c.sub(rootpos()));
+	return(hearthborn.ui.HudInterfaceScale.point(c.sub(rootpos()),1/hearthborn.ui.HudInterfaceScale.toAncestor(this,ui.root)));
     }
 	
     public boolean hasparent(Widget w2) {
@@ -571,6 +576,7 @@ public class Widget {
     }
 
     public void setfocus(Widget w) {
+        if(w!=null&&!hearthborn.ui.CombatLayout.visible(w))return;
 	if(focusctl) {
 	    if(w != focused) {
 		Widget last = focused;
@@ -636,7 +642,7 @@ public class Widget {
 	/* XXX: Might need to check subwidgets recursively */
 	focused = null;
 	for(Widget w = lchild; w != null; w = w.prev) {
-	    if(w.visible && w.autofocus) {
+	    if(w.visible && hearthborn.ui.CombatLayout.visible(w) && w.autofocus) {
 		focused = w;
 		if(hasfocus) {
 		    focused.hasfocus = true;
@@ -728,7 +734,12 @@ public class Widget {
 		}
 	    }
 	} else if(msg == "ext") {
-	    ui.sess.getresv(args[0]).get().getcode(MessageHandler.class, true).handle(this, Utils.splice(args, 1));
+	    Resource ext = ui.sess.getresv(args[0]).get();
+	    /* The news window is ours: the server's box around it is rearranged on the character screen. */
+	    if(hearthborn.ui.NewsPopup.RESOURCE.equals(ext.name))
+		hearthborn.ui.NewsPopup.open(ui);
+	    else
+		ext.getcode(MessageHandler.class, true).handle(this, Utils.splice(args, 1));
 	} else {
 	    new Warning("unhandled widget message: " + msg).issue();
 	}
@@ -773,16 +784,19 @@ public class Widget {
 		
 	for(Widget wdg = child; wdg != null; wdg = next) {
 	    next = wdg.next;
-	    if(!wdg.visible)
+	    if(!wdg.visible||!hearthborn.ui.CombatLayout.visible(wdg))
 		continue;
 	    try(CPUProfile.Current prof = CPUProfile.begin(wdg)) {
 		Coord cc = xlate(wdg.c, true);
 		GOut g2;
 		if(strict)
-		    g2 = g.reclip(cc, wdg.sz);
+		    g2 = g.reclip(cc, hearthborn.ui.HudInterfaceScale.size(wdg));
 		else
-		    g2 = g.reclipl(cc, wdg.sz);
+		    g2 = g.reclipl(cc, hearthborn.ui.HudInterfaceScale.size(wdg));
+		double presentation=hearthborn.ui.HudInterfaceScale.presentation(wdg);
+		if(presentation!=1)g2=hearthborn.ui.ToolbarScale.graphics(g2,wdg.sz,presentation);
 		wdg.draw(g2);
+		hearthborn.ui.QuestPointerDistance.paint(g2, wdg);
 	    }
 	}
     }
@@ -911,7 +925,7 @@ public class Widget {
 	public boolean dispatch(Widget w) {
 	    boolean pv = visible;
 	    try {
-		if(!w.visible)
+		if(!w.visible||!hearthborn.ui.CombatLayout.visible(w))
 		    visible = false;
 		return(super.dispatch(w));
 	    } finally {
@@ -983,8 +997,8 @@ public class Widget {
 		if(!wdg.visible())
 		    continue;
 		Coord cc = from.xlate(wdg.c, true);
-		if(c.isect(cc, wdg.sz)) {
-		    if(derive(c.sub(cc)).dispatch(wdg))
+		if(c.isect(cc, hearthborn.ui.HudInterfaceScale.size(wdg))) {
+		    if(derive(hearthborn.ui.HudInterfaceScale.fromParent(wdg,c.sub(cc))).dispatch(wdg))
 			return(true);
 		}
 	    }
@@ -1062,7 +1076,7 @@ public class Widget {
 		if(!wdg.visible())
 		    continue;
 		Coord cc = from.xlate(wdg.c, true);
-		derive(c.sub(cc)).dispatch(wdg);
+		derive(hearthborn.ui.HudInterfaceScale.fromParent(wdg,c.sub(cc))).dispatch(wdg);
 	    }
 	    return(true);
 	}
@@ -1090,6 +1104,11 @@ public class Widget {
 
 	public MouseWheelEvent derive(Coord c) {return(new MouseWheelEvent(this, c));}
 
+	/** Integer notches, or the fractional trackpad delta when amount is still 0. */
+	public double step() {
+	    return((a != 0) ? a : s);
+	}
+
 	public boolean shandle(Widget w) {
 	    if(w.mousewheel(this))
 		return(true);
@@ -1106,6 +1125,7 @@ public class Widget {
 	}
 	public MouseHoverEvent(MouseHoverEvent from, Coord c) {
 	    super(from, c);
+	    this.hovering = from.hovering;
 	}
 
 	public MouseHoverEvent derive(Coord c) {return(new MouseHoverEvent(this, c));}
@@ -1117,9 +1137,9 @@ public class Widget {
 	    boolean hovering = this.hovering;
 	    for(Widget wdg = from.lchild; wdg != null; wdg = wdg.prev) {
 		Coord cc = from.xlate(wdg.c, true);
-		boolean inside = c.isect(cc, wdg.sz);
+		boolean inside = c.isect(cc, hearthborn.ui.HudInterfaceScale.size(wdg));
 		boolean ch = hovering && inside && wdg.visible();
-		if(derive(c.sub(cc)).hovering(ch).dispatch(wdg) && ch) {
+		if(derive(hearthborn.ui.HudInterfaceScale.fromParent(wdg,c.sub(cc))).hovering(ch).dispatch(wdg) && ch) {
 		    hovering = false;
 		    ret = true;
 		}
@@ -1181,6 +1201,7 @@ public class Widget {
 	    if(from.focusctl) {
 		if(from.focused == null)
 		    return(false);
+		if(!hearthborn.ui.CombatLayout.visible(from.focused))return false;
 		return(dispatch(from.focused));
 	    } else {
 		for(Widget wdg = from.child; wdg != null; wdg = wdg.next) {
@@ -1298,7 +1319,7 @@ public class Widget {
 	/* Return value doesn't indicate anything, it's just to be
 	 * able to do return(ev.nset(res)). */
 	public boolean set(Object ret, Widget from) {
-	    root.ret = ret;
+	    root.ret = hearthborn.ui.QuestPointerTip.decorate(from, ret);
 	    root.from = from;
 	    return(true);
 	}
@@ -1439,7 +1460,7 @@ public class Widget {
     }
 
     public Area parentarea(Widget in) {
-	return(Area.sized(parentpos(in), sz));
+	return(Area.sized(parentpos(in), hearthborn.ui.ToolbarScale.size(sz,hearthborn.ui.HudInterfaceScale.toAncestor(this,in))));
     }
 
     public Area rootarea() {
@@ -1871,7 +1892,7 @@ public class Widget {
 	private KeyMatch rkey = null;
 
 	public KeyboundTip(String base, boolean rich) {
-	    this.base = base;
+	    this.base = hearthborn.L10n.text("label", base);
 	    this.rich = rich;
 	}
 
@@ -1892,18 +1913,20 @@ public class Widget {
 		    if(rich) {
 			tip = base;
 			if((key != null) && (key != KeyMatch.nil))
-			    tip = String.format("%s\n\nKeyboard shortcut: $col[255,255,0]{%s}", tip, RichText.Parser.quote(key.name()));
+			    tip = String.format("%s\n\n%s $col[255,255,0]{%s}", tip, RichText.Parser.quote(hearthborn.L10n.tr("Keyboard shortcut:")), RichText.Parser.quote(key.name()));
 			w = UI.scale(300);
 		    } else {
 			tip = RichText.Parser.quote(base);
 			if((key != null) && (key != KeyMatch.nil))
 			    tip = String.format("%s ($col[255,255,0]{%s})", tip, RichText.Parser.quote(key.name()));
+			/* A long hint is wrapped into a readable column instead of one line across the screen. */
+			w = UI.scale(320);
 		    }
 		} else {
 		    if((key == null) || (key == KeyMatch.nil))
 			tip = null;
 		    else
-			tip = String.format("Keyboard shortcut: $col[255,255,0]{%s}", RichText.Parser.quote(key.name()));
+			tip = String.format("%s $col[255,255,0]{%s}", RichText.Parser.quote(hearthborn.L10n.tr("Keyboard shortcut:")), RichText.Parser.quote(key.name()));
 		}
 		rend = (tip == null) ? null : RichText.render(tip, w).tex();
 		hrend = true;
@@ -1973,12 +1996,12 @@ public class Widget {
     }
 
     public boolean visible() {
-	return(visible);
+	return(visible&&hearthborn.ui.CombatLayout.visible(this));
     }
 
     public boolean tvisible() {
 	for(Widget w = this; w != null; w = w.parent) {
-	    if(!w.visible)
+	    if(!w.visible||!hearthborn.ui.CombatLayout.visible(w))
 		return(false);
 	}
 	return(true);

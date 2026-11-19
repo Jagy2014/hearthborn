@@ -34,10 +34,10 @@ import java.util.*;
 import java.util.function.*;
 
 public class Text implements Disposable {
-    public static final Font serif = new Font("Serif", Font.PLAIN, 10);
-    public static final Font sans  = new Font("Sans", Font.PLAIN, 10);
-    public static final Font mono  = new Font("Monospaced", Font.PLAIN, 10);
-    public static final Font fraktur = Resource.local().loadwait("ui/fraktur").flayer(Resource.Font.class).font;
+    public static final Font serif = hearthborn.UiFonts.SERIF;
+    public static final Font sans  = hearthborn.UiFonts.SANS;
+    public static final Font mono  = hearthborn.UiFonts.MONO;
+    public static final Font fraktur = hearthborn.UiFonts.HEADING;
     public static final Font dfont = sans;
     public static final Foundry std;
     public final BufferedImage img;
@@ -127,16 +127,20 @@ public class Text implements Disposable {
     public static class Foundry extends Forge {
 	private FontMetrics m;
 	public final Font font;
+	private final Font drawn;
+	private Font tipdrawn = null;
+	private FontMetrics tipm = null;
 	public final Color defcol;
 	public boolean aa = false;
 	private RichText.Foundry wfnd = null;
 		
 	public Foundry(Font f, Color defcol) {
 	    font = f;
+	    drawn = hearthborn.UiFonts.normal(f);
 	    this.defcol = defcol;
 	    BufferedImage junk = TexI.mkbuf(new Coord(10, 10));
 	    java.awt.Graphics tmpl = junk.getGraphics();
-	    tmpl.setFont(f);
+	    tmpl.setFont(drawn);
 	    m = tmpl.getFontMetrics();
 	}
 		
@@ -157,6 +161,23 @@ public class Text implements Disposable {
 	    return(this);
 	}
 
+	/** Font and metrics for the text being built: larger while a tooltip is rendered. */
+	private Font cur() {
+	    if(!hearthborn.UiFonts.tipping())
+		return(drawn);
+	    if(tipdrawn == null) {
+		tipdrawn = hearthborn.UiFonts.tip(font);
+		BufferedImage junk = TexI.mkbuf(new Coord(10, 10));
+		java.awt.Graphics tmpl = junk.getGraphics();
+		tmpl.setFont(tipdrawn);
+		tipm = tmpl.getFontMetrics();
+	    }
+	    return(tipdrawn);
+	}
+	private FontMetrics met() {
+	    return((cur() == drawn) ? m : tipm);
+	}
+
 	public int height() {
 	    /* XXX? The only font which seems to have leading > 0 is
 	     * the Moderne Fraktur font, for which the leading is
@@ -166,11 +187,11 @@ public class Text implements Disposable {
 	     * buggy, or if this is actually as it should, but as it
 	     * doesn't seem to affect any other fonts, perhaps it
 	     * doesn't matter? */
-	    return(m.getHeight());
+	    return(met().getHeight());
 	}
 
 	public Coord strsize(String text) {
-	    return(new Coord(m.stringWidth(text), height()));
+	    return(new Coord(met().stringWidth(text), height()));
 	}
                 
 	public Text renderwrap(String text, Color c, int width) {
@@ -188,14 +209,16 @@ public class Text implements Disposable {
 	}
                 
 	public Line render(String text, Color c) {
+        text = hearthborn.l10n.TooltipText.translate(text);
+	    if(hearthborn.UiFonts.lacks(cur(), text)) return(renderRuns(text, c));
 	    Coord sz = strsize(text);
 	    if(sz.x < 1)
 		sz = sz.add(1, 0);
 	    BufferedImage img = TexI.mkbuf(sz);
 	    Graphics g = img.createGraphics();
-	    if(aa)
+	    if(aa || hearthborn.UiFonts.smoothing())
 		Utils.AA(g);
-	    g.setFont(font);
+	    g.setFont(cur());
 	    g.setColor(c);
 	    FontMetrics m = g.getFontMetrics();
 	    /* See height() comment. */
@@ -204,6 +227,27 @@ public class Text implements Disposable {
 	    return(new Line(text, img, m));
 	}
 		
+	/** Text with characters the font lacks: each stretch is drawn in a font that has it. */
+	private Line renderRuns(String text, Color c) {
+	    java.util.List<hearthborn.UiFonts.Run> runs = hearthborn.UiFonts.runs(cur(), text);
+	    int width = 0;
+	    for(hearthborn.UiFonts.Run run : runs) width += hearthborn.UiFonts.width(run.font, run.text);
+	    BufferedImage img = TexI.mkbuf(new Coord(Math.max(1, width), height()));
+	    Graphics g = img.createGraphics();
+	    if(aa || hearthborn.UiFonts.smoothing())
+		Utils.AA(g);
+	    g.setColor(c);
+	    FontMetrics m = met();
+	    int x = 0;
+	    for(hearthborn.UiFonts.Run run : runs) {
+		g.setFont(run.font);
+		g.drawString(run.text, x, m.getLeading() + m.getAscent());
+		x += hearthborn.UiFonts.width(run.font, run.text);
+	    }
+	    g.dispose();
+	    return(new Line(text, img, m));
+	}
+
 	public Line render(String text) {
 	    return(render(text, defcol));
 	}

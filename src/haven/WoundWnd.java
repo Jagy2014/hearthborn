@@ -33,6 +33,7 @@ import static haven.CharWnd.*;
 
 public class WoundWnd extends Widget {
     public static final Text.Foundry namef = new Text.Foundry(Text.serif.deriveFont(java.awt.Font.BOLD), 16).aa(true);
+    public static final Text.Foundry origf=new Text.Foundry(Text.sans,10,new java.awt.Color(160,160,160)).aa(true);
     public final Widget woundbox;
     public final WoundList wounds;
     public Wound.Info wound;
@@ -58,6 +59,9 @@ public class WoundWnd extends Widget {
 	public default int qprio() {return(0);}
     }
 
+    /** The wound story reads at the size of the quest log text. */
+    private static final RichText.Foundry story = ifnd.derive(java.awt.font.TextAttribute.SIZE, UI.scale(12f)).aa(true);
+
     public static class WoundPagina extends ItemInfo.Tip {
 	public final RichText.Document doc;
 
@@ -70,7 +74,7 @@ public class WoundWnd extends Widget {
 	}
 
 	public void layout(Layout l) {
-	    BufferedImage t = ifnd.render(doc, l.width).img;
+	    BufferedImage t = story.render(doc, l.width).img;
 	    if(t != null) {
 		l.cmp.add(t, Coord.of(0, l.cmp.sz.y));
 		l.cmp.sz = l.cmp.sz.add(0, UI.scale(10));
@@ -109,6 +113,8 @@ public class WoundWnd extends Widget {
 		Resource.Pagina pag = res.get().layer(Resource.pagina);
 		if(pag != null)
 		    info.add(new WoundPagina(this, pag));
+                if(info.stream().noneMatch(t->t.getClass().getSimpleName().equals("Treatments")))
+                    info.add(new haven.res.ui.tt.treats.Treatments(this,new String[0]));
 		this.info = info;
 	    }
 	    return(info);
@@ -119,7 +125,7 @@ public class WoundWnd extends Widget {
 	}
 
 	public String name() {
-	    return(ItemInfo.find(ItemInfo.Name.class, info()).str.text);
+	    return(hearthborn.l10n.LocalizedText.shown(ItemInfo.find(ItemInfo.Name.class, info()).str));
 	}
 
 	public interface Info {
@@ -161,7 +167,9 @@ public class WoundWnd extends Widget {
 	    List<ItemInfo> info = wnd.info();
 	    l.cmp.add(wnd.icon(), Coord.z);
 	    ItemInfo.Name nm = ItemInfo.find(ItemInfo.Name.class, info);
-	    l.cmp.add(namef.render(nm.str.text).img, Coord.of(0, l.cmp.sz.y + UI.scale(10)));
+	    l.cmp.add(namef.render(hearthborn.l10n.LocalizedText.shown(nm.str)).img, Coord.of(0, l.cmp.sz.y + UI.scale(10)));
+            if(!nm.str.text.equals(hearthborn.l10n.LocalizedText.shown(nm.str)))
+                l.cmp.add(origf.render(nm.str.text).img,Coord.of(0,l.cmp.sz.y+UI.scale(1)));
 	    l.cmp.sz = l.cmp.sz.add(0, UI.scale(10));
 	    for(ItemInfo inf : info) {
 		if((inf != nm) && (inf instanceof ItemInfo.Tip))
@@ -347,10 +355,10 @@ public class WoundWnd extends Widget {
     public WoundWnd() {
 	Widget prev;
 
-	prev = add(CharWnd.settip(new Img(catf.render("Health & Wounds").tex()), "gfx/hud/chr/tips/wounds"), 0, 0);
-	this.wounds = add(new WoundList(Coord.of(attrw, height)), prev.pos("bl").x(width + UI.scale(5)).add(wbox.btloff()));
-	Frame.around(this, Collections.singletonList(this.wounds));
-	woundbox = add(new Widget(new Coord(attrw, this.wounds.sz.y)) {
+	prev = add(CharWnd.settip(hearthborn.ui.UiTheme.heading(hearthborn.L10n.text("label", "Health & Wounds")), "gfx/hud/chr/tips/wounds"), 0, 0);
+	this.wounds = add(new WoundList(Coord.of(attrw, height)), prev.pos("bl").x(width + UI.scale(125)).add(wbox.btloff()));
+	woundsFrame = Frame.around(this, Collections.singletonList(this.wounds));
+	woundbox = add(new Widget(new Coord(attrw + UI.scale(120), this.wounds.sz.y)) {
 		public void draw(GOut g) {
 		    g.chcolor(0, 0, 0, 128);
 		    g.frect(Coord.z, sz);
@@ -365,6 +373,19 @@ public class WoundWnd extends Widget {
 	    }, prev.pos("bl").adds(5, 0).add(wbox.btloff()));
 	Frame.around(this, Collections.singletonList(woundbox));
 	pack();
+    }
+
+    private Frame woundsFrame;
+
+    /** Stretch the wound list and its frame so the tab fills a wider character window. */
+    public void fitWidth(int width) {
+	int extra = width - sz.x;
+	if(extra <= 0)
+	    return;
+	Coord grow = Coord.of(extra, 0);
+	wounds.resize(wounds.sz.add(grow));
+	woundsFrame.resize(woundsFrame.sz.add(grow));
+	resize(sz.add(grow));
     }
 
     public void addchild(Widget child, Object... args) {

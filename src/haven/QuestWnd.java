@@ -34,6 +34,8 @@ import static haven.PUtils.*;
 import static haven.PType.*;
 
 public class QuestWnd extends Widget {
+    private static final RichText.Foundry QUEST_TEXT=new RichText.Foundry(RichText.IMAGESRC,RichText.ImageSource.legacy,
+        java.awt.font.TextAttribute.FAMILY,hearthborn.UiFonts.family("SansSerif"),java.awt.font.TextAttribute.SIZE,UI.scale(12)).aa(true);
     public final Widget questbox;
     public final QuestList cqst, dqst;
     public Quest.Info quest;
@@ -63,7 +65,7 @@ public class QuestWnd extends Widget {
 
 	public String title() {
 	    if(title != null)
-		return(title);
+		return(hearthborn.L10n.text("label", title));
 	    return(res.get().flayer(Resource.tooltip).t);
 	}
 
@@ -80,9 +82,23 @@ public class QuestWnd extends Widget {
 	    }
 	}
 
-	private static final Tex qcmp = catf.render("Quest completed").tex();
-	private static final Tex qfail = failf.render("Quest failed").tex();
+	private static final Tex qcmp = catf.render(hearthborn.L10n.text("label", "Quest completed")).tex();
+	private static final Tex qfail = failf.render(hearthborn.L10n.text("label", "Quest failed")).tex();
 	public void done(GameUI parent) {
+            if(done == QST_DONE) {
+                GameUI game = parent;
+                parent.add(new Widget() {
+                    public void tick(double dt) {
+                        try {
+                            game.msg(new UI.SimpleMessage(hearthborn.L10n.format("Quest completed: %s", Quest.this.title()), stcol[QST_DONE], null));
+                            destroy();
+                        } catch(Loading waiting) {
+                            // The quest resource may arrive after its completion update.
+                        }
+                    }
+                });
+                return;
+            }
 	    parent.add(new Widget() {
 		    double a = 0.0;
 		    Tex img, title, msg;
@@ -150,24 +166,54 @@ public class QuestWnd extends Widget {
 
 	public static class DefaultCond extends CondWidget {
 	    public Text text;
+	    private String picture;
+	    private Tex icon;
+	    private boolean missingIcon;
+	    private int iconAt;
 
 	    public DefaultCond(Condition cond) {super(cond);}
 
 	    protected void added() {
 		super.added();
 		StringBuilder buf = new StringBuilder();
-		buf.append(String.format("%s{%c %s", RichText.Parser.col2a(stcol[cond.done]), stsym[cond.done], cond.desc));
+		Box box = getparent(Box.class);
+		String desc = hearthborn.ui.CredoQuests.objective(box == null ? null : box.title, cond.desc);
+		buf.append(String.format("%s{%c %s", RichText.Parser.col2a(stcol[cond.done]), stsym[cond.done], RichText.Parser.quote(hearthborn.L10n.text("label", desc))));
 		if(cond.status != null) {
 		    buf.append(' ');
-		    buf.append(cond.status);
+		    buf.append(RichText.Parser.quote(hearthborn.L10n.text("label", cond.status)));
 		}
 		buf.append("}");
-		text = ifnd.render(buf.toString(), parent.sz.x - 20);
-		resize(text.sz().add(15, 1));
+		picture = hearthborn.ui.QuestPictures.resource(cond.desc);
+		int extra = picture != null ? UI.scale(26) : 0;
+		text = QUEST_TEXT.render(buf.toString(), Math.max(UI.scale(40), parent.sz.x - UI.scale(20) - extra));
+		int height = Math.max(text.sz().y, picture != null ? UI.scale(22) : 0);
+		iconAt = UI.scale(15) + text.sz().x + UI.scale(4);
+		resize(Coord.of(iconAt + Math.max(0, extra - UI.scale(4)), height + UI.scale(1)));
 	    }
 
 	    public void draw(GOut g) {
-		g.image(text.tex(), new Coord(15, 0));
+		g.image(text.tex(), Coord.of(UI.scale(15), Math.max(0, (sz.y - text.sz().y) / 2)));
+		if(picture != null) {
+		    Tex image = icon();
+		    if(image != null)
+			g.image(image, Coord.of(iconAt, Math.max(0, (sz.y - UI.scale(22)) / 2)), UI.scale(22, 22));
+		}
+	    }
+
+	    private Tex icon() {
+		if(icon != null || missingIcon || picture == null) return icon;
+		try {
+		    Resource.Image layer = Resource.remote().load(picture).get().layer(Resource.imgc);
+		    if(layer == null || layer.img == null) { missingIcon = true; return null; }
+		    return icon = new TexI(PUtils.uiscale(layer.img, UI.scale(22, 22)));
+		} catch(Loading pending) { return null; }
+		catch(RuntimeException error) { missingIcon = true; return null; }
+	    }
+
+	    public void dispose() {
+		if(icon != null) icon.dispose();
+		super.dispose();
 	    }
 	}
 
@@ -191,7 +237,7 @@ public class QuestWnd extends Widget {
 
 	    public String title() {
 		if(title != null)
-		    return(title);
+		    return(hearthborn.L10n.text("label", title));
 		return(res.get().flayer(Resource.tooltip).t);
 	    }
 
@@ -264,6 +310,8 @@ public class QuestWnd extends Widget {
 			ncond.add(cond);
 		    }
 		    this.cond = ncond.toArray(new Condition[0]);
+            GameUI gui=getparent(GameUI.class);
+            if(gui!=null)gui.questHelper.capture(this);
 		    refresh();
 		    if(cqv != null)
 			cqv.update();
@@ -357,7 +405,7 @@ public class QuestWnd extends Widget {
 	    public void tick(double dt) {
 		if(rtitle == null) {
 		    try {
-			rtitle = qtfnd.render(info.title()).tex();
+			rtitle = titleTex(info.title());
 			resize();
 		    } catch(Loading l) {
 		    }
@@ -370,33 +418,70 @@ public class QuestWnd extends Widget {
 		}
 	    }
 
+	    private static final int QW = 280;
+
+	    private Tex titleTex(String title) {
+		int width = UI.scale(QW);
+		Text.Foundry font = new Text.Foundry(Text.serif.deriveFont(java.awt.Font.BOLD), 16).aa(true);
+		if(font.strsize(title).x <= width)
+		    return(qtfnd.render(title).tex());
+		Text text = font.renderwrap(title, width);
+		return(new TexI(rasterimg(blurmask2(text.img.getRaster(), 2, 1, Color.BLACK))));
+	    }
+
 	    private Text ct(Condition c) {
-		return(qcfnd.render(" " + stsym[c.done] + " " + c.desc + ((c.status != null)?(" " + c.status):""), stcol[c.done]));
+		String prefix = " " + stsym[c.done] + " ";
+		String title = info instanceof Box ? ((Box)info).title : null;
+		String body = hearthborn.L10n.text("label", hearthborn.ui.CredoQuests.objective(title, c.desc));
+		if(c.status != null)
+		    body = body + " " + hearthborn.L10n.text("label", c.status);
+		Color color = stcol[c.done];
+		int width = UI.scale(QW);
+		String line = prefix + body;
+		if(qcfnd.strsize(line).x <= width)
+		    return(qcfnd.render(line, color));
+		int rest = Math.max(UI.scale(80), width - qcfnd.strsize(prefix).x);
+		BufferedImage tail = qcfnd.renderwrap(body, color, rest).img;
+		BufferedImage lead = qcfnd.render(prefix, color).img;
+		BufferedImage img = TexI.mkbuf(new Coord(lead.getWidth() + tail.getWidth(), Math.max(lead.getHeight(), tail.getHeight())));
+		java.awt.Graphics g = img.createGraphics();
+		g.drawImage(lead, 0, 0, null);
+		g.drawImage(tail, lead.getWidth(), 0, null);
+		g.dispose();
+		return(new Text(line, img));
 	    }
 
 	    void update() {
 		Condition[] cond = info.conds();
-		Tex[] rcond = new Tex[cond.length];
-		for(int i = 0; i < cond.length; i++) {
-		    Condition c = cond[i];
+		List<Condition> shown = new ArrayList<>();
+		List<Tex> lines = new ArrayList<>();
+		for(Condition c : cond) {
+		    if(c.done == 1)
+			continue;
 		    BufferedImage text = ct(c).img;
-		    rcond[i] = new TexI(rasterimg(blurmask2(text.getRaster(), 1, 1, Color.BLACK)));
+		    shown.add(c);
+		    lines.add(new TexI(rasterimg(blurmask2(text.getRaster(), 1, 1, Color.BLACK))));
 		}
 		if(glowon != null) {
+		    Condition was = null;
 		    for(int i = 0; i < this.rcond.length; i++) {
 			if(this.rcond[i] == glowon) {
-			    for(int o = 0; o < cond.length; o++) {
-				if(cond[o] == this.ccond[i]) {
-				    glowon = rcond[o];
-				    break;
-				}
-			    }
+			    was = this.ccond[i];
 			    break;
 			}
 		    }
+		    glowon = null;
+		    if(was != null) {
+			for(int o = 0; o < shown.size(); o++) {
+			    if(shown.get(o) == was) {
+				glowon = lines.get(o);
+				break;
+			    }
+			}
+		    }
 		}
-		this.ccond = cond;
-		this.rcond = rcond;
+		this.ccond = shown.toArray(new Condition[0]);
+		this.rcond = lines.toArray(new Tex[0]);
 		resize();
 	    }
 
@@ -423,7 +508,7 @@ public class QuestWnd extends Widget {
 	    }
 
 	    protected void layouth(Widget cont) {
-		RichText text = ifnd.render(resdoc(res.get(), rendertext()), cont.sz.x - UI.scale(20));
+		RichText text = QUEST_TEXT.render(resdoc(res.get(), rendertext()), cont.sz.x - UI.scale(20));
 		cont.add(new Img(text.tex()), UI.scale(new Coord(10, 10)));
 	    }
 
@@ -598,10 +683,9 @@ public class QuestWnd extends Widget {
 		if(ev.propagate(this) || super.mousedown(ev))
 		    return(true);
 		if(ev.b == 1) {
-		    if((QuestWnd.this.quest != null) && (q.id == QuestWnd.this.quest.questid()))
-			QuestWnd.this.wdgmsg("qsel", (Object)null);
-		    else
-			QuestWnd.this.wdgmsg("qsel", q.id);
+                    Integer selected=(QuestWnd.this.quest!=null && q.id==QuestWnd.this.quest.questid())?null:q.id;
+                    getparent(GameUI.class).questHelper.manualSelection(selected);
+                    QuestWnd.this.wdgmsg("qsel",selected);
 		    return(true);
 		}
 		return(false);
@@ -615,8 +699,7 @@ public class QuestWnd extends Widget {
 	}
 
 	protected boolean unselect(int button) {
-	    if(button == 1)
-		QuestWnd.this.wdgmsg("qsel", (Object)null);
+            if(button==1){getparent(GameUI.class).questHelper.manualSelection((Integer)null);QuestWnd.this.wdgmsg("qsel",(Object)null);}
 	    return(true);
 	}
 
@@ -651,8 +734,8 @@ public class QuestWnd extends Widget {
     public QuestWnd() {
 	Widget prev;
 
-	prev = add(CharWnd.settip(new Img(catf.render("Quest Log").tex()), "gfx/hud/chr/tips/quests"), new Coord(0, 0));
-	questbox = add(new Widget(new Coord(attrw, height)) {
+	prev = add(CharWnd.settip(hearthborn.ui.UiTheme.heading(hearthborn.L10n.text("label", "Quest Log")), "gfx/hud/chr/tips/quests"), new Coord(0, 0));
+	questbox = add(new Widget(new Coord(attrw + UI.scale(120), height + UI.scale(70))) {
 		public void draw(GOut g) {
 		    g.chcolor(0, 0, 0, 128);
 		    g.frect(Coord.z, sz);
@@ -666,22 +749,46 @@ public class QuestWnd extends Widget {
 		}
 	    }, prev.pos("bl").adds(5, 0).add(wbox.btloff()));
 	Frame.around(this, Collections.singletonList(questbox));
-	Tabs lists = new Tabs(prev.pos("bl").x(width + UI.scale(5)), Coord.z, this);
+	Tabs lists = new Tabs(prev.pos("bl").x(width + UI.scale(125)), Coord.z, this);
+	int listw = attrw + UI.scale(60);
 	Tabs.Tab cqst = lists.add();
 	{
-	    this.cqst = cqst.add(new QuestList(Coord.of(attrw, height - Button.hs - UI.scale(5)), true), wbox.btloff());
-	    Frame.around(cqst, Collections.singletonList(this.cqst));
+	    this.cqst = cqst.add(new QuestList(Coord.of(listw, height + UI.scale(70) - Button.hs - UI.scale(5)), true), wbox.btloff());
+	    cframe = Frame.around(cqst, Collections.singletonList(this.cqst));
 	}
 	Tabs.Tab dqst = lists.add();
 	{
-	    this.dqst = dqst.add(new QuestList(Coord.of(attrw, height - Button.hs - UI.scale(5)), false), wbox.btloff());
-	    Frame.around(dqst, Collections.singletonList(this.dqst));
+	    this.dqst = dqst.add(new QuestList(Coord.of(listw, height + UI.scale(70) - Button.hs - UI.scale(5)), false), wbox.btloff());
+	    dframe = Frame.around(dqst, Collections.singletonList(this.dqst));
 	}
 	lists.pack();
+	this.lists = lists;
 	addhlp(lists.c.add(0, lists.sz.y + UI.scale(5)), UI.scale(5), lists.sz.x,
-		     lists.new TabButton(0, "Current",   cqst),
-		     lists.new TabButton(0, "Completed", dqst));
+		     current = lists.new TabButton(0, "Current",   cqst),
+		     completed = lists.new TabButton(0, "Completed", dqst));
 	pack();
+    }
+
+    private Tabs lists;
+    private Frame cframe, dframe;
+    private Button current, completed;
+
+    /** Stretch the quest lists, their frames and tab buttons so the journal fills a wider tab area. */
+    public void fitWidth(int width) {
+	int extra = width - sz.x;
+	if(extra <= 0)
+	    return;
+	Coord grow = Coord.of(extra, 0);
+	cqst.resize(cqst.sz.add(grow));
+	dqst.resize(dqst.sz.add(grow));
+	cframe.resize(cframe.sz.add(grow));
+	dframe.resize(dframe.sz.add(grow));
+	lists.resize(lists.sz.add(grow));
+	int pad = UI.scale(5), each = (lists.sz.x - pad) / 2;
+	current.resizew(each);
+	completed.resizew(each);
+	completed.move(Coord.of(lists.c.x + lists.sz.x - completed.sz.x, completed.c.y));
+	resize(sz.add(grow));
     }
 
     public void addchild(Widget child, Object... args) {

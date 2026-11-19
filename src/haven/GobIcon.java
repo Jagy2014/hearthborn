@@ -90,10 +90,12 @@ public class GobIcon extends GAttrib {
 
 	public Image(Resource res) {
 	    Resource.Image rimg = res.layer(Resource.imgc);
-	    BufferedImage img = rimg.scaled();
-	    Tex tex = rimg.tex();
+	    boolean radar = res.name.startsWith("radar/");
+	    BufferedImage source = radar ? hearthborn.map.RadarIcons.image(res) : rimg.img;
+	    BufferedImage img = radar ? PUtils.uiscale(source, UI.scale(PUtils.imgsz(source))) : rimg.scaled();
+	    Tex tex = radar ? new TexI(img) : rimg.tex();
 	    if(((tex.sz().x > size) || (tex.sz().y > size)) && !Utils.bv(rimg.info.getOrDefault("mm/noscale", 0))) {
-		BufferedImage buf = rimg.img;
+		BufferedImage buf = source;
 		buf = PUtils.rasterimg(PUtils.blurmask2(buf.getRaster(), 1, 1, Color.BLACK));
 		Coord tsz;
 		if(buf.getWidth() > buf.getHeight())
@@ -137,11 +139,13 @@ public class GobIcon extends GAttrib {
 
 	public String name() {
 	    Resource.Tooltip name = res.layer(Resource.tooltip);
-	    return(name == null ? "???" : name.t);
+	    if(name != null) return(name.t);
+	    if(res.name.startsWith("radar/") || res.name.equals("gfx/hud/mmap/cave")) return(hearthborn.map.RadarIcons.name(res));
+	    return("???");
 	}
 
 	public BufferedImage image() {
-	    return(res.flayer(Resource.imgc).img);
+	    return(res.name.startsWith("radar/") ? hearthborn.map.RadarIcons.image(res) : res.flayer(Resource.imgc).img);
 	}
 
 	public void draw(GOut g, Coord cc) {
@@ -300,6 +304,7 @@ public class GobIcon extends GAttrib {
 	    this.id = new ID(res.name, id);
 	    this.icon = icon;
 	    this.from = from;
+	    this.resns = NotificationSetting.DEFAULT;
 	}
 
 	public Setting(Resource.Saved res, Object[] id) {
@@ -348,6 +353,44 @@ public class GobIcon extends GAttrib {
 	    this.ui = ui;
 	    this.filename = filename;
 	}
+
+        private boolean radarInstalled,selectionRestoreChecked,missingSelectionChecked;
+        public synchronized void installRadar(){if(radarInstalled||loading!=null)return;radarInstalled=true;Loader loader=new Loader(true);hearthborn.map.RadarIcons.configure(loader);loader.save=true;loader.submit();}
+
+        /** Repair the lost selection once, preserving any icons enabled since the backup. */
+        public synchronized void recoverMissingSelection(){
+            if(missingSelectionChecked||loading!=null||settings.isEmpty())return;
+            String suffix=Integer.toHexString(filename.hashCode());
+            String recovered="hearthborn/icons/missing-selection-recovered-v3-"+suffix;
+            if(!Utils.getprefb("hearthborn/icons/display-restored-"+suffix,false)||!Utils.getprefb("hearthborn/icons/original-selection-restored-v2-"+suffix,false)||Utils.getprefb(recovered,false)){missingSelectionChecked=true;return;}
+            Object saved=hearthborn.io.LocalStore.read("icon-visibility-before-repair");
+            if(!(saved instanceof java.util.Map)){missingSelectionChecked=true;return;}
+            java.util.Map<?,?> backup=(java.util.Map<?,?>)saved;
+            java.util.LinkedHashMap<String,Boolean> current=new java.util.LinkedHashMap<>();
+            for(Setting setting:settings.values())current.put(setting.res.name+":"+Arrays.deepToString(setting.id.sub),setting.show);
+            hearthborn.io.LocalStore.write("icon-visibility-before-missing-selection-recovery",current);
+            boolean changed=false;
+            for(Setting setting:settings.values())if(Boolean.TRUE.equals(backup.get(setting.res.name+":"+Arrays.deepToString(setting.id.sub)))&&!setting.show){setting.show=true;changed=true;}
+            if(changed)dsave();Utils.setprefb(recovered,true);missingSelectionChecked=true;
+        }
+
+        public synchronized void restoreSavedSelection(){
+            if(selectionRestoreChecked||loading!=null||settings.isEmpty())return;
+            String suffix=Integer.toHexString(filename.hashCode());
+            if(!Utils.getprefb("hearthborn/icons/display-restored-"+suffix,false)||Utils.getprefb("hearthborn/icons/original-selection-restored-v2-"+suffix,false)){selectionRestoreChecked=true;return;}
+            Object saved=hearthborn.io.LocalStore.read("icon-visibility-before-repair");
+            if(!(saved instanceof java.util.Map)){selectionRestoreChecked=true;return;}
+            java.util.Map<?,?> backup=(java.util.Map<?,?>)saved;boolean changed=false;
+            java.util.LinkedHashMap<String,Boolean> current=new java.util.LinkedHashMap<>();
+            for(Setting setting:settings.values())current.put(setting.res.name+":"+Arrays.deepToString(setting.id.sub),setting.show);
+            hearthborn.io.LocalStore.write("icon-visibility-before-selection-restore",current);
+            for(Setting setting:settings.values()){
+                Object show=backup.get(setting.res.name+":"+Arrays.deepToString(setting.id.sub));
+                if(show instanceof Boolean&&setting.show!=(Boolean)show){setting.show=(Boolean)show;changed=true;}
+            }
+            if(changed)dsave();Utils.setprefb("hearthborn/icons/original-selection-restored-v2-"+suffix,true);
+            selectionRestoreChecked=true;
+        }
 
 	public Setting get(Icon icon) {
 	    return(settings.get(new Setting.ID(icon.res.name, icon.id())));
@@ -403,8 +446,7 @@ public class GobIcon extends GAttrib {
 	    }
 
 	    public void run() {
-		if(nset == null)
-		    nset = new HashMap<>(settings);
+                synchronized(Settings.this){if(nset==null)nset=new HashMap<>(settings);}
 		while(true) {
 		    if((r == null) && ((r = load.poll()) == null))
 			break;
@@ -449,17 +491,26 @@ public class GobIcon extends GAttrib {
 		    }
 		    r = null;
 		}
-		settings = nset;
+                // Local radar entries can be discovered while this loader waits for resources.
+                // Keep entries added after its initial snapshot.
+                synchronized(Settings.this){
+                    for(Map.Entry<Setting.ID,Setting> entry:settings.entrySet())
+                        nset.putIfAbsent(entry.getKey(),entry.getValue());
+                    settings=nset;
+                }
 		if(tag != null)
 		    Settings.this.tag = tag;
 		if(save)
 		    save();
-		if(adv && notify) {
+		if(adv && notify && hearthborn.io.IconDiscoveryLog.enabled()) {
 		    Set<String> names = new HashSet<>();
-		    advbuf.forEach(icon -> names.add(icon.name()));
+		    advbuf.forEach(icon -> {
+                names.add(icon.name());
+                hearthborn.io.IconDiscoveryLog.record(icon.name(), icon.res.name, icon.id());
+            });
 		    synchronized(ui) {
 			for(String nm : names)
-			    ui.msg(String.format("%s added to list of seen icons.", nm));
+			    ui.msg(hearthborn.L10n.format("%s added to list of seen icons.", hearthborn.L10n.text("tooltip", nm)));
 		    }
 		}
 		synchronized(Settings.this) {
@@ -528,11 +579,15 @@ public class GobIcon extends GAttrib {
 	    if(set.defshow) buf.put("d", 1);
 	    if(set.notify)  buf.put("n", 1);
 	    if(set.markset) buf.put("m", set.mark ? 1 : 0);
-	    if(set.resns != null)  buf.put("R", set.resns);
-	    if(set.filens != null) buf.put("W", set.filens.toString());
+	    if(set.filens != null)
+		buf.put("W", set.filens.toString());
+	    else if(set.resns == null)
+		buf.put("R", "");
+	    else if(!NotificationSetting.DEFAULT.equals(set.resns))
+		buf.put("R", set.resns);
 	}
 
-	public void save(Message dst) {
+	public synchronized void save(Message dst) {
 	    Map<ResID, Collection<Setting>> byid = new HashMap<>();
 	    for(Setting set : settings.values())
 		byid.computeIfAbsent(set.from, k -> new ArrayList<>()).add(set);
@@ -574,15 +629,21 @@ public class GobIcon extends GAttrib {
 	    set.show    = Utils.bv(data.getOrDefault("s", 0));
 	    set.defshow = Utils.bv(data.getOrDefault("d", 0));
 	    set.notify  = Utils.bv(data.getOrDefault("n", 0));
-	    set.resns   = (String)data.getOrDefault("R", null);
 	    if(data.containsKey("m")) {
 		set.markset = true;
 		set.mark = Utils.bv(data.get("m"));
 	    }
-	    try {
-		set.filens = Utils.path((String)data.getOrDefault("W", null));
-	    } catch(RuntimeException e) {
-		new Warning(e, "could not read path").issue();
+	    if(data.containsKey("W")) {
+		try {
+		    set.filens = Utils.path((String)data.get("W"));
+		} catch(RuntimeException e) {
+		    new Warning(e, "could not read path").issue();
+		}
+		if(set.filens != null)
+		    set.resns = null;
+	    } else if(data.containsKey("R")) {
+		String sound = (String)data.get("R");
+		set.resns = (sound == null || sound.isEmpty()) ? null : sound;
 	    }
 	}
 
@@ -679,6 +740,7 @@ public class GobIcon extends GAttrib {
 	    return(Utils.eq(conf.resns, this.res) && Utils.eq(conf.filens, wav));
 	}
 
+	public static final String DEFAULT = "sfx/hud/mmap/bell1";
 	public static final NotificationSetting nil = new NotificationSetting("None", null, null);
 	public static final NotificationSetting other = new NotificationSetting("Select file...", null, null);
 	public static final List<NotificationSetting> builtin;
@@ -696,120 +758,52 @@ public class GobIcon extends GAttrib {
 	}
     }
 
-    public static class SettingsWindow extends Window {
-	public final Settings conf;
-	private final PackCont.LinPack cont;
-	private final IconList list;
-	private Widget setbox;
-
-	public static class ListIcon {
-	    public final Setting conf;
-	    public final String name;
-	    public final Object[] id;
-
-	    public ListIcon(Setting conf) {
-		this.conf = conf;
-		this.name = conf.icon.name();
-		this.id = conf.icon.id();
-	    }
-	}
-
-	private <T> Consumer<T> andsave(Consumer<T> main) {
-	    return(val -> {main.accept(val); conf.dsave();});
-	}
-
-	private static final Text.Foundry elf = CharWnd.attrf;
-	private static final int elh = elf.height() + UI.scale(2);
-	public class IconList extends SSearchBox<ListIcon, IconList.IconLine> {
-	    private List<ListIcon> ordered = Collections.emptyList();
-	    private Map<Setting.ID, Setting> cur = null;
-
-	    private IconList(Coord sz) {
-		super(sz, elh);
-	    }
-
-	    public class IconLine extends SListWidget.ItemWidget<ListIcon> {
-		public IconLine(Coord sz, ListIcon icon) {
-		    super(IconList.this, sz, icon);
-		    Widget prev;
-		    prev = adda(new CheckBox("").state(() -> icon.conf.notify).set(andsave(val -> icon.conf.notify = val)).settip("Notify"),
-				sz.x - UI.scale(2) - (sz.y / 2), sz.y / 2, 0.5, 0.5);
-		    prev = adda(new CheckBox("").state(() -> icon.conf.show).set(andsave(val -> icon.conf.show = val)).settip("Display"),
-				prev.c.x - UI.scale(2) - (sz.y / 2), sz.y / 2, 0.5, 0.5);
-		    add(SListWidget.IconText.of(Coord.of(prev.c.x - UI.scale(2), sz.y), item.conf.icon::image, item.conf.icon::name), Coord.z);
-		}
-	    }
-
-	    protected boolean searchmatch(ListIcon icon, String text) {
-		return((icon.name != null) &&
-		       (icon.name.toLowerCase().indexOf(text.toLowerCase()) >= 0));
-	    }
-	    protected List<ListIcon> allitems() {return(ordered);}
-	    protected IconLine makeitem(ListIcon icon, int idx, Coord sz) {return(new IconLine(sz, icon));}
-
-	    public void tick(double dt) {
-		Map<Setting.ID, Setting> cur = this.cur;
-		if(cur != conf.settings) {
-		    cur = conf.settings;
-		    ArrayList<ListIcon> ordered = new ArrayList<>(cur.size());
-		    for(Setting conf : cur.values())
-			ordered.add(new ListIcon(conf));
-		    this.cur = cur;
-		    this.ordered = ordered;
-		    Collections.sort(ordered, (a, b) -> {
-			    int c;;
-			    if((c = a.name.compareTo(b.name)) != 0)
-				return(c);
-			    if((c = Utils.compare(a.id, b.id)) != 0)
-				return(c);
-			    return(0);
-			});
-		}
-		super.tick(dt);
-	    }
-
-	    public boolean keydown(KeyDownEvent ev) {
-		if(ev.code == ev.awt.VK_SPACE) {
-		    if(sel != null) {
-			sel.conf.show = !sel.conf.show;
-			conf.dsave();
-		    }
-		    return(true);
-		}
-		return(super.keydown(ev));
-	    }
-
-	    public void change(ListIcon icon) {
-		super.change(icon);
-		if(setbox != null) {
-		    setbox.destroy();
-		    setbox = null;
-		}
-		if(icon != null) {
-		    setbox = cont.after(new IconSettings(sz.x - UI.scale(10), icon.conf), list, UI.scale(5));
-		}
-	    }
-	}
-
-	public class IconSettings extends Widget {
+	public static class IconSettings extends Widget {
+            private final Settings settings;
+            private <T> Consumer<T> andsave(Consumer<T> main) {return val -> {main.accept(val);settings.dsave();};}
 	    public final Setting conf;
 	    public final NotifBox nb;
+	    private SDropBox<hearthborn.world.GobMarks.Voice,Widget> voices;
 
-	    public IconSettings(int w, Setting conf) {
+	    public IconSettings(Settings settings, int w, Setting conf) {
 		super(Coord.z);
-		this.conf = conf;
-		Widget prev = add(new CheckBox("Display").state(() -> conf.show).set(andsave(val -> conf.show = val)),
-				  0, 0);
-		add(new CheckBox("Notify").state(() -> conf.notify).set(andsave(val -> conf.notify = val)),
-		    w / 2, 0);
-		Button pb = new Button(UI.scale(50), "Play") {
-			protected void depress() {}
-			protected void unpress() {}
-			public void click() {play();}
-		    };
-		prev = add(new Label("Sound to play on notification:"), prev.pos("bl").adds(0, 5));
-		nb = new NotifBox(w - pb.sz.x - UI.scale(15));
-		addhl(prev.pos("bl").adds(0, 2), w, prev = Frame.with(nb, false), pb);
+		this.conf = conf;this.settings=settings;
+                Widget prev=add(new Label(hearthborn.L10n.text("tooltip",conf.icon.name())),0,0);
+                if(hearthborn.world.GobMarks.choosesWarning(conf.res.name)&&!hearthborn.world.GobMarks.corpse(conf.icon.id())){
+                    nb=null;
+                    Button play=new Button(UI.scale(50),"Play"){
+                        protected void depress(){}protected void unpress(){}
+                        public void click(){hearthborn.world.GobMarks.preview(ui,conf.res.name);}
+                    };
+                    prev=add(new Label(hearthborn.L10n.tr("Animal warning:")),prev.pos("bl").adds(0,5));
+                    voices=new SDropBox<hearthborn.world.GobMarks.Voice,Widget>(w-play.sz.x-UI.scale(15),UI.scale(90),UI.scale(20)){
+                        protected java.util.List<hearthborn.world.GobMarks.Voice> items(){return java.util.Arrays.asList(hearthborn.world.GobMarks.Voice.values());}
+                        protected Widget makeitem(hearthborn.world.GobMarks.Voice item,int idx,Coord sz){
+                            return SListWidget.TextItem.of(sz,Text.std,()->item==hearthborn.world.GobMarks.Voice.FILE&&hearthborn.world.GobMarks.customName(conf.res.name)!=null?hearthborn.world.GobMarks.customName(conf.res.name):hearthborn.L10n.tr(item.title));
+                        }
+                        public void change(hearthborn.world.GobMarks.Voice item){
+                            hearthborn.world.GobMarks.Voice previous=sel;
+                            boolean replace=item==hearthborn.world.GobMarks.Voice.FILE&&(hearthborn.world.GobMarks.customFile(conf.res.name)==null||(ui!=null&&ui.modshift));
+                            super.change(item);
+                            if(replace){pickAnimalFile(previous==null?hearthborn.world.GobMarks.Voice.SETTINGS:previous);return;}
+                            if(item!=null&&item!=hearthborn.world.GobMarks.voice(conf.res.name))hearthborn.world.GobMarks.voice(conf.res.name,item);
+                        }
+                    };
+                    voices.change(hearthborn.world.GobMarks.voice(conf.res.name));
+                    voices.settip(hearthborn.L10n.tr("As in settings follows the animal warning choice in General settings. Animal name and Animal call stay fixed. Custom sound uses your own WAV file; Shift-click that choice to replace it."));
+                    addhl(prev.pos("bl").adds(0,2),w,prev=Frame.with(voices,false),play);
+                }else if(hearthborn.world.GobMarks.hasDedicatedIconSound(conf.res.name)&&!hearthborn.world.GobMarks.corpse(conf.icon.id())){
+                    nb=null;
+                    prev=add(new Label(hearthborn.L10n.tr("Uses the animal warning sound.")),prev.pos("bl").adds(0,5));
+                }else{
+                    Button pb=new Button(UI.scale(50),"Play"){
+                        protected void depress(){}protected void unpress(){}
+                        public void click(){play();}
+                    };
+                    prev=add(new Label("Sound to play on notification:"),prev.pos("bl").adds(0,5));
+                    nb=new NotifBox(w-pb.sz.x-UI.scale(15));
+                    addhl(prev.pos("bl").adds(0,2),w,prev=Frame.with(nb,false),pb);
+                }
 		if(conf.getmarkablep()) {
 		    add(new CheckBox("Place permanent marker")
 			.state(() -> conf.markset ? conf.mark : conf.getmarkp())
@@ -817,6 +811,19 @@ public class GobIcon extends GAttrib {
 			prev.pos("bl").adds(0, 5));
 		}
 		pack();
+	    }
+
+	    private void pickAnimalFile(hearthborn.world.GobMarks.Voice revert){
+		if(ui==null||ui.wnd==null){if(voices!=null&&revert!=null)voices.change(revert);return;}
+		FilePicker dialog=ui.wnd.toolkit().picker().make(FilePicker.Mode.OPEN,ui.wnd);
+		dialog.filter("PCM wave file","wav");
+		dialog.show().consume(path->{
+		    if(path==null){if(revert!=null)voices.change(revert);return;}
+		    hearthborn.world.GobMarks.customFile(conf.res.name,path);
+		    hearthborn.world.GobMarks.voice(conf.res.name,hearthborn.world.GobMarks.Voice.FILE);
+		    if(voices.sel==hearthborn.world.GobMarks.Voice.FILE)voices.change(hearthborn.world.GobMarks.Voice.SETTINGS);
+		    voices.change(hearthborn.world.GobMarks.Voice.FILE);
+		}).report(ui);
 	    }
 
 	    public class NotifBox extends SDropBox<NotificationSetting, Widget> {
@@ -869,13 +876,13 @@ public class GobIcon extends GAttrib {
 		    } else {
 			conf.resns = item.res;
 			conf.filens = item.wav;
-			SettingsWindow.this.conf.dsave();
+			settings.dsave();
 		    }
 		}
 	    }
 
 	    private void play() {
-		NotificationSetting sel = nb.sel;
+		NotificationSetting sel = nb==null?null:nb.sel;
 		if(sel == null) sel = NotificationSetting.nil;
 		if(sel.res != null)
 		    resnotif(sel.res).accept(ui);
@@ -883,24 +890,6 @@ public class GobIcon extends GAttrib {
 		    wavnotif(sel.wav).accept(ui);
 	    }
 	}
-
-	public SettingsWindow(Settings conf) {
-	    super(Coord.z, "Icon settings");
-	    this.conf = conf;
-	    add(this.cont = new PackCont.LinPack.VPack(), Coord.z).margin(UI.scale(5)).packpar(true);
-	    list = cont.last(new IconList(UI.scale(250, 500)), 0);
-	    cont.last(new HRuler(list.sz.x), 0);
-	    cont.last(new CheckBox("Notification on newly seen icons") {
-		    {this.a = conf.notify;}
-
-		    public void changed(boolean val) {
-			conf.notify = val;
-			conf.dsave();
-		    }
-		}, UI.scale(5));
-	    cont.pack();
-	}
-    }
 
     @OCache.DeltaType(OCache.OD_ICON)
     public static class $icon implements OCache.Delta {
