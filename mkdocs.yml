@@ -3,7 +3,7 @@ site_url: https://jagy2014.github.io/hearthborn/
 site_description: Documentation for the Hearthborn custom Haven & Hearth client
 repo_url: https://github.com/Jagy2014/hearthborn
 repo_name: Jagy2014/hearthborn
-edit_uri: edit/main/docs/
+edit_uri: edit/master/docs/
 docs_dir: docs
 theme:
   name: material
