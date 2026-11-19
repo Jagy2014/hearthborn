@@ -1,0 +1,62 @@
+name: Launcher
+
+# Builds the Hearthborn launcher with Java 22 bundled, once per system.
+# Run it by hand: Actions -> Launcher -> Run workflow. Give a release tag (for example v1.0.0)
+# to attach the ZIP files to that release; leave it empty to only get the files as artifacts.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to attach the launcher ZIP files to (optional)
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x86_64
+            os: windows-latest
+          - name: linux-x86_64
+            os: ubuntu-latest
+          - name: macos-aarch64
+            os: macos-14
+          - name: macos-x86_64
+            os: macos-15-intel
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "22"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build the launcher
+        shell: bash
+        run: python tools/build_launcher.py --repository Jagy2014/hearthborn --jdk "$JAVA_HOME" --native --output launcher-out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: launcher-${{ matrix.name }}
+          path: launcher-out/hearthborn-launcher-*.zip
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: ${{ inputs.tag != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: launcher-files
+          merge-multiple: true
+      - name: Attach to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ inputs.tag }}" launcher-files/*.zip --repo "${{ github.repository }}" --clobber
