@@ -45,13 +45,26 @@ public final class BoatSpeed {
         if(vehicle==null)return false;
         try{return boat(GameObjects.resourceName(vehicle));}catch(Loading loading){return false;}
     }
-    static boolean boat(String name){
+    public static boolean boat(String name){
         if(name==null||!name.startsWith("gfx/terobjs/vehicle/"))return false;
         switch(name.substring("gfx/terobjs/vehicle/".length())){
             case "rowboat":case "dugout":case "coracle":case "knarr":case "snekkja":
             case "raft":case "raft-seg":case "spark":return true;
             default:return false;
         }
+    }
+    /** The exact condition the server gives for the boat the player sits in; null when no boat bar is shown. */
+    public static Integer condition(GameUI gui){
+        IMeter bar=gui==null?null:bar(gui);
+        if(bar==null||bar.meters().isEmpty())return null;
+        return (int)Math.round(Utils.clip(bar.meters().get(0).a,0,1)*100);
+    }
+    private static IMeter bar(Widget widget){
+        for(Widget child=widget.child;child!=null;child=child.next){
+            if(child instanceof IMeter&&StatusMeters.isBoatMeter((IMeter)child))return (IMeter)child;
+            IMeter inner=bar(child);if(inner!=null)return inner;
+        }
+        return null;
     }
     private static boolean meter(Widget widget){
         for(Widget child=widget.child;child!=null;child=child.next){

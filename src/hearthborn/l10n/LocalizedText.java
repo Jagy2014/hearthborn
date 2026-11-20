@@ -34,6 +34,10 @@ public final class LocalizedText extends Text {
             Resource.Tooltip base = res.layer(Resource.tooltip);
             if(base != null && original.equals(base.t)) original = base.original;
             boolean realmName = res.name.equals("gfx/hud/buffs/realm") && base != null && !original.equals(base.original);
+            if(hearthborn.l10n.Missing.playerNamed(res.name) && base != null && !original.equals(base.original)) {
+                String known = hearthborn.L10n.find("tooltip", original);
+                return new LocalizedText(OriginalNames.item(owner, original), Text.render(known == null ? original : known));
+            }
             translated = original.equals("Clay Jar") ? hearthborn.L10n.text("tooltip",original)
                 : realmName ? original
                 : base != null && !original.equals(base.original)

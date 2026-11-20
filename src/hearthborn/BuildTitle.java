@@ -27,7 +27,7 @@ public final class BuildTitle {
         try(InputStream in=BuildTitle.class.getResourceAsStream("/buildinfo")){if(in!=null)info.load(in);}catch(IOException ignored){}
         return format(info.getProperty("version"));
     }
-    /** "Haven & Hearth - Hearthborn client v1.0.1"; the number is left out when unknown. */
+    /** "Haven & Hearth - Hearthborn client v1.1.0"; the number is left out when unknown. */
     static String format(String version){
         String number=version==null||version.trim().isEmpty()||version.contains("${")?null:version.trim();
         return "Haven & Hearth - Hearthborn client"+(number==null?"":" "+number);

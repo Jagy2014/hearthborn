@@ -2,6 +2,27 @@
 
 All notable changes to **Hearthborn Client** are listed here, newest first.
 
+## v1.1.0
+
+Fixes and small improvements since v1.0.1.
+
+### Fixes
+
+- Left and right mouse clicks interrupt an action in progress (digging, chopping, crafting) again, not only Esc.
+- A click on a fence or a fence corner is no longer swallowed by pathfinding, so fences can be built again.
+- A menu choice such as "Dig clay" is no longer dropped when no route to the object is found: it goes to the server like in the plain game.
+- Shearing script: the shears are placed into the hand slot instead of staying on the cursor.
+- The wear label above the boat you are sitting in shows the same value as the boat bar.
+
+### Interface
+
+- Button panels no longer lie on top of one another: a panel dropped on another slides off it, and panels saved on top of each other are pulled apart.
+- The ortho and free ortho cameras zoom out as far as the simple camera.
+- New players start with the Xtensions menu opening sideways and with no terrain search switched on.
+- More Russian translations, including the "route from the previous milestone is blocked" message.
+
+---
+
 ## v1.0.1
 
 The first public release of **Hearthborn Client**, a modified Haven & Hearth vanilla client inspired by Amber, Ender, and Hurricane.

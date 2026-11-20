@@ -93,7 +93,7 @@ public final class Walking {
     public static void tickScript(MapView map){
         Walking walk=active.get(map);if(walk==null||!walk.scriptControlled)return;
         GameUI gui=map.getparent(GameUI.class);
-        if(gui!=null&&gui.prog!=null){abandon(map);return;}
+        if(gui!=null&&gui.prog!=null){channel(map);return;}
         walk.update();
     }
     public static boolean start(MapView map,Coord2d destination,Object[] args,Gob target) {
@@ -194,6 +194,10 @@ public final class Walking {
         if(walk.search!=null)walk.search.cancel(true);
         walk.arrived=null;walk.cancelled=null;
     }
+    /** Every frame of a progress bar: drop a route if there is one, but never a click the player has just made and that waits for its picking result. */
+    private static void channel(MapView map){
+        if(active.containsKey(map))abandon(map);else treeMenus.remove(map);
+    }
     public static boolean hearthAction(String[] command){
         return command!=null && command.length>=2 && "travel".equals(command[0]) && "hearth".equals(command[1]);
     }
@@ -252,7 +256,7 @@ public final class Walking {
         Walking current=active.get(map);if(current!=null&&current.scriptControlled)return;
         // A progress bar is a server channel, including the hearth teleport. The next waypoint click would turn it into a walk.
         GameUI gui=map.getparent(GameUI.class);
-        if(gui!=null && gui.prog!=null){abandon(map);return;}
+        if(gui!=null && gui.prog!=null){channel(map);return;}
         Walking walk=active.get(map);if(walk!=null)walk.update();
     }
     private void update() {
@@ -271,6 +275,8 @@ public final class Walking {
             catch(ExecutionException failed){new Warning(failed.getCause(),"local route search failed").issue();route=null;}
             search=null;
             if(route==null) {
+                // A click on a fence, its corner or any other solid object has no route to an exact point inside it. The click is the player's: send it as it is.
+                if(interaction==null&&result!=null&&inside(result.obstacles,goal)){cancel(map);map.wdgmsg("click",original);return;}
                 fail();
                 return;
             }
@@ -321,8 +327,15 @@ public final class Walking {
             plan();
         }
     }
+    private static boolean inside(List<Area> obstacles,Coord2d point){
+        for(Area area:obstacles)if(area.contains(point.x,point.y))return true;
+        return false;
+    }
     private void fail(){
+        // A chosen menu action must not be lost with the route: the server walks to the object on its own, as in the plain game.
+        Runnable action=arrived;arrived=null;cancelled=null;
         cancel(map);
+        if(action!=null){action.run();return;}
         Gob player=movementBody(map);
         if(player!=null)map.wdgmsg("click",Coord.z,player.rc.floor(OCache.posres),3,0);
         // A failed local route is routine during repeated map clicks. Its owner

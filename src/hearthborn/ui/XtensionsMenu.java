@@ -39,9 +39,9 @@ public final class XtensionsMenu {
     private static final String LAYOUT_PREF="hearthborn/ui/xtensions-layout";
     private static volatile ClassicLayout classicLayout=loadLayout();
     private static ClassicLayout loadLayout(){
-        String saved=Utils.getpref(LAYOUT_PREF,"up");
+        String saved=Utils.getpref(LAYOUT_PREF,"side");
         for(ClassicLayout layout:ClassicLayout.values())if(layout.key.equals(saved))return layout;
-        return ClassicLayout.UP;
+        return ClassicLayout.SIDE;
     }
     public static ClassicLayout classicLayout(){return classicLayout;}
     public static void classicLayout(ClassicLayout layout){

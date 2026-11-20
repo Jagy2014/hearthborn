@@ -53,6 +53,26 @@ public final class StructureWear extends GAttrib implements RenderTree.Node, PVi
         return new Color(255,244,220);
     }
 
+    private static volatile GameUI watching;
+    /** The game window whose boat bar gives the exact condition of the boat the player is in. */
+    public static void watch(GameUI gui){watching=gui;}
+    /** Building health reaches the client in quarters only, so the boat the player sits in takes the exact value of its own bar. */
+    public static Integer own(Gob gob,String resource){
+        GameUI gui=watching;
+        if(gui==null||gui.map==null||!hearthborn.ui.BoatSpeed.boat(resource))return null;
+        Integer exact=hearthborn.ui.BoatSpeed.condition(gui);
+        Gob player=gui.map.player();
+        if(exact==null||player==null)return null;
+        double mine=gob.rc.dist(player.rc);
+        synchronized(gob.glob.oc){
+            for(Gob other:gob.glob.oc){
+                if(other==gob||other.removed)continue;
+                String name;try{name=hearthborn.util.GameObjects.resourceName(other);}catch(Loading pending){continue;}
+                if(hearthborn.ui.BoatSpeed.boat(name)&&other.rc.dist(player.rc)<mine)return null;
+            }
+        }
+        return exact;
+    }
     private String text;
     private Pipe.Op tint;
     private int percent;
@@ -65,9 +85,11 @@ public final class StructureWear extends GAttrib implements RenderTree.Node, PVi
         GobHealth health=gob.getattr(GobHealth.class);
         boolean show=enabled()&&health!=null&&health.hp<1f&&structure(resource());
         int next=show?damagePercent(health.hp):0;
-        if(next==percent)return;
+        Integer exact=next==0?null:own(gob,resource());
+        String label=next==0?null:(exact!=null?exact:healthPercent(health.hp))+"%";
+        if(next==percent&&Objects.equals(label,text))return;
         percent=next;
-        text=next==0?null:healthPercent(health.hp)+"%";
+        text=label;
         tint=next==0?null:new MixColor(255,36,0,Math.min(170,70+next));
     }
     private String resource(){

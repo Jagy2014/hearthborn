@@ -29,6 +29,9 @@ public final class StatusMeters extends Widget {
     private double elapsed=1;
     private Speedget speed;
     private Boolean mirrored;
+    // Kept between ticks: the lists are filled on the UI thread only, so a tick does not allocate them again.
+    private final java.util.List<IMeter> bars=new java.util.ArrayList<>(), mounts=new java.util.ArrayList<>();
+    private final java.util.List<Coord> extraAt=new java.util.ArrayList<>();
     public static String hungerValue(double value){return String.format(java.util.Locale.ROOT,"%.1f\u2030",value*1000);}
     private static final java.util.concurrent.ConcurrentHashMap<String,Boolean> shown=new java.util.concurrent.ConcurrentHashMap<>();
     public static boolean enabled(String name) {Boolean value=shown.get(name);if(value==null)shown.put(name,value=Utils.getprefb("hearthborn/meters/"+name,true));return value;}
@@ -45,13 +48,14 @@ public final class StatusMeters extends Widget {
     public void tick(double dt) {
         super.tick(dt);
         if((elapsed+=dt)>=.5) {elapsed=0;if(enabled("drinks"))drinks=DrinkSupply.collect(gui);}
+        hearthborn.world.StructureWear.watch(gui);
         if(gui.portrait==null)return;
         boolean right=PortraitSide.onRight();
         if(mirrored==null||mirrored!=right){mirrored=right;if(gui.buffs instanceof Bufflist)((Bufflist)gui.buffs).relayout();}
         placePortrait();
         int count=0;
-        java.util.List<IMeter> bars=new java.util.ArrayList<>();
-        java.util.List<IMeter> mounts=new java.util.ArrayList<>();
+        bars.clear();
+        mounts.clear();
         for(Widget child=parent.child;child!=null;child=child.next)
             if(child instanceof IMeter) {
                 if(isMountMeter((IMeter)child))mounts.add((IMeter)child);
@@ -59,7 +63,7 @@ public final class StatusMeters extends Widget {
             }
         Coord rowStart=origin(count-count%3);
         int offset=count;
-        java.util.List<Coord> extraAt=new java.util.ArrayList<>();
+        extraAt.clear();
         for(Meter meter:extra) {
             boolean visible=enabled(meter.kind) && (!gui.compactUI()||!meter.kind.equals("fep")) && (meter.kind.equals("drinks") || attributes()!=null);
             meter.show(visible);

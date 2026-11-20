@@ -41,6 +41,14 @@ public final class Missing {
         if(!scheduled) { scheduled = true; writer.schedule(Missing::flush, 1, TimeUnit.SECONDS); }
     }
 
+    /** Keys carry a name the player typed ("Snekk 2", "Blork Gate Key"): it is neither translated nor reported as missing. */
+    public static boolean playerNamed(String resource) {
+        return resource != null && resource.matches("^gfx/invobjs/(glasskey|key|key-[a-z0-9-]+|keyring-[a-z0-9-]+)$");
+    }
+    public static boolean playerNamed(haven.ItemInfo.Owner owner) {
+        try { return owner instanceof haven.ItemInfo.ResOwner && playerNamed(((haven.ItemInfo.ResOwner)owner).resource().name); }
+        catch(haven.Loading pending) { return false; }
+    }
     /** A resource name (gfx/tiles/dirt, gfx/fx/seasonmap) is an identifier, not a phrase to translate. */
     public static boolean resourcePath(String text) {
         return text.matches("^[a-z0-9_.-]+(/[a-z0-9_.-]+)+$");

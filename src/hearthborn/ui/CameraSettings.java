@@ -20,13 +20,15 @@ import java.util.List;
  * @author Jagy2014
  */
 public final class CameraSettings {
-    /** Vanilla ortho zoom-out: half the view is at most {@code width * sqrt(2) / 8}. */
+    /** Vanilla ortho zoom-out: half the view is at most {@code width * sqrt(2) / 8}. Now only the follow camera keeps it. */
     public static float maxField(int viewWidth) {
         return viewWidth * (float)Math.sqrt(2) / 8f;
     }
 
+    /** The ortho cameras pull back as far as the simple one: its largest distance shows the same width as this field. */
+    public static final float MAX_FIELD=3000f/2f;
     public static float field(float value, int viewWidth) {
-        return Math.max(Math.min(value, maxField(viewWidth)), 50f);
+        return Math.max(Math.min(value, MAX_FIELD), 50f);
     }
 
     /** Same on-screen extent as {@link #field}: the perspective frustum is one world unit wide per unit of distance. */

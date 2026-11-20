@@ -166,7 +166,7 @@ public abstract class ItemInfo {
 
 	public AdHoc(Owner owner, String str) {
 	    super(owner);
-	    this.str = Text.render(hearthborn.L10n.text("label", str));
+	    this.str = Text.render(hearthborn.l10n.Missing.playerNamed(owner) ? hearthborn.L10n.quiet("label", str) : hearthborn.L10n.text("label", str));
 	}
 
 	public BufferedImage tipimg() {
@@ -243,7 +243,7 @@ public abstract class ItemInfo {
 	    this.doc = doc;
 	}
 	public Pagina(Owner owner, String str) {
-	    this(owner, new RichText.Document(hearthborn.L10n.text("label", str)));
+	    this(owner, new RichText.Document(hearthborn.l10n.Missing.playerNamed(owner) ? hearthborn.L10n.quiet("label", str) : hearthborn.L10n.text("label", str)));
 	}
 
 	public BufferedImage tipimg(int w) {

@@ -82,7 +82,24 @@ public final class MagneticWindows {
             Widget top=parent(child);if(top!=null&&!drags.containsKey(child))place(child,top);
         }
         followLinks(gui);
+        watch(gui);
+        separate(gui);
         syncHeaders(gui);
+    }
+    /** Seconds a panel must stay where it is before it can be pulled off another one; its layout may not have run yet. */
+    static double steadyFor=2;
+    private static final Map<Widget,double[]> steady=new WeakHashMap<>();
+    private static void watch(GameUI gui){
+        double now=Utils.rtime();
+        for(Widget child=gui.child;child!=null;child=child.next){
+            if(kinds.get(child)!=Kind.PANEL)continue;
+            double[] seen=steady.get(child);
+            if(seen==null||seen[0]!=child.c.x||seen[1]!=child.c.y)steady.put(child,new double[]{child.c.x,child.c.y,now});
+        }
+    }
+    private static boolean steady(Widget widget){
+        double[] seen=steady.get(widget);
+        return seen==null?steadyFor<=0:Utils.rtime()-seen[2]>=steadyFor;
     }
     public static void begin(Widget widget){
         if(!enabled()||widget==null)return;
@@ -242,10 +259,100 @@ public final class MagneticWindows {
         if(top!=null&&usable(top)&&compatible(widget,top)){
             fitWidth(widget,span(top).x);above.put(widget,new WeakReference<>(top));place(widget,top);
         }else if(drag.links!=null)links.put(widget,drag.links);
-        restored.add(widget);follow(widget,true);remember(widget);
+        restored.add(widget);follow(widget,true);
+        if(slide(widget))links.remove(widget);
+        remember(widget);
         followLinks(widget.parent);
         for(Widget child:new ArrayList<>(links.keySet()))
             if(child!=widget&&reaches(child,widget,Collections.newSetFromMap(new IdentityHashMap<Widget,Boolean>())))remember(child);
+    }
+    /** True when the two rectangles share any area; panels that only touch do not overlap. */
+    static boolean overlap(Coord at,Coord size,Coord otherAt,Coord otherSize){
+        return at.x<otherAt.x+otherSize.x&&otherAt.x<at.x+size.x&&at.y<otherAt.y+otherSize.y&&otherAt.y<at.y+size.y;
+    }
+    private static long shared(Coord at,Coord size,Coord otherAt,Coord otherSize){
+        long w=Math.min(at.x+size.x,otherAt.x+otherSize.x)-Math.max(at.x,otherAt.x);
+        long h=Math.min(at.y+size.y,otherAt.y+otherSize.y)-Math.max(at.y,otherAt.y);
+        return w<=0||h<=0?0:w*h;
+    }
+    /**
+     * Where a panel stands when it is pushed off another one: the nearest of the four sides, a gap away from it and inside the
+     * screen. When no side fits the panel is put to the right of the other one as far as the screen allows.
+     */
+    static Coord clear(Coord at,Coord size,Coord otherAt,Coord otherSize,Coord room){
+        Coord[] sides={
+            Coord.of(otherAt.x+otherSize.x+GAP,at.y),Coord.of(otherAt.x-size.x-GAP,at.y),
+            Coord.of(at.x,otherAt.y+otherSize.y+GAP),Coord.of(at.x,otherAt.y-size.y-GAP)};
+        Coord best=null;int score=Integer.MAX_VALUE;
+        for(Coord side:sides){
+            if(side.x<0||side.y<0||side.x>room.x||side.y>room.y)continue;
+            int distance=Math.abs(side.x-at.x)+Math.abs(side.y-at.y);
+            if(distance<score){score=distance;best=side;}
+        }
+        return best!=null?best:Coord.of(Utils.clip(sides[0].x,0,room.x),Utils.clip(sides[0].y,0,room.y));
+    }
+    private static List<Widget> panels(Widget widget){
+        List<Widget> result=new ArrayList<>();
+        for(Widget other:new ArrayList<>(kinds.keySet()))
+            if(other!=widget&&kinds.get(other)==Kind.PANEL&&usable(other)&&other.parent==widget.parent&&!drags.containsKey(other))result.add(other);
+        return result;
+    }
+    /** Button panels never lie on top of one another: a panel dropped on another slides off it to the nearest free side. */
+    private static boolean slide(Widget widget){
+        if(kinds.get(widget)!=Kind.PANEL||widget.parent==null||widget.parent.sz==null)return false;
+        boolean slid=false;
+        for(int pass=0;pass<4;pass++){
+            Widget under=null;
+            for(Widget other:panels(widget))if(overlap(edge(widget),span(widget),edge(other),span(other))){under=other;break;}
+            if(under==null)break;
+            moveWidget(widget,clear(edge(widget),span(widget),edge(under),span(under),widget.parent.sz.sub(span(widget)).max(Coord.z)));
+            slid=true;
+        }
+        return slid;
+    }
+    /** A panel the player has placed by hand keeps that place; one still at its default spot is arranged by its own layout. */
+    private static boolean placed(Widget widget){
+        if(widget instanceof Toolbars.Row)return ((Toolbars.Row)widget).moved();
+        if(widget instanceof Toolbars.Bar)return ((Toolbars.Bar)widget).floating();
+        if(widget instanceof GameUI.NKeyBelt)return Toolbars.stripMoved();
+        return false;
+    }
+    private static void settle(Widget widget){
+        if(widget instanceof Toolbars.Row)((Toolbars.Row)widget).relocate(widget.c);
+        else if(widget instanceof Toolbars.Bar)((Toolbars.Bar)widget).rememberPosition();
+        else if(widget instanceof GameUI.NKeyBelt){((GameUI.NKeyBelt)widget).rememberPosition();Toolbars.stripMoved(true);}
+    }
+    private static double separated=-10;
+    /**
+     * Panels saved on top of each other (a strip dropped exactly over another one in an earlier session) are pulled apart once
+     * a second. The one painted underneath moves, unless the player has not placed it by hand; then the other one does.
+     */
+    private static void separate(GameUI gui){
+        if(!drags.isEmpty())return;
+        double now=Utils.rtime();if(now<separated+1)return;separated=now;
+        pullApartAll(gui);
+    }
+    static void pullApartAll(GameUI gui){for(int pass=0;pass<8&&pullApart(gui);pass++);}
+    /** Moves one panel off another it lies on; false when no such pair is left. */
+    private static boolean pullApart(GameUI gui){
+        List<Widget> stack=new ArrayList<>();
+        for(Widget child=gui.child;child!=null;child=child.next)if(kinds.get(child)==Kind.PANEL&&usable(child))stack.add(child);
+        for(int i=0;i<stack.size();i++)for(int j=i+1;j<stack.size();j++){
+            Widget under=stack.get(i),over=stack.get(j);
+            // Panels not laid out yet all stand at the corner: that is no overlap to repair, and it must never be saved as a place.
+            if(!steady(under)||!steady(over)||under.c.equals(Coord.z)||over.c.equals(Coord.z))continue;
+            Coord a=edge(under),sa=span(under),b=edge(over),sb=span(over);
+            long common=shared(a,sa,b,sb);
+            // Panels with no area (not sized yet) or only touching do not overlap.
+            if(common==0||common*2<Math.min((long)sa.x*sa.y,(long)sb.x*sb.y))continue;
+            Widget victim=placed(under)?under:placed(over)?over:null;
+            if(victim==null)continue;
+            Widget other=victim==under?over:under;
+            moveWidget(victim,clear(edge(victim),span(victim),edge(other),span(other),gui.sz.sub(span(victim)).max(Coord.z)));
+            links.remove(victim);settle(victim);
+            return true;
+        }
+        return false;
     }
     private static Widget candidate(Widget widget){
         if(kinds.get(widget)==Kind.PANEL||kinds.get(widget)==Kind.WINDOW)return null;

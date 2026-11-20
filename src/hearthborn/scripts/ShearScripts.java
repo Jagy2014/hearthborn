@@ -201,8 +201,11 @@ final class ShearScripts {
             GItem shears=item;
             add(()->shears.wdgmsg("take",Coord.z),()->{
                 if(gui.vhand==null)return false;
-                if(gui.vhand.item!=shears)throw new IllegalStateException("The cursor is holding another item.");
-                held=shears;return true;
+                // The server may hand the cursor a new item widget, so the shears are known by their resource, not by the widget taken.
+                GItem inHand=gui.vhand.item;
+                try{inHand.getres();}catch(Loading pending){return false;}
+                if(!shears(inHand))throw new IllegalStateException("The cursor is holding another item.");
+                held=inHand;return true;
             },3);
             add(()->gui.equipment().wdgmsg("drop",slot),()->gui.vhand==null,3);
             add(()->{held=null;equipped=true;},()->handShears()!=null,5);

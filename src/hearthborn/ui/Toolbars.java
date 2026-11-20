@@ -205,6 +205,8 @@ public final class Toolbars {
         }
         private String key(String suffix) { return "hearthborn/toolbar/"+id+"/"+suffix; }
         private boolean isDocked(){return !function&&chatMode()==ChatMode.ADDITIONAL;}
+        /** True while the panel stands where the player put it, not glued to the chat. */
+        boolean floating(){return !isDocked();}
         private void layout() {
             vertical=vertical(id);
             slotCount=slots.length;
@@ -316,6 +318,8 @@ public final class Toolbars {
         private String movedKey(){return "hearthborn/toolbar/panel/"+id+"/moved";}
         private String positionKey(){return "hearthborn/toolbar/panel/"+id+"/position";}
         public boolean moved(){return Utils.getprefb(movedKey(),false);}
+        /** Puts the panel somewhere else for good, as if the player had dropped it there. */
+        void relocate(Coord at){move(at);Utils.setprefb(movedKey(),true);Utils.setprefc(positionKey(),saved=c);}
         public Coord slotAt(int index){return index>=0&&index<at.length?at[index]:Coord.z;}
         public void layout(){
             boolean on=enabled(id);

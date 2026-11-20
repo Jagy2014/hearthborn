@@ -198,7 +198,6 @@ public final class BulkPut extends Widget {
         Widget row = row(window, rowWait > ROW_WAIT);
         if(row == null) {
             if(rowWait > ROW_WAIT) {
-                report(window);
                 gui.ui.error(hearthborn.L10n.tr("No granary row takes these seeds."));
                 end("no row");
             }
@@ -208,20 +207,6 @@ public final class BulkPut extends Widget {
         sender.wdgmsg(message, args);
     }
     private double rowWait;
-
-    /** What the window held when no row fitted, for the log: the hand's item and every row's picture, text and Put button. */
-    private void report(Window window) {
-        StringBuilder line = new StringBuilder("no row: hand=").append(resource).append(" kind=").append(kind).append(" quality=").append(quality);
-        for(Widget row : granaryRows(window)) {
-            Indir<Resource> icon = GameObjects.field(row, "icon", Indir.class);
-            Label label = GameObjects.field(row, "lbl", Label.class);
-            Button put = GameObjects.field(row, "pbtn", Button.class);
-            String name;
-            try {name = icon == null ? null : icon.get().name;} catch(Loading pending) {name = "loading";}
-            line.append(" | ").append(name).append(" / ").append(label == null ? null : label.texts).append(" / put=").append(put != null && put.visible());
-        }
-        try {hearthborn.io.Logs.append("granary.log", java.time.Instant.now() + " " + line + "\n");} catch(java.io.IOException | RuntimeException unwritable) {}
-    }
 
     /** The granary building itself: clicking it with seeds in hand puts them in like a click on one of its rows. */
     static boolean granaryName(String name) {
@@ -248,18 +233,9 @@ public final class BulkPut extends Widget {
 
     private void end() {end("done");}
 
-    /** Ends the repeat and notes in the log why, and how many stacks went in and how many of the crop stayed behind in other qualities. */
+    /** Ends the repeat. */
     private void end(String why) {
         if(parent == null) return;
-        try {
-            int same = 0, other = 0;
-            if(gui.maininv != null) for(WItem item : InventoryActions.items(gui.maininv)) {
-                if(!item.visible || item.item == current || !item.item.res.get().name.equals(resource)) continue;
-                if(quality == null || Math.abs(InventoryActions.quality(item) - quality) <= 0.005) same++; else other++;
-            }
-            hearthborn.io.Logs.append("granary.log", java.time.Instant.now() + " end: " + why + " moved=" + moved + " resource=" + resource + " quality=" + quality
-                + " left-alike=" + same + " left-other-quality=" + other + " via=" + (building != null ? "building" : "row") + "\n");
-        } catch(java.io.IOException | RuntimeException unwritable) {}
         destroy();
     }
 

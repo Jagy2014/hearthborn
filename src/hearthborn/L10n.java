@@ -92,6 +92,12 @@ public final class L10n {
         return value == null ? english : value;
     }
 
+    /** The translation when there is one, otherwise the text itself; a miss is not reported. */
+    public static String quiet(String context, String english) {
+        String value = find(context, english);
+        return value == null ? english : value;
+    }
+
     /** Lookup without recording a missing translation. */
     public static String find(String context, String english) {
         if(english == null || english.isEmpty()) return null;
