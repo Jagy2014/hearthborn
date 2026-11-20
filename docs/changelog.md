@@ -2,6 +2,20 @@
 
 All notable changes to **Hearthborn Client** are listed here, newest first.
 
+## v1.1.1
+
+### Language
+
+- The client now starts in English. The language you chose before is kept.
+- To switch to Russian: on the login screen press the language button in the bottom-left corner. In the game press Ctrl+O to open the settings, type "language" in the search field, click the Language field (it is the first setting) and choose Russian. In the game the language applies after you close the client window completely and start it again.
+- Русский: на экране входа нажмите кнопку языка в левом нижнем углу. В игре нажмите Ctrl+O, введите в поиске «язык» или "language", нажмите на поле «Язык» (оно первое в настройках) и выберите «Russian». В игре язык меняется после полного закрытия клиента и нового запуска.
+
+### Interface
+
+- A map icon for the moon moth was added to the list of icons.
+
+---
+
 ## v1.1.0
 
 Fixes and small improvements since v1.0.1.

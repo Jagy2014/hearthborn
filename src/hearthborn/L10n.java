@@ -31,7 +31,7 @@ public final class L10n {
     private static final Properties translations = new Properties();
     private static final Map<String, Catalog> catalogs = new HashMap<>();
     private static final Properties names = Catalog.load("/hearthborn/l10n/resource-names.properties");
-    private static volatile String language = System.getProperty("hearthborn.language", Utils.getpref("hearthborn/language", "ru"));
+    private static volatile String language = System.getProperty("hearthborn.language", Utils.getpref("hearthborn/language", "en"));
     public static String language() { return language; }
     public static void setLanguage(String language) {
         if(!language.equals("en") && !language.equals("ru")) throw new IllegalArgumentException("Unsupported language");
