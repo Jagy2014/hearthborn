@@ -22,6 +22,8 @@ import java.io.IOException;
 import java.io.InputStream;
 import javax.imageio.ImageIO;
 import java.util.*;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Starts a countdown from the open window of a smelter, kiln, oven, forge, steel crucible,
@@ -33,6 +35,9 @@ public final class ObjectTimers {
     private static final String PREF = "hearthborn/world/auto-timers";
     private static final String STORE = "hearthborn/world/timers";
     private static final double RATIO = 3.29;
+    private static final Pattern COAL_PROGRESS = Pattern.compile("Coal is ([0-9]{1,3})%{1,2} done");
+    // Estimated full cycle in real time, not game time.
+    private static final int TAR_KILN_SECONDS = 300_000;
     private static final int STEEL = 12 * 60 * 60;
     private static final Map<String, Long> until = new HashMap<>();
     private static final Map<String, Integer> steelMeters = new HashMap<>();
@@ -83,7 +88,7 @@ public final class ObjectTimers {
     }
 
     public static void notice(UI ui,String message) {
-        if(!hearthborn.timers.TimerSettings.automatic() || message==null || clicked==null || clicked.removed || ui==null || ui.sess==null || clicked.glob!=ui.sess.glob || Utils.rtime()-clickedAt>60)return;
+        if(!TimerSettings.automatic() || message==null || clicked==null || clicked.removed || ui==null || ui.sess==null || clicked.glob!=ui.sess.glob || Utils.rtime()-clickedAt>60)return;
         String res=resource(clicked);
         if(!"gfx/terobjs/vehicle/wreckingball".equals(res) && !"gfx/terobjs/vehicle/bram".equals(res))return;
         long remaining=SiegeTimers.remainingMillis(message);if(remaining<=0)return;
@@ -98,6 +103,41 @@ public final class ObjectTimers {
             ui.msg(L10n.tr("Siege engine timer updated."));
         }catch(Loading ignored){}
     }
+    public static boolean tarKiln(Gob gob) {
+        return Kind.ofGob(resource(gob)) == Kind.TAR_KILN;
+    }
+
+    public static int coalProgress(String message) {
+        if(message == null) return -1;
+        Matcher progress = COAL_PROGRESS.matcher(message.trim());
+        if(!progress.matches()) return -1;
+        int percent = Integer.parseInt(progress.group(1));
+        return percent <= 100 ? percent : -1;
+    }
+
+    public static boolean observeTarKiln(Gob gob, String message) {
+        if(!tarKiln(gob)) return false;
+        int percent = coalProgress(message);
+        if(percent < 0) return false;
+        String key = key(Kind.TAR_KILN, gob);
+        if(key == null) return false;
+        ObjectNames.bind(key, gob);
+        load();
+        if(percent == 100) {
+            if(until.remove(key) != null) save();
+            Timers.forget(key);
+        } else {
+            int seconds = TAR_KILN_SECONDS * (100 - percent) / 100;
+            Long deadline = until.get(key);
+            long left = deadline == null ? -1 : deadline - System.currentTimeMillis();
+            // Re-inspecting at the same whole percent should not push the timer back.
+            if(left > 0 && left <= seconds * 1000L && left > (seconds - TAR_KILN_SECONDS / 100) * 1000L)
+                seconds = (int)((left + 999) / 1000);
+            track(Kind.TAR_KILN, key, seconds);
+        }
+        return true;
+    }
+
     public static void draw(MapView map, GOut g) {
         if(!enabled() || map.ui == null || map.ui.sess == null)
             return;
@@ -162,7 +202,7 @@ public final class ObjectTimers {
     private static void readLoaded(Window window, GameUI gui) {
         String caption = window.cap;
         Kind kind = Kind.of(caption);
-        if(kind == null)
+        if(kind == null || kind == Kind.TAR_KILN)
             return;
         Gob gob = hearthborn.util.ObjectWindows.target(window,gui,target -> kind.matches(resource(target)));
         if(gob == null)
@@ -216,7 +256,7 @@ public final class ObjectTimers {
 
     public static boolean furnace(String resource) {
         Kind kind = Kind.ofGob(resource);
-        return requiresFire(kind) || kind == Kind.STEEL || kind == Kind.FINERY;
+        return requiresFire(kind) || kind == Kind.STEEL || kind == Kind.FINERY || kind == Kind.TAR_KILN;
     }
 
     private static boolean requiresFire(Kind kind) {
@@ -610,6 +650,7 @@ public final class ObjectTimers {
     private enum Kind {
         SMELTER("smelter", "Ore Smelter", "Smith's Smelter"),
         KILN("kiln", "Kiln"),
+        TAR_KILN("tarkiln", "Tar Kiln"),
         FINERY("finery", "Finery Forge"),
         STACK("stack", "Stack furnace", "Stack Furnace"),
         STEEL("steel", "Steelbox", "Steel Crucible"),
@@ -642,6 +683,7 @@ public final class ObjectTimers {
                 return null;
             if(name.equals("gfx/terobjs/smelter")) return SMELTER;
             if(name.equals("gfx/terobjs/kiln")) return KILN;
+            if(name.equals("gfx/terobjs/tarkiln")) return TAR_KILN;
             if(name.equals("gfx/terobjs/fineryforge")) return FINERY;
             if(name.equals("gfx/terobjs/primsmelter")) return STACK;
             if(name.equals("gfx/terobjs/steelcrucible")) return STEEL;

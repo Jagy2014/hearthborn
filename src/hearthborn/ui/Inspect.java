@@ -13,6 +13,7 @@
 package hearthborn.ui;
 
 import haven.*;
+import hearthborn.timers.ObjectTimers;
 import java.lang.reflect.Field;
 import java.util.*;
 
@@ -47,11 +48,11 @@ public final class Inspect {
         hearthborn.timers.MeteorTimers.clicked(gob);
         MapFile.SMarker marker = hearthborn.map.MarkerQuality.naturalMarker(gob);
         clearResourceInspect();
-        if(marker != null) {
+        if(marker != null || ObjectTimers.tarKiln(gob)) {
             resourceInspect = new Inspected(gob);
-            hearthborn.map.MarkerQuality.number(marker);
+            if(marker != null) hearthborn.map.MarkerQuality.number(marker);
             priorRefillInfo = attribute(gob, "haven.res.ui.inspect.SavedInfo");
-            priorRefill = savedRefillLine(priorRefillInfo);
+            priorRefill = savedTimerLine(gob, priorRefillInfo);
         }
     }
     private static final java.util.regex.Pattern QUALITY=java.util.regex.Pattern.compile("^(?:Quality|Качество)\\s*:\\s*([0-9]+(?:[.,][0-9]+)?)\\.?$");
@@ -175,7 +176,8 @@ public final class Inspect {
 
     public void refillNotice(String message) {
         if(resourceInspect != null && resourceInspect.until >= Utils.rtime()
-           && hearthborn.timers.NaturalResourceTimers.observe(resourceInspect.gob, message))
+           && (ObjectTimers.observeTarKiln(resourceInspect.gob, message)
+               || hearthborn.timers.NaturalResourceTimers.observe(resourceInspect.gob, message)))
             clearResourceInspect();
     }
 
@@ -190,7 +192,7 @@ public final class Inspect {
             if(resourceInspect.until < Utils.rtime() || resourceInspect.gob.removed) clearResourceInspect();
             else {
                 GAttrib info = attribute(resourceInspect.gob, "haven.res.ui.inspect.SavedInfo");
-                String fresh = savedRefillLine(info);
+                String fresh = savedTimerLine(resourceInspect.gob, info);
                 if(fresh != null && (info != priorRefillInfo || !fresh.equals(priorRefill))) refillNotice(fresh);
             }
         }
@@ -254,15 +256,17 @@ public final class Inspect {
         return shown + " (" + hours + ")";
     }
     private static String savedRefill(Gob gob) {
-        return refillHours(savedRefillLine(attribute(gob, "haven.res.ui.inspect.SavedInfo")));
+        return refillHours(savedTimerLine(null, attribute(gob, "haven.res.ui.inspect.SavedInfo")));
     }
 
-    private static String savedRefillLine(GAttrib saved) {
+    private static String savedTimerLine(Gob gob, GAttrib saved) {
         Object lines = saved == null ? null : field(saved, "lines");
         if(!(lines instanceof Iterable)) return null;
+        boolean tarKiln = ObjectTimers.tarKiln(gob);
         for(Object line : (Iterable<?>)lines) {
             String raw = String.valueOf(line);
-            if(hearthborn.timers.NaturalResourceTimers.remainingMillis(raw) > 0) return raw;
+            if(tarKiln ? ObjectTimers.coalProgress(raw) >= 0
+                       : hearthborn.timers.NaturalResourceTimers.remainingMillis(raw) > 0) return raw;
         }
         return null;
     }

@@ -28,7 +28,7 @@ public final class ObjectNames {
     private static final Map<String,String> names=new java.util.concurrent.ConcurrentHashMap<>(),owners=new java.util.concurrent.ConcurrentHashMap<>(),numbers=new java.util.concurrent.ConcurrentHashMap<>(),counters=new java.util.concurrent.ConcurrentHashMap<>(),places=new java.util.concurrent.ConcurrentHashMap<>(),touched=new java.util.concurrent.ConcurrentHashMap<>();
     private enum Type {
         RACK("cheeserack","Cheese Rack","cheese"),SMELTER("smelter","Ore Smelter","smelter"),OVEN("oven","Oven",null),
-        CRUCIBLE("crucible","Crucible",null),KILN("kiln","Kiln","kiln"),TABLE("htable","Herbalist Table","table"),STEEL("steelcrucible","Steel Crucible","steel"),
+        CRUCIBLE("crucible","Crucible",null),KILN("kiln","Kiln","kiln"),TAR_KILN("tarkiln","Tar Kiln","tarkiln"),TABLE("htable","Herbalist Table","table"),STEEL("steelcrucible","Steel Crucible","steel"),
         STACK("primsmelter","Stack Furnace","stack"),FINERY("fineryforge","Finery Forge","finery"),
         RAM("vehicle/bram","Battering ram","siege"),BALL("vehicle/wreckingball","Wrecking ball","siege");
         final String resource,label,source,prefix;
