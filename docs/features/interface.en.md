@@ -163,6 +163,10 @@ F-key and numeric toolbars can be moved around the screen and arranged horizonta
 
 Drag a toolbar by its background or frame. When an icon occupies the area you need to drag, hold **Alt/Option** while dragging. Action toolbars snap to each other, making it easy to arrange them as a group.
 
+## Keys for the additional toolbars
+
+Every button of **Additional toolbar 1** (10 buttons) and **Additional toolbar 2** (12 buttons) can have a key of its own. Open **Options → Keybindings → Toolbars**, press the button next to the one you want and press the key or combination; **Escape** cancels, **Backspace** restores the default (no key) and **Delete** clears it. A key belongs to the place on the toolbar, button 1 to the last one, and uses whatever icon stands there, the same as a click. The key appears in the corner of its button. A key that another shortcut already uses is refused with a message naming that shortcut. Keys do nothing while their toolbar is hidden.
+
 ## Position the portrait and status indicators
 
 Move the character portrait and status bars together to the right side if you prefer a mirrored HUD. Surrounding indicators adjust to the new position. Show or hide supported indicators, including food and hunger meters, water and tea, study reminders, FPS/ping, and other utility widgets.

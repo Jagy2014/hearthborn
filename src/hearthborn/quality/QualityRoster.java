@@ -33,8 +33,10 @@ public final class QualityRoster extends Window {
     private boolean reverse,adding,editing,ownInspect,quick;
     private volatile boolean finishInspect;
     private final Map<Gob,Double> pendingQuality=new IdentityHashMap<>();
+    private final Map<Gob,Double> receivedQuality=new IdentityHashMap<>();
     private final TextEntry comment;
     private final RosterButton add;
+    private final int[] columns=new int[4],columnWidths=new int[4];
     private final SListBox<RosterStore.Rec,Widget> list;
     private List<RosterStore.Rec> rows=Collections.emptyList();
     private double refresh;
@@ -77,28 +79,45 @@ public final class QualityRoster extends Window {
     public QualityRoster(GameUI gui) {
         super(Coord.z,"Quality roster");
         this.gui=gui;
+        int gap=UI.scale(6);
         String[] keys={"building","tree","seed","sapling","barrel"},titles={"Buildings","Trees","Farming","Saplings","Barrels"};
+        int tabsRight=0,tabsHeight=0;
         for(int i=0;i<keys.length;i++) {
             String key=keys[i];
-            RosterButton tabButton=add(new RosterButton(UI.scale(100),titles[i],() -> {cancel();tab=key;selected=null;refresh();}).active(() -> tab.equals(key)),UI.scale(i*105,0));
+            RosterButton tabButton=add(new RosterButton(UI.scale(100),titles[i],() -> {cancel();tab=key;selected=null;refresh();}).active(() -> tab.equals(key)),Coord.of(tabsRight,0));
             if(key.equals("seed"))tabButton.settip("Crop seeds and planting material, including roots, onion bulbs and garlic.");
+            tabsRight=tabButton.c.x+tabButton.sz.x+gap;tabsHeight=Math.max(tabsHeight,tabButton.sz.y);
         }
-        comment=add(new TextEntry(UI.scale(560),RosterStore.stamp()) {
+        String[] heads={"Name","Quality","Count / amount","Comment"};
+        int[] widths={178,55,125,145};
+        RosterButton[] headers=new RosterButton[4];
+        columns[0]=UI.scale(22);
+        for(int i=0;i<heads.length;i++) {
+            final int column=i;
+            headers[i]=new RosterButton(UI.scale(widths[i]),heads[i],() -> {reverse=sort==column&&!reverse;sort=column;refresh();});
+            columnWidths[i]=headers[i].sz.x;
+            if(i>0)columns[i]=columns[i-1]+columnWidths[i-1]+gap;
+        }
+        RosterButton remove=new RosterButton(UI.scale(150),"Remove selected",() -> {RosterStore.removeAll(marked);marked.clear();refresh();});
+        add=new RosterButton(UI.scale(100),"Add",() -> setAdding(!adding));
+        RosterButton all=new RosterButton(UI.scale(100),"Select all",() -> {for(RosterStore.Rec r:rows)marked.add(key(r));});
+        RosterButton none=new RosterButton(UI.scale(100),"Select none",marked::clear);
+        RosterButton[] footer={remove,add,all,none};
+        int footerWidth=0;for(RosterButton button:footer)footerWidth+=button.sz.x+gap;
+        int width=Math.max(UI.scale(560),Math.max(columns[3]+columnWidths[3]+UI.scale(20),Math.max(tabsRight-gap,footerWidth-gap)));
+        comment=add(new TextEntry(width,RosterStore.stamp()) {
             protected void changed() {
                 super.changed();
                 if(editing)return;
                 RosterStore.setStamp(text());
                 if(selected!=null)RosterStore.setComment(selected,text());
             }
-        },UI.scale(0,32));
+        },Coord.of(0,tabsHeight+gap));
         comment.settip("The last comment is applied to newly added records.");
-        String[] heads={"Name","Quality","Count / amount","Comment"};
-        int[] xs={22,205,265,395},widths={178,55,125,145};
-        for(int i=0;i<heads.length;i++) {
-            final int column=i;
-            add(new RosterButton(UI.scale(widths[i]),heads[i],() -> {reverse=sort==column&&!reverse;sort=column;refresh();}),UI.scale(xs[i],62));
-        }
-        list=add(new SListBox<RosterStore.Rec,Widget>(UI.scale(560,240),UI.scale(26)) {
+        int headerY=comment.c.y+comment.sz.y+gap*2,headerHeight=0;
+        for(int i=0;i<headers.length;i++) {add(headers[i],Coord.of(columns[i],headerY));headerHeight=Math.max(headerHeight,headers[i].sz.y);}
+        int rowHeight=Math.max(UI.scale(26),Text.std.height()+UI.scale(8));
+        list=add(new SListBox<RosterStore.Rec,Widget>(Coord.of(width,UI.scale(240)),rowHeight) {
             protected List<? extends RosterStore.Rec> items(){return rows;}
             protected Widget makeitem(RosterStore.Rec record,int index,Coord size) {
                 Widget row=new Widget(size) {
@@ -114,26 +133,24 @@ public final class QualityRoster extends Window {
                 };
                 String key=key(record);
                 row.add(new CheckBox("").state(() -> marked.contains(key)).set(v -> {if(v)marked.add(key);else marked.remove(key);}),UI.scale(1,3));
-                String name=record.kind.equals("seed")||record.kind.equals("sapling")?RosterStore.seedDisplayName(record.name):record.kind.equals("building")||record.kind.equals("tree")?RosterStore.buildingDisplayName(record):record.name;
-                row.add(text(name,UI.scale(178)),UI.scale(22,3));
-                row.add(text(RosterStore.fmtQ(record.q),UI.scale(55)),UI.scale(205,3));
-                row.add(text(record.kind.equals("barrel")?record.amount:record.count>0?Integer.toString(record.count):"",UI.scale(125)),UI.scale(265,3));
-                row.add(text(record.comment,UI.scale(145)),UI.scale(395,3));
+                String name=displayName(record);
+                row.add(text(name,columnWidths[0]),Coord.of(columns[0],UI.scale(3)));
+                row.add(text(RosterStore.fmtQ(record.q),columnWidths[1]),Coord.of(columns[1],UI.scale(3)));
+                row.add(text(record.kind.equals("barrel")?record.amount:record.count>0?Integer.toString(record.count):"",columnWidths[2]),Coord.of(columns[2],UI.scale(3)));
+                row.add(text(record.comment,columnWidths[3]),Coord.of(columns[3],UI.scale(3)));
                 row.settip(name+" · "+RosterStore.fmtQ(record.q)+"\n"+record.comment);
                 return row;
             }
-        },UI.scale(0,88));
-        add(new RosterButton(UI.scale(150),"Remove selected",() -> {RosterStore.removeAll(marked);marked.clear();refresh();}),UI.scale(0,336));
-        add=add(new RosterButton(UI.scale(100),"Add",() -> setAdding(!adding)),UI.scale(155,336));
-        add(new RosterButton(UI.scale(100),"Select all",() -> {for(RosterStore.Rec r:rows)marked.add(key(r));}),UI.scale(260,336));
-        add(new RosterButton(UI.scale(100),"Select none",marked::clear),UI.scale(365,336));
+        },Coord.of(0,headerY+headerHeight+gap));
+        int footerX=0,footerY=list.c.y+list.sz.y+gap;
+        for(RosterButton button:footer) {add(button,Coord.of(footerX,footerY));footerX+=button.sz.x+gap;}
         pack();reqclose(this::reqdestroy);refresh();
     }
     /** Native framed buttons, shared with the timer window. */
     private static final class RosterButton extends Button {
         private java.util.function.BooleanSupplier active=()->false;
         private boolean lastDisabled;
-        RosterButton(int width,String title,Runnable action){super(width,title,false,action);}
+        RosterButton(int width,String title,Runnable action){super(width,title,false,action);resize(Coord.of(sz.x,Math.max(sz.y,text.sz().y+UI.scale(6))));}
         RosterButton active(java.util.function.BooleanSupplier state){active=state;return this;}
         public void tick(double dt){boolean value=active.getAsBoolean();if(value!=lastDisabled){lastDisabled=value;disable(value);}super.tick(dt);}
     }
@@ -146,30 +163,34 @@ public final class QualityRoster extends Window {
             public void dispose(){label.dispose();super.dispose();}
         };
     }
-    private static String key(RosterStore.Rec record) {
-        return record.kind.equals("building")||record.kind.equals("tree")?RosterStore.buildingKey(record.gobId)
-            :record.kind.equals("barrel")?RosterStore.barrelKey(record.gobId):RosterStore.seedKey(record.name);
+    private static String key(RosterStore.Rec record) {return RosterStore.key(record);}
+    private static String displayName(RosterStore.Rec record) {
+        return record.kind.equals("seed")||record.kind.equals("sapling")?RosterStore.seedDisplayName(record.name)
+            :record.kind.equals("building")||record.kind.equals("tree")?RosterStore.buildingDisplayName(record):record.name;
     }
     private void select(RosterStore.Rec record) {
         selected=key(record);editing=true;comment.settext(record.comment==null?"":record.comment);editing=false;
         if(highlighted!=null)highlighted.delattr(Selected.class);
+        highlighted=null;
         if(record.gobId!=0 && gui.ui!=null && gui.ui.sess!=null) {
-            highlighted=gui.ui.sess.glob.oc.getgob(record.gobId);
+            for(Gob gob:gui.ui.sess.glob.oc.snapshot())if(RosterStore.matches(record,gob)) {highlighted=gob;break;}
             if(highlighted!=null)highlighted.setattr(new Selected(highlighted));
         }
     }
     private void refresh() {
         List<RosterStore.Rec> values=new ArrayList<>(tab.equals("building")?RosterStore.buildings():tab.equals("tree")?RosterStore.trees():tab.equals("barrel")?RosterStore.barrels():tab.equals("seed")?RosterStore.seeds():RosterStore.saplings());
         Comparator<RosterStore.Rec> order=sort==1?Comparator.comparingDouble(r -> -r.q)
-            :sort==2?Comparator.comparingInt(r -> r.count):Comparator.comparing(r -> sort==3?Objects.toString(r.comment,""):Objects.toString(r.name,""),String.CASE_INSENSITIVE_ORDER);
+            :sort==2?Comparator.comparingInt(r -> r.count):Comparator.comparing(r -> sort==3?Objects.toString(r.comment,""):Objects.toString(displayName(r),""),String.CASE_INSENSITIVE_ORDER);
         values.sort(reverse?order.reversed():order);rows=values;if(list!=null)list.reset();
     }
     public void tick(double dt) {
         for(Iterator<Map.Entry<Gob,Double>> it=pendingQuality.entrySet().iterator();it.hasNext();){
-            Map.Entry<Gob,Double> entry=it.next();double quality=quality(entry.getKey());
-            if(quality>0){RosterStore.noteBuilding(entry.getKey(),quality,false);it.remove();refresh();}
-            else if(Utils.rtime()>=entry.getValue()){
-                it.remove();if(ui!=null)ui.msg(L10n.tr("The server did not provide this object's quality. Try inspecting it again."));
+            Map.Entry<Gob,Double> entry=it.next();Gob gob=entry.getKey();
+            try {
+                if(recordPicked(gob)) {it.remove();receivedQuality.remove(gob);refresh();continue;}
+            } catch(Loading pending) {}
+            if(Utils.rtime()>=entry.getValue()) {
+                it.remove();receivedQuality.remove(gob);if(ui!=null)ui.msg(L10n.tr("The server did not provide this object's quality. Try inspecting it again."));
             }
         }
         if(finishInspect&&pendingQuality.isEmpty())cancel();super.tick(dt);if((refresh+=dt)>1){refresh=0;refresh();}
@@ -181,7 +202,7 @@ public final class QualityRoster extends Window {
         if(ui!=null)ui.msg(L10n.tr(tab.equals("seed")?"Click crop seeds or planting material in an inventory, including garlic bulbs. Stacks are supported.":"Click a building, tree, barrel, seed or sapling item to add it."));
     }
     private void cancel() {
-        finishInspect=false;adding=false;quick=false;pendingQuality.clear();add.change("Add");
+        finishInspect=false;adding=false;quick=false;pendingQuality.clear();receivedQuality.clear();add.change("Add");
         if(ownInspect) releaseInspect(gui);
         ownInspect=false;
     }
@@ -246,7 +267,7 @@ public final class QualityRoster extends Window {
                 reported=true;
             }
             if(!reported && item.ui!=null) {
-                RosterStore.Rec known=id==null?null:RosterStore.get(RosterStore.seedKey(id));
+                RosterStore.Rec known=id==null?null:RosterStore.get(RosterStore.KIND_SEED.equals(RosterStore.plantKind(id))?RosterStore.seedKey(id):RosterStore.saplingKey(id,GameObjects.quality(item.item)));
                 if(known!=null) {
                     roster.tab=known.kind;
                     item.ui.msg(L10n.format("Unchanged: %s. Best quality: %s; count: %s.",
@@ -274,18 +295,40 @@ public final class QualityRoster extends Window {
     public static void picked(GameUI gui,Gob gob) {
         QualityRoster roster=OPEN.get(gui);
         if(roster==null || !roster.adding || gob==null)return;
+        roster.request(gob);
+    }
+    /** Native Inspect replies carry their actual object ID; observe before notice wrappers hide it. */
+    public static void notice(UI ui,UI.Notice notice) {
+        if(ui==null||ui.root==null||ui.sess==null||notice==null
+            ||!notice.getClass().getName().equals("haven.res.ui.inspect.Info"))return;
+        GameUI gui=ui.root.getchild(GameUI.class);QualityRoster roster=OPEN.get(gui);
+        if(roster==null)return;
+        Double quality=hearthborn.ui.Inspect.qualityValue(notice.message());
+        Number id=GameObjects.field(notice,"gobid",Number.class);
+        if(quality==null||!Double.isFinite(quality)||quality<=0||id==null)return;
+        Gob gob=ui.sess.glob.oc.getgob(id.longValue());
+        if(gob==null||!roster.adding&&!roster.pendingQuality.containsKey(gob))return;
+        roster.receivedQuality.put(gob,quality);roster.request(gob);
+    }
+    private boolean recordPicked(Gob gob) {
+        if(RosterStore.isVesselGob(gob)) {
+            RosterStore.markVesselPick(gob);tab="barrel";return true;
+        }
+        if(!RosterStore.isBuildingGob(gob))return true;
+        tab=RosterStore.isWoodyPlant(GameObjects.resourceName(gob))?"tree":"building";
+        hearthborn.world.ObjectNames.touch(gob);
+        Double received=receivedQuality.get(gob);
+        double quality=received==null?quality(gob):received;
+        RosterStore.noteBuilding(gob,quality,true);return quality>0;
+    }
+    private void request(Gob gob) {
+        // Keep the selected object even if its resource or map grid is still loading.
+        pendingQuality.putIfAbsent(gob,Utils.rtime()+10);
         try {
-            if(RosterStore.isVesselGob(gob)) {
-                RosterStore.markVesselPick(gob.id);roster.tab="barrel";
-            } else if(RosterStore.isBuildingGob(gob)) {
-                String resource=GameObjects.resourceName(gob);
-                RosterStore.noteBuilding(gob,quality(gob),RosterStore.get(RosterStore.buildingKey(gob.id))==null);
-                if(quality(gob)<=0)roster.pendingQuality.put(gob,Utils.rtime()+10);
-                roster.tab=RosterStore.isWoodyPlant(resource)?"tree":"building";
-            } else return;
-            // Let the original Inspect click complete before exiting its mode.
-            if(!roster.quick){roster.finishInspect=roster.ownInspect;roster.adding=false;roster.add.change("Add");}roster.refresh();
-        } catch(Loading ignored){}
+            if(recordPicked(gob)) {pendingQuality.remove(gob);receivedQuality.remove(gob);}
+        } catch(Loading pending) {}
+        // Let the original Inspect click complete before exiting its mode.
+        if(!quick){finishInspect=ownInspect;adding=false;add.change("Add");}refresh();
     }
     public static double quality(Gob gob) {
         for(GAttrib attribute:gob.attributes())if(attribute.getClass().getName().endsWith("inspect.SavedInfo")) {
@@ -300,7 +343,7 @@ public final class QualityRoster extends Window {
     }
     public static void observe(Gob gob) {
         if(!RosterStore.isBuildingGob(gob))return;
-        RosterStore.Rec known=RosterStore.get(RosterStore.buildingKey(gob.id));
+        RosterStore.Rec known=RosterStore.trackedGob(gob);
         if(known==null)return;
         double q=quality(gob);RosterStore.noteBuilding(gob,q,false);
     }

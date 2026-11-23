@@ -327,7 +327,7 @@ public final class ContainerOverview extends Widget {
             Coord textSize=left.sz();if(textSize.x>width)textSize=Coord.of(width,Math.max(1,(int)Math.round(textSize.y*width/(double)textSize.x)));
             g.aimage(left.tex(),Coord.of(0,sz.y/2),0,.5,textSize);
             int x=textSize.x+UI.scale(10);left.dispose();
-            if(OverviewSettings.hints()&&x<width){Text hint=small.render(OverviewTheme.fit(L10n.tr("2×LMB — backpack · Shift+LMB/RMB — best/worst"),width-x,small),OverviewTheme.muted());g.aimage(hint.tex(),Coord.of(x,sz.y/2),0,.5);hint.dispose();}
+            if(OverviewSettings.hints()&&x<width){Text hint=small.render(OverviewTheme.fit(L10n.tr("2×LMB - backpack · Shift+LMB/RMB - best/worst"),width-x,small),OverviewTheme.muted());g.aimage(hint.tex(),Coord.of(x,sz.y/2),0,.5);hint.dispose();}
             g.chcolor(OverviewTheme.muted());g.atext("?",Coord.of(sz.x-UI.scale(8),sz.y/2),.5,.5);g.chcolor();
         }
     }

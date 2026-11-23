@@ -188,12 +188,14 @@ public class Equipory extends Widget implements DTarget {
 		wmap.put(g, v);
 	    }
 	    hearthborn.world.GobMarks.equipment(this);
+            hearthborn.scripts.HandEquip.observed(this,g,args);
 	} else {
 	    super.addchild(child, args);
 	}
     }
 
     public void cdestroy(Widget w) {
+        hearthborn.ui.HandMenu.invalidate();
 	super.cdestroy(w);
 	if(w instanceof GItem) {
 	    GItem i = (GItem)w;

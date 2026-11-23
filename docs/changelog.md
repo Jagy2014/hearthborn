@@ -2,6 +2,43 @@
 
 All notable changes to **Hearthborn Client** are listed here, newest first.
 
+## v1.2.1
+
+### Map and quests
+
+- **Find markers** by name, number or quality on the full map and in the separate map window. The clear button resets the search without removing markers. Deleting the selected marker is a separate action.
+- **Natural resources** get persistent numbers and labels such as **Salt Basin 1 (q16)** on the map and in the marker list. Quality is recorded from inspection or fresh yields, including tar, ancient roots, fairy mushrooms and foul smoke.
+- When inspection reports a refill time, the countdown appears in the **Natural resources** timer tab. Inspecting a meteorite can also start a cooldown timer.
+- **Quest gathering hints** highlight suitable terrain. Starting a search collapses the hint into a chip on the map. Click the name to reopen it or the cross to stop searching. Completing the objective clears the highlight and temporary icon settings without changing normal filters.
+- Completing one objective no longer collapses the remaining objectives into a progress counter.
+- The full map fits inside the game window. The marker list is wider, with full names on hover. The separate map window supports keyboard input and scrolls in the same direction as the main map.
+- Map display settings open above the map and use the available height. **Herbs** and other **Forageables** are separate. Added the anthill icon, removed the duplicate snapdragon entry, and suppressed duplicate labels for overlapping markers.
+
+### Scripts and inventory
+
+- **Water, clay, sand and soil quality sampling** in Xtensions takes one sample per click. Water uses an empty waterskin; the other scripts sample the tile under you.
+- **Shore Scout** follows the shore by boat, samples water and clay, and can collect mussels. Its route and measurements stay on the map.
+- **Hand equipment** in Xtensions uses game icons for available items. Double-click an item in the inventory or belt to swap it into your hands. Removed gear goes back into the belt when possible.
+- Added **backpack auto-drop** controls: left-click to toggle; right-click to open the rules and item-type manager.
+- In Shift-only preview mode, you can release Shift once the pointer is inside a belt, bag or stack preview.
+- Each button on the two additional toolbars can have its own hotkey. General settings and map display settings have a search clear button.
+
+### Other changes
+
+- Furnaces display their saved Quality Journal value, even after logging back in. The numeric countdown has a small static clock icon.
+- New village claim plans are no longer named after an unrelated village. The quality journal preserves separate building records.
+- Right-clicking wooden, brick or stone fences or palisades no longer starts local pathfinding.
+- Fixed meteorite ore pile icons and prevented hidden trees from flashing into view while terrain loads.
+- Added Russian translations for quest objectives, natural resources, meteoric iron items and the combat pursuit button.
+
+---
+
+## v1.2.0 - Steam
+
+- **Windows:** fixed a blank or stuck window when restarting the Steam client in fullscreen mode.
+
+---
+
 ## v1.1.1
 
 ### Language
@@ -130,7 +167,7 @@ The client notifies you when production is complete. Steel production also inclu
 
 ### Combat Assistance
 
-**Automatic Combat — Stage 1**
+**Automatic Combat - Stage 1**
 
 - Basic automatic attacks against animals.
 - Particularly useful for beginners fighting ants, bats, and other creatures.

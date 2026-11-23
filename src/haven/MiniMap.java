@@ -502,7 +502,7 @@ public class MiniMap extends Widget {
 	    this.z = icon.z();
 	    this.stime = ui.lasttick;
 	    this.conf = conf;
-	    if(this.notify = conf.notify && (hearthborn.world.GobMarks.corpse(icon.id()) || !hearthborn.world.GobMarks.hasDedicatedIconSound(conf.res.name))
+	    if(this.notify = (conf.notify || questSearch(conf,gob)) && (hearthborn.world.GobMarks.corpse(icon.id()) || !hearthborn.world.GobMarks.hasDedicatedIconSound(conf.res.name))
                 && !hearthborn.world.PlayerWarnings.ownsIconSound(gob)
                 && !hearthborn.ui.NearbySiegeCheck.ownsIconSound(hearthborn.util.GameObjects.resourceName(gob)))
 		this.snotify = conf.notification();
@@ -853,6 +853,7 @@ public class MiniMap extends Widget {
 
     public void drawmarkers(GOut g) {
 	Coord hsz = sz.div(2);
+        extra.beginMarkers();
 	for(Coord c : dgext) {
 	    DisplayGrid dgrid = display[dgext.ri(c)];
 	    if(dgrid == null)
@@ -881,6 +882,9 @@ public class MiniMap extends Widget {
 	}
 	return(ret);
     }
+    private static boolean questSearch(GobIcon.Setting setting,Gob gob) {
+        return hearthborn.ui.QuestForage.searchesFor(setting.res.name,hearthborn.util.GameObjects.resourceName(gob));
+    }
     private final Map<Long,GobIcon> radarIcons=new HashMap<>();
     public List<DisplayIcon> findicons(Collection<? extends DisplayIcon> prev) {
 	if((ui.sess == null) || (iconconf == null))
@@ -907,7 +911,7 @@ public class MiniMap extends Widget {
                     if(local){localSeen.add(gob.id);icon=tame!=null?hearthborn.map.RadarIcons.pinned(gob,tame,radarIcons.get(gob.id)):hearthborn.map.RadarIcons.icon(gob,radarIcons.get(gob.id));if(icon!=null){radarIcons.put(gob.id,icon);localSeen.add(gob.id);}}
 		    if(icon != null) {
 			GobIcon.Setting conf = local?hearthborn.map.RadarIcons.setting(iconconf,icon):iconconf.get(icon.icon());
-			if((conf != null) && conf.show) {
+			if(conf != null && (conf.show || questSearch(conf,gob))) {
 			    DisplayIcon disp = pmap.remove(icon);
 			    if(disp == null)
 				disp = new DisplayIcon(icon, conf);
@@ -1229,6 +1233,7 @@ public class MiniMap extends Widget {
 	if(retainedOutside)return true;
 	if((!preserveOutsideMap()||outsideLocation==null)&&roomPlan.click(ev.c,ev.b)){dsloc=null;dsicon=null;dsmark=null;return true;}
         if(extra.meteorClick(ev.c,ev.b)){dsloc=null;dsicon=null;dsmark=null;return true;}
+        if(extra.sampleClick(ev.c,ev.b)){dsloc=null;dsicon=null;dsmark=null;return true;}
 	if(hearthborn.map.CaveLevels.click(this, ev.c, ev.b))
 	    return(true);
 	dsloc = xlate(ev.c);
@@ -1373,6 +1378,7 @@ public class MiniMap extends Widget {
     private Tex lasttip = null;
     public Object tooltip(Coord c, Widget prev) {
         Object meteorTip=extra.meteorTooltip(c);if(meteorTip!=null)return meteorTip;
+        Object sampleTip=extra.sampleTooltip(c);if(sampleTip!=null)return sampleTip;
         Object pointerTip=extra.pointerTooltip(c);if(pointerTip!=null)return pointerTip;
         Object roomTip=preserveOutsideMap()&&outsideLocation!=null?null:roomPlan.tooltip(c);if(roomTip!=null)return roomTip;
         Object playerTip=playerMarkers.tooltip(c);if(playerTip!=null)return playerTip;

@@ -44,19 +44,18 @@ public final class StationQuality extends GAttrib implements RenderTree.Node, PV
     public void ctick(double dt) {
         if((elapsed += dt) < 0.5) return;
         elapsed = 0;
-        String next = null;
-        if(station(resource())) {
-            double quality = QualityRoster.quality(gob);
-            if(!(quality > 0)) {
-                RosterStore.Rec saved = RosterStore.trackedGob(gob.id);
-                if(saved != null) quality = saved.q;
-            }
-            next = label(quality);
-        }
+        String next = station(resource()) ? label(known(gob)) : null;
         if(Objects.equals(next, shown)) return;
         shown = next;
         if(mark != null) mark.dispose();
         mark = next == null ? null : new TexI(QualityOverlay.styled(next));
+    }
+
+    static double known(Gob gob) {
+        double quality = QualityRoster.quality(gob);
+        if(quality > 0) return quality;
+        RosterStore.Rec saved = RosterStore.trackedGob(gob);
+        return saved == null ? 0 : saved.q;
     }
 
     private String resource() {

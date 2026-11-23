@@ -1,0 +1,53 @@
+# Locations from https://ringofbrodgar.com/wiki/Forage and /wiki/Waybroad
+baybolete|Bay Bolete|cloudrange dryflat greensward oakwilds sombrebramble
+blacktrumpet|Black Trumpets|beechgrove lichenwold pinebarren
+bloatedbolete|Bloated Bolete|beechgrove blackwood bluesod bountyacre deeptangle flowermeadow greenbrake greensward hardsteppe heath highground leaf leafpatch lichenwold lushfield moor mossbrush oakwilds oxpasture peatmoss pinebarren redplain rootbosk scrubveld shadehollow shadycopse sombrebramble sourtimber timberland wald wildmoor wildturf
+bloodstern|Blood Stern|beechgrove blackwood deeptangle greenbrake leaf leafpatch lichenwold mossbrush oakwilds pinebarren rootbosk shadehollow shadycopse sombrebramble sourtimber timberland wald
+blueberry|Blueberries|beechgrove blackwood deeptangle greenbrake heath leaf leafpatch lichenwold mossbrush oakwilds pinebarren rootbosk shadehollow shadycopse sombrebramble sourtimber timberland wald
+camomile|Camomile|bog fen flowermeadow marsh swamp
+candleberry|Candleberry|bog fen marsh swamp
+cavebulb|Cavebulb|cave
+cavecoral|Cave Coral|cave
+cavelantern|Cave Lantern|cave
+chantrelle|Chantrelles|beechgrove blackwood deeptangle greenbrake leaf leafpatch lichenwold mossbrush oakwilds pinebarren rootbosk shadehollow shadycopse sombrebramble sourtimber timberland wald
+chimingbluebell|Chiming Bluebell|bluesod bog bountyacre cloudrange fen flowermeadow greensward hardsteppe heath highground lushfield marsh moor oxpasture peatmoss redplain scrubveld swamp wildmoor wildturf
+chives|Chives|sombrebramble
+clover|Clover|bountyacre flowermeadow hardsteppe highground leafpatch moor redplain
+coltsfoot|Coltsfoot|greenbrake leafpatch oxpasture shadycopse
+commonstarfish|Common Starfish|beach skargard
+dandelion|Dandelion|beechgrove blackwood bluesod bountyacre deeptangle flowermeadow greenbrake greensward hardsteppe heath highground leaf leafpatch lichenwold lushfield moor mossbrush oakwilds oxpasture peatmoss pinebarren redplain rootbosk scrubveld shadehollow shadycopse sombrebramble sourtimber timberland wald wildmoor wildturf
+dill|Dill|bluesod lushfield
+duskfern|Dusk Fern|cave
+edelweiss|Edelweiß|mountain
+fieldblewit|Field Blewits|beechgrove bluesod bountyacre cloudrange dryflat flowermeadow greensward hardsteppe heath highground lushfield moor oxpasture peatmoss redplain rootbosk scrubveld wildmoor wildturf
+fourleafclover|Four-Leaf Clover|flowermeadow highground leafpatch moor
+frogscrown|Frog's Crown|bog fen marsh mountain sandcliff swamp
+frogspawn|Frogspawn|water
+giantpuffball|Giant Puffball|bluesod greensward leafpatch rootbosk wildturf
+glimmermoss|Glimmermoss|cave
+greenkelp|Green Kelp|beach deep odeep odeeper owater water
+heartsease|Heartsease|grass moor
+indigocap|Indigo Cap|cave
+kvann|Kvann|cloudrange leafpatch oakwilds rootbosk
+ladysmantle|Lady's Mantle|bluesod bog bountyacre fen flowermeadow greensward hardsteppe heath highground lushfield marsh moor oxpasture peatmoss redplain scrubveld swamp wildmoor wildturf
+lampstalk|Lamp Stalk|deep odeep odeeper owater water
+libertycap|Liberty Caps|bountyacre grass leafpatch lushfield oxpasture
+lingon|Lingonberries|beechgrove blackwood deeptangle greenbrake leaf leafpatch lichenwold mossbrush oakwilds pinebarren rootbosk shadehollow shadycopse sombrebramble sourtimber timberland wald
+marshmallow|Marsh-Mallow|beechgrove bog fen lichenwold shadycopse sombrebramble swamp
+oyster|Oyster|water
+perfectautumnleaf|Perfect Autumn Leaf|beechgrove blackwood deeptangle greenbrake leaf leafpatch lichenwold mossbrush oakwilds pinebarren rootbosk shadehollow shadycopse sombrebramble sourtimber timberland wald
+rainbowpad|Rainbowpad|swamp
+royaltoadstool|Royal Toadstool|bog fen marsh swamp
+rubybolete|Ruby Bolete|beechgrove highground timberland
+rustroot|Rustroot|beechgrove blackwood deeptangle greenbrake leaf leafpatch lichenwold mossbrush oakwilds pinebarren rootbosk shadehollow shadycopse sombrebramble sourtimber timberland wald
+sleighbell|Sleighbell|bluesod bountyacre cloudrange flowermeadow greensward hardsteppe heath highground lushfield moor oxpasture peatmoss redplain scrubveld wildmoor wildturf
+snowtop|Snowtop|beechgrove blackwood bluesod bountyacre deeptangle flowermeadow greenbrake greensward hardsteppe heath highground leaf leafpatch lichenwold lushfield moor mossbrush oakwilds oxpasture peatmoss pinebarren redplain rootbosk scrubveld shadehollow shadycopse sombrebramble sourtimber timberland wald wildmoor wildturf
+spindlytaproot|Spindly Taproot|beechgrove blackwood deeptangle greenbrake leaf leafpatch lichenwold mossbrush oakwilds pinebarren rootbosk shadehollow shadycopse sombrebramble sourtimber timberland wald
+stalagoom|Stalagoom|cave
+stingingnettle|Stinging Nettle|beechgrove blackwood deeptangle greenbrake leaf leafpatch lichenwold mossbrush oakwilds pinebarren rootbosk shadehollow shadycopse sombrebramble sourtimber timberland wald
+strawberry|Strawberry|cloudrange deeptangle flowermeadow greensward sombrebramble
+thyme|Thyme|leafpatch redplain
+waybroad|Waybroad|beechgrove bluesod bog bountyacre fen flowermeadow greensward hardsteppe heath highground lushfield marsh moor oxpasture peatmoss redplain scrubveld swamp timberland wildmoor wildturf
+whalebarnacle|Whale Barnacles|beach skargard water
+wintergreen|Wintergreen|greensward mossbrush
+yarrow|Yarrow|bluesod bountyacre flowermeadow greensward hardsteppe heath highground lushfield moor oxpasture peatmoss redplain scrubveld wildmoor wildturf

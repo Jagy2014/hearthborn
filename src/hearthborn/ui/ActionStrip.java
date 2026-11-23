@@ -102,6 +102,7 @@ public final class ActionStrip extends Widget {
         show(Toolbars.enabled("actions"));
         if(scale!=ActionMenuFrame.grid())layout();
         MenuGrid menu=menu();
+        if(visible()&&menu!=null)for(MenuGrid.Pagina page:path)HandMenu.prepare(menu,page);
         if(visible()&&menu!=null&&(waiting||builtSeq!=menu.pagseq)){
             rebuild();
             if(!waiting)builtSeq=menu.pagseq;
@@ -235,6 +236,7 @@ public final class ActionStrip extends Widget {
 
     /** Same pages the 4×4 would show, including a folder that is only the parent of a listed action. */
     private List<MenuGrid.PagButton> children(MenuGrid menu,MenuGrid.Pagina parent){
+        HandMenu.prepare(menu,parent);
         if(parent!=null&&menu.shortcuts!=null&&menu.shortcuts.handles(parent)){
             List<MenuGrid.PagButton> saved=new ArrayList<>();
             for(MenuGrid.PagButton button:menu.shortcuts.buttons(parent))if(button!=null)saved.add(button);

@@ -857,8 +857,13 @@ public class UI {
     public void msg(Notice msg) {
         hearthborn.combat.BowCombat.notice(this,msg);
         if(msg!=null && hearthborn.ui.LoginSiegeCheck.clear(msg.message()))return;
+        // Observers read original server text; translate and annotate only for display below.
+        if(msg!=null)hearthborn.quality.QualityRoster.notice(this,msg);
         if(msg!=null)hearthborn.timers.ObjectTimers.notice(this,msg.message());
         if(msg!=null)hearthborn.timers.ClaimTimers.notice(this,msg.message());
+        if(msg!=null)hearthborn.timers.MeteorTimers.notice(this,msg.message());
+        GameUI game = msg == null || root == null ? null : root.getchild(GameUI.class);
+        if(game != null) game.inspect.refillNotice(msg.message());
         if(msg!=null)hearthborn.scripts.ScriptRunner.notice(this,msg.message());
         if(msg!=null)hearthborn.meteor.StarFall.notice(this,msg.message());
         msg=hearthborn.world.RealTime.wrap(this,msg);
@@ -1011,7 +1016,8 @@ public class UI {
 	
     public void mousewheel(Toolkit.MouseWheelEvent ev) {
 	rememberPointer(ev.mods());
-	if(ev.axis() == Toolkit.MouseWheelEvent.Axis.VERT)
+	// macOS turns vertical trackpad scrolls into HORIZ while Shift is held; still treat them as wheel input.
+	if(ev.axis() == Toolkit.MouseWheelEvent.Axis.VERT || (modshift && ev.axis() == Toolkit.MouseWheelEvent.Axis.HORIZ))
 	    dispatch(root, new Widget.MouseWheelEvent(mc = screenToUI(ev.wndc()), ev.amount() * hearthborn.ui.WheelSettings.direction(), ev.subamount() * hearthborn.ui.WheelSettings.direction()));
     }
 

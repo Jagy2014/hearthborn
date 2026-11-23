@@ -71,6 +71,7 @@ public final class XtensionsMenu {
         synchronized(menu.paginae){pages=new java.util.ArrayList<>(menu.paginae);}
         for(MenuGrid.Pagina page:pages)try{
             String path=page.res().name;
+            if(path.startsWith("hearthborn/hand-item/"))continue;
             if(!path.startsWith("hearthborn/") || path.equals("hearthborn/xtensions") || path.equals("hearthborn/cheese-animals"))continue;
             if(CATEGORY_ORDER.contains(path.substring("hearthborn/".length())))continue;
             int group=CATEGORY_ORDER.size();boolean member=false;
@@ -91,7 +92,7 @@ public final class XtensionsMenu {
     }
     private static final java.util.Set<String> SCRIPT_IDS=java.util.Collections.unmodifiableSet(new java.util.HashSet<>(java.util.Arrays.asList(
         "coracle","skis","cellar","roastspit","chipstone","drycollect","leathercollect","branchoven","wood5","coal9","coal12",
-        "cheesetrayfiller","torch","trellisharvest","trellisdestroy","fish","dismount","shoo","clover","rope","milk","butcher","shear")));
+        "cheesetrayfiller","torch","trellisharvest","trellisdestroy","fish","dismount","shoo","clover","rope","milk","butcher","shear","water","clay","sand","soil","scout","hands")));
     /** Read compatibility only: no menu page is registered under an old identifier. */
     public static String canonicalAction(String path){
         if("hearthborn/cattle-roster-journals".equals(path))return "hearthborn/cattle-roster";
@@ -110,7 +111,8 @@ public final class XtensionsMenu {
             Utils.setpref(oldKey,null);
         }
     }
-    static Resource resource(String id, String name, char hotkey) {
+    static Resource resource(String id, String name, char hotkey) {return resource(id,name,hotkey,null);}
+    static Resource resource(String id,String name,char hotkey,java.awt.image.BufferedImage itemImage) {
         migrateBinding(id);
         Resource.Virtual res = new Resource.Virtual(Resource.local(), "hearthborn/" + id, 1);
         MessageBuf action = new MessageBuf();
@@ -125,7 +127,7 @@ public final class XtensionsMenu {
         String imageName="menu-"+((iconId.equals("record-quality"))?"roster":(iconId.equals("coal9")||iconId.equals("coal12"))?"coal":iconId);
         try {
             String folderImage="menu-category-"+id;
-            java.awt.image.BufferedImage source=actionImage(id,(folder?folderImage:imageName));
+            java.awt.image.BufferedImage source=itemImage==null?actionImage(id,(folder?folderImage:imageName)):itemImage;
             if(source==null)throw new IOException("Invalid action icon: "+id);
             if(painted)source=visibleBounds(source);
             int side=painted?128:32;
@@ -219,7 +221,7 @@ public final class XtensionsMenu {
         return claimIcon;
     }
 
-    private static MenuGrid.Pagina page(MenuGrid menu, String id, String name, char key,
+    static MenuGrid.Pagina page(MenuGrid menu, String id, String name, char key,
                                        MenuGrid.Pagina parent, Runnable action) {
         return page(menu,id,name,key,()->parent,action,null);
     }
@@ -229,7 +231,7 @@ public final class XtensionsMenu {
         menu.paginae.add(page(menu,"action-search","Search actions",'\0',()->null,()->{GameUI gui=menu.getparent(GameUI.class);if(gui!=null)gui.toggleActionSearch();},"\uffff2"));
     }
 
-    private static MenuGrid.Pagina page(MenuGrid menu, String id, String name, char key,
+    static MenuGrid.Pagina page(MenuGrid menu, String id, String name, char key,
                                        java.util.function.Supplier<MenuGrid.Pagina> parentOf, Runnable action, String order) {
         final boolean claimPlan=id.equals("claim-plan");
         final int categoryOrder=CATEGORY_ORDER.indexOf(id);
@@ -268,6 +270,12 @@ public final class XtensionsMenu {
         menu.paginae.add(page(menu,"clear-all-damage","Clear all damage",'\0',combat,()->hearthborn.combat.FighterMark.clearAll()));
         script(menu,root,"coracle","Use or pick up coracle");
         script(menu,root,"skis","Use or pick up skis");
+        script(menu,mining,"water","Measure water quality");
+        script(menu,mining,"clay","Measure clay quality");
+        script(menu,mining,"sand","Measure sand quality");
+        script(menu,mining,"soil","Measure soil quality");
+        script(menu,mining,"scout","Shore scout");
+        HandMenu.install(menu,root);
         MenuGrid.Pagina mount=page(menu,"mount-horse","Call and mount horse",'\0',root,()->hearthborn.scripts.ShortcutRunner.run(menu.getparent(GameUI.class),"BOT_MOUNT_HORSE"));
         String mountTip=hearthborn.L10n.tr("Highlights the nearest available horse and mounts it. Calls a distant horse with a whistle first; mounts a nearby horse without whistling.");
         ((Resource.Virtual)mount.res()).add(mount.res().new Pagina(new MessageBuf(mountTip.getBytes(java.nio.charset.StandardCharsets.UTF_8))));menu.paginae.add(mount);
@@ -427,6 +435,11 @@ public final class XtensionsMenu {
         case "shoo":english="Chooses Shoo on the nearest standing domestic animal: horse, sheep, cattle, pig or goat.\nThe action must be available in its menu.";break;
         case "clover":english="Offers one clover from your main inventory to the nearest suitable standing animal.\nRequires clover and an animal that accepts it.";break;
         case "milk":english="Stand inside a saved collection area and start: adult females of this pen are milked one by one into a barrel, which is poured into the nearest cistern. Outside all saved areas you select a new one by dragging on the map.\nNeeds an empty barrel nearby. Shift-click: list of areas.";break;
+        case "water":english="Takes an empty waterskin, fills it from the nearest water, shows the water quality in the chat, puts the waterskin back and empties it. One press is one sample.\nWorks from a boat: keep an empty waterskin in the inventory. A waterskin that already holds something is never poured out.";break;
+        case "clay":english="Digs the tile under you (from a boat in shallow water), reads the quality of the clay, shows it in the chat, and throws the clay away. One press is one dig.\nA shovel must be equipped. Drop clay you already carry first, so the new clay can be told apart.";break;
+        case "sand":english="Digs the tile under you (on a beach), reads the quality of the sand, shows it in the chat, and throws the sand away. One press is one dig.\nA shovel must be equipped. Drop sand you already carry first, so the new sand can be told apart.";break;
+        case "soil":english="Digs the tile under you (on open ground), reads the quality of the soil, shows it in the chat, and throws the soil away. One press is one dig.\nA shovel must be equipped. Drop soil you already carry first, so the new soil can be told apart.";break;
+        case "scout":english="Sails along the shore on its own: from a boat on the water, stops every few tiles and takes a sample of the water and of the clay in shallows, the same samples as the water and clay scripts.\nThe window sets what to measure, which side the shore is on and how often to sample.\nKeep an empty waterskin in the inventory and a shovel equipped, and drop clay you already carry.";break;
         case "shear":english="Shears the sheep and goats of the pen you stand in (a saved area, as for milking).";break;
         case "rope":english="Uses a rope from your main inventory on the nearest suitable standing animal.\nThe rope remains on the cursor for leading the animal.";break;
         default:throw new IllegalArgumentException("Missing automation instructions: "+id);

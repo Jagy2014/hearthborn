@@ -91,7 +91,7 @@ public class Fightview extends Widget {
 	    Widget avaf = adda(Frame.with(ava = new Avaview(avasz, rel.gobid, "avacam"), true), UI.scale(25), sz.y / 2, 0.0, 0.5);
 	    ava.canactivate = true;
 	    add(give = new GiveButton(0, UI.scale(15, 15)), UI.scale(5, 4));
-	    adda(purs = new Button(UI.scale(70), "Pursue"), avaf.c.x + avaf.sz.x + UI.scale(5), avaf.c.y + (avaf.sz.y / 2), 0.0, 0.5);
+	    adda(purs = new Button(UI.scale(70), "Pursue target"), avaf.c.x + avaf.sz.x + UI.scale(5), avaf.c.y + (avaf.sz.y / 2), 0.0, 0.5);
 	}
 
 	public void draw(GOut g) {
@@ -151,7 +151,7 @@ public class Fightview extends Widget {
 	    Widget avaf = add(Frame.with(ava = new Avaview(Avaview.dasz, rel.gobid, "avacam"), false));
 	    ava.canactivate = true;
 	    adda(give = new GiveButton(0), avaf.pos("ul").subs(5, 0), 1.0, 0.0);
-	    adda(purs = new Button(UI.scale(70), "Pursue"), give.pos("br").adds(0, 5), 1.0, 0.0);
+	    adda(purs = new Button(UI.scale(70), "Pursue target"), give.pos("br").adds(0, 5), 1.0, 0.0);
 	    lpack();
 	}
 

@@ -281,7 +281,7 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 	private List<ItemInfo> info = null;
 	public List<ItemInfo> info() {
 	    if(info == null) {
-		info = ItemInfo.buildinfo(this, pag.rawinfo);
+		info = hearthborn.l10n.TooltipText.render(() -> ItemInfo.buildinfo(this, pag.rawinfo));
 		Resource.Pagina pg = res.layer(Resource.pagina);
 		if(pg != null)
 		    info.add(new ItemInfo.Pagina(this, pg.text));
@@ -317,7 +317,7 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 		List<ItemInfo> info = info();
 		info.removeIf(el -> el instanceof ItemInfo.Name);
 		if(!info.isEmpty())
-		    ret = ItemInfo.catimgs(0, ret, ItemInfo.longtip(info));
+		    ret = ItemInfo.catimgs(0, ret, hearthborn.l10n.TooltipText.render(() -> ItemInfo.longtip(info)));
 	    }
 	    return(ret);
 	}
@@ -604,6 +604,7 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
     }
 
     public void change(Pagina dst) {
+	hearthborn.ui.HandMenu.prepare(this,dst);
 	this.cur = dst;
 	curoff = 0;
 	if(dst == null)
@@ -612,6 +613,7 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
     }
 
     public void use(PagButton r, Interaction iact, boolean reset) {
+        hearthborn.ui.HandMenu.prepare(this,r.pag);
 	if(shortcuts != null && shortcuts.handles(r.pag)) {change(r.pag);return;}
 	boolean close=hearthborn.ui.XtensionsMenu.expanded(cur)&&r!=next&&r!=bk;
 	Collection<PagButton> sub = new ArrayList<>();
@@ -628,6 +630,7 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
     }
 
     public void tick(double dt) {
+        int before=pagseq;hearthborn.ui.HandMenu.prepare(this,cur);if(before!=pagseq)updlayout();
 	if(recons || shortcuts != null && shortcuts.changed() || !hearthborn.ui.XtensionsMenu.gridSize(cur).equals(gridSize()))
 	    updlayout();
         Coord gsz=gridSize();

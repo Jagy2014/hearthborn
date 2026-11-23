@@ -33,7 +33,7 @@ public final class CalendarInfo {
     private static final String[] PHASES = {"New Moon","Waxing Crescent Moon","First Quarter Moon","Waxing Gibbous Moon",
         "Full Moon","Waning Gibbous Moon","Last Quarter Moon","Waning Crescent Moon"};
     private static final Color INK = new Color(236, 224, 196);
-    private String previous = "", province = "—", realm = "—";
+    private String previous = "", province = "-", realm = "-";
     private Tex tex;
     private FramedTip tip;
 
@@ -95,7 +95,7 @@ public final class CalendarInfo {
         if(named && extra) return world + " / " + detail;
         if(named) return world;
         if(present(detail)) return detail;
-        return "—";
+        return "-";
     }
 
     static int absoluteDay(Astronomy a) {
@@ -128,6 +128,14 @@ public final class CalendarInfo {
         return gameSeconds / StudyProgress.GAME_SECONDS_PER_REAL_SECOND / 3600.0;
     }
 
+    /** Real hours until the next dusk - the next time Star Gaze can start (again). */
+    public static double hoursUntilNextNightStart(Astronomy a) {
+        if(a == null) return Double.POSITIVE_INFINITY;
+        if(!a.night) return boundaryHours(a);
+        double daySeconds = (NIGHT_MINUTE - DAY_MINUTE) * 60.0;
+        return boundaryHours(a) + daySeconds / StudyProgress.GAME_SECONDS_PER_REAL_SECOND / 3600.0;
+    }
+
     private static int season(Astronomy a) {return Math.max(0, Math.min(DAYS.length - 1, a.is));}
 
     private static int seasonIndex(Astronomy a) {
@@ -140,7 +148,7 @@ public final class CalendarInfo {
     }
 
     private static boolean present(String value) {return value != null && !value.trim().isEmpty();}
-    private static String blank(String value) {return present(value) ? value : "—";}
+    private static String blank(String value) {return present(value) ? value : "-";}
 
     private void remember(UI ui, GameUI gui) {
         String named = PlaceNames.province(ui);

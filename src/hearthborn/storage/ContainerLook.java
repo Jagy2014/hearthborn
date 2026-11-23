@@ -143,6 +143,18 @@ public final class ContainerLook extends GAttrib implements Gob.SetupMod, Render
         look.observedSignature=signature(gob,(ResDrawable)drawable);
         look.elapsed=1;
     }
+    /** Use the same content decoding as the barrel label, even when the barrel is carried. */
+    public static boolean emptyBarrel(Gob gob) {
+        ContainerLook look = gob.getattr(ContainerLook.class);
+        Drawable drawable = gob.getattr(Drawable.class);
+        if(look == null || !(drawable instanceof ResDrawable)) return false;
+        try {
+            ResDrawable barrel = (ResDrawable)drawable;
+            return barrel.rres.name.equals("gfx/terobjs/barrel") && look.contents(barrel, 0) == null;
+        } catch(Loading pending) {
+            return false;
+        }
+    }
     private String contents(ResDrawable drawable,int state) {
         String name=drawable.rres.name;
         if(name.equals("gfx/terobjs/demijohn") && (state&1)==0) {observedSignature=null;observedContents=null;return null;}
@@ -207,7 +219,7 @@ public final class ContainerLook extends GAttrib implements Gob.SetupMod, Render
         if(StonePileColors.supported(resource)){
             String identity=StonePileColors.remembered(gob);
             String remembered=StonePileColors.enabled()?identity:null;
-            boolean ore=StonePileColors.iconPile(resource);
+            boolean ore=StonePileColors.iconPile(resource)||StonePileColors.METEORITE.equals(remembered);
             boolean slag=!StonePileColors.contentsPile(resource)&&identity!=null&&identity.split("\n",2)[0].equals("gfx/invobjs/slag");
             if(slag){
                 stoneCaption=false;labelHeight=8;oreIcon(null);

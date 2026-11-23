@@ -390,6 +390,38 @@ Uses the **nearest stationary horse** for the dismount-rider action.
 
 It does not seek out moving horses or distant targets. **Escape** cancels subsequent steps but cannot reverse a completed action.
 
+### Measure water quality
+
+All four resource measurements and the shore scout are under **Xtensions → Mining**.
+
+Takes an **empty waterskin**, fills it from the nearest water within four tiles, reads the water quality, shows it in the chat, returns the waterskin to its inventory or bag and empties only that sample. **One press is one sample.** Press the button again from the next spot.
+
+A waterskin that already holds something is treated as your drinking water and is never poured out: keep an empty one for sampling.
+
+It is meant for a boat, but works anywhere with water in reach. **Escape**, another click on the map or any inventory action stops it; the waterskin on the cursor is put back.
+
+### Measure clay, sand and soil quality
+
+Dig the tile under you with the **Dig** action, read the quality of what came out, show it in the chat, and throw the digging away on the ground (into the water from a boat). **One press is one dig.** Use the clay button from a boat in shallow water, the sand button on a beach and the soil button on open ground; the three are separate, so you can look for only one of them.
+
+One tile gives material of one quality, so the first piece is read.
+
+A shovel must be equipped. Clay, sand or soil you already carry is not touched, but the script refuses to start while the inventory holds any of that material, so drop it first. If the dig gives nothing, you are told so and nothing is thrown away. One press is one dig: if the progress bar starts over (the digging repeats), the script breaks it off. **Escape**, another click on the map or any inventory action stops it, also in the middle of a dig, and the dig cursor is released so that your next click sails again.
+
+### Shore scout
+
+Opens a small window and sails the boat along the shore on its own. Every few tiles the boat stops and takes a sample of the water and, when it is in shallow water, of the clay: the same samples as **Measure water quality** and **Measure clay quality**, one after another, with the results in the chat. Then it sails on.
+
+The window sets what to collect (water, clay, mussels or a combination), which side of the boat the shore stays on, and how often to sample (every 2 to 80 tiles). **Start** begins the scout from the boat's current place and **Stop**, **Escape**, a click on the map or closing the window ends it. The boat keeps a tile or two from the shore, goes round points and follows bays, and stops with a message when it is boxed in, stuck or loses the shore.
+
+**Show sample markers** in the scout window controls the saved quality markers on both maps; there is no separate map-toolbar button. Right-click a sample marker or the walked-path button to clear the paths and measurements. With water or clay enabled, mussels are picked only within six tiles of each stop; with mussels alone the boat may approach clusters within twenty tiles.
+
+An empty waterskin must be in the inventory for water samples and a shovel must be equipped for clay; clay you already carry must be dropped first. Sand is not sampled yet.
+
+### Equip in hands
+
+Opens a window with one button for each kind of hand equipment that lies in your inventory: **Equip Bow**, **Equip Boar Spear**, **Equip Sword & Shield** and **Equip Travel Sacks**. A button puts that kind into your hands, and what was in your hands goes back to the inventory. The list follows the inventory while the window is open. The cursor must be empty. The same four actions can still be bound to keys in the key settings.
+
 ## Additional everyday helpers
 
 ### Collect milk and report quality

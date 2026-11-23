@@ -29,6 +29,7 @@ import haven.render.Pipe;
  * @author Jagy2014
  */
 public final class StonePileColors {
+    static final String METEORITE="gfx/invobjs/meteorite";
     private static final String CACHE="stone-pile-colors-v2";
     private static final Map<String,Sample> samples=new java.util.concurrent.ConcurrentHashMap<>();
     private static final Map<GameUI,Transfer> transfers=new WeakHashMap<>();
@@ -54,6 +55,8 @@ public final class StonePileColors {
     }
     private static boolean identifiable(String path){return stones.contains(path)||metal(path)||ceramic(path,"clay")||ceramic(path,"brick");}
     static {
+        // Meteorite goes into ore and stone piles but has no mineable terrain tile.
+        stones.add(METEORITE);
         Properties catalog=hearthborn.l10n.Catalog.load("/hearthborn/l10n/resource-names.properties");
         for(String path:catalog.stringPropertyNames())if(path.startsWith("gfx/tiles/rocks/")||path.startsWith("gfx/tiles/paving/"))stones.add("gfx/invobjs/"+path.substring(path.lastIndexOf('/')+1));
     }
@@ -152,13 +155,16 @@ public final class StonePileColors {
     private static void remember(Gob gob,GItem item){
         String type=GameObjects.resourceName(gob);
         String identity=item.resource().name;if(!contentsPile(type)&&(material(identity)==null||!identifiable(identity)))return;
-        if(iconPile(type)||identity.equals("gfx/invobjs/slag")){
+        if(!identity.equals(METEORITE)&&(iconPile(type)||identity.equals("gfx/invobjs/slag"))){
             // Reuse the cupboard's actual rendered inventory image, not the generic ISBox icon.
             String icon=ContainerContents.itemIdentity(item);
             ContainerContents.savedPicture(icon); // Load persisted images before capturing a new one.
             if(ContainerContents.itemPicture(item)==null)throw new Loading();
             identity=icon;
         }
+        rememberIdentity(gob,identity);
+    }
+    private static void rememberIdentity(Gob gob,String identity){
         String key=key(gob);if(key==null)return;load();Sample sample=new Sample(gob.id,identity,new Color(0,0,0,0));sample.accepts(gob);samples.put(key,sample);save();ContainerLook.changed();
     }
     public static void observe(Window window,GameUI gui){
@@ -167,7 +173,8 @@ public final class StonePileColors {
         String key=key(gob);if(key==null)return;load();
         for(ISBox box:window.children(ISBox.class)){
             if(box.remaining()<=0){if(samples.remove(key)!=null){save();ContainerLook.changed();}return;}
-            // ISBox contains a generic stone picture, never a material-specific sample.
+            // Only a material-specific icon is evidence; a generic ore icon is not.
+            if(METEORITE.equals(box.resource().name)&&!METEORITE.equals(remembered(gob)))rememberIdentity(gob,METEORITE);
             return;
         }
     }
@@ -203,7 +210,7 @@ public final class StonePileColors {
         int difference=next.box.remaining()-next.remaining;
         if(next.direction<0?difference>=0:difference<=0)return; // Wait for server confirmation.
         try{
-            GItem sample=next.direction>0?next.held:null;String identity=sample==null?null:ContainerContents.itemIdentity(sample);
+            GItem sample=next.direction>0&&next.held!=null?ContainerContents.leaf(next.held):null;String identity=null;
             if(next.direction<0)for(GItem item:items(gui)){
                 if(item.contents!=null&&item.contents.getClass().getName().endsWith("ItemStack"))continue;
                 if(!next.matches(item)||GameObjects.count(item)<=next.before.getOrDefault(item,-1))continue;
@@ -229,8 +236,8 @@ public final class StonePileColors {
     private static final Map<GameUI,GItem> selected=new WeakHashMap<>();
     private static final Map<GameUI,WorldTransfer> worlds=new WeakHashMap<>();
     private static class WorldTransfer {
-        final GItem item;final Gob target;final Coord2d at;final String pileType;final Set<Long> before=new HashSet<>();final int count;final double until=Utils.rtime()+15;
-        WorldTransfer(GameUI gui,GItem item,Gob target,Coord2d at,String pileType){this.item=item;this.target=target;this.at=at;this.pileType=pileType;count=GameObjects.count(item);
+        final GItem item,sample;final Gob target;final Coord2d at;final String pileType;final Set<Long> before=new HashSet<>();final int count;final double until=Utils.rtime()+15;
+        WorldTransfer(GameUI gui,GItem item,Gob target,Coord2d at,String pileType){this.item=item;this.sample=ContainerContents.leaf(item);this.target=target;this.at=at;this.pileType=pileType;count=GameObjects.count(item);
             synchronized(gui.ui.sess.glob.oc){for(Gob gob:gui.ui.sess.glob.oc)if(gob.rc!=null&&gob.rc.dist(at)<11)before.add(gob.id);}
         }
     }
@@ -244,7 +251,8 @@ public final class StonePileColors {
         try{GItem item=gui.vhand==null?selected.get(gui):gui.vhand.item;
             if(item==null)return;
             selected.put(gui,item);
-            if(!contentsPile(pileType)&&(!identifiable(item.resource().name)||material(item.resource().name)==null))return;
+            String resource=ContainerContents.leaf(item).resource().name;
+            if(!contentsPile(pileType)&&(!identifiable(resource)||material(resource)==null))return;
             worlds.put(gui,new WorldTransfer(gui,item,target,at,pileType));
         }catch(Loading waiting){}
     }
@@ -272,7 +280,7 @@ public final class StonePileColors {
                 }
                 if(target==null)return;
             }
-            remember(target,transfer.item);worlds.remove(gui);selected.remove(gui);
+            remember(target,transfer.sample);worlds.remove(gui);selected.remove(gui);
         }catch(Loading waiting){}catch(RuntimeException failure){worlds.remove(gui);new Warning(failure,"stone pile material observation failed").issue();}
     }
     private StonePileColors(){}

@@ -76,27 +76,63 @@ public final class FlowerChoices {
  }
  public static String shown(String name){return name.equals(PICK_ALL)?hearthborn.L10n.tr("Pick all"):hearthborn.L10n.text("flower",name);}
  public static OptWnd.Panel panel(OptWnd options) {
-  OptWnd.Panel panel=options.new Panel();Scrollport scroll=panel.add(new Scrollport(UI.scale(396,250)),Coord.z);
+  OptWnd.Panel panel=options.new Panel();
+  // Viewport height stays fixed; packing the cont would grow it to the content and leave almost no scroll range.
+  Scrollport scroll=panel.add(new Scrollport(UI.scale(396,250)),Coord.z);
   Runnable[] rebuild=new Runnable[1];rebuild[0]=()->{
-   for(Widget child:new ArrayList<>(scroll.cont.children()))child.destroy();int y=0;
+   for(Widget child:new ArrayList<>(scroll.cont.children()))child.destroy();
+   int y=0,right=scroll.cont.sz.x-UI.scale(96);
    for(Rule rule:rules()) {
-    scroll.cont.add(new CheckBox(shown(rule.name)){{a=rule.enabled;}}.changed(value->enable(rule.name,value)),Coord.of(UI.scale(3),y+UI.scale(3)));
+    CheckBox box=new CheckBox(shown(rule.name)){{a=rule.enabled;}};
+    box.changed(value->enable(rule.name,value));
+    scroll.cont.add(box,Coord.of(UI.scale(3),y+UI.scale(3)));
     final String name=rule.name;
-    scroll.cont.add(new Button(UI.scale(28),"↑",false).action(()->{move(name,-1);rebuild[0].run();}),Coord.of(UI.scale(290),y));
-    scroll.cont.add(new Button(UI.scale(28),"↓",false).action(()->{move(name,1);rebuild[0].run();}),Coord.of(UI.scale(322),y));
-    scroll.cont.add(new Button(UI.scale(28),"×",false).action(()->{remove(name);rebuild[0].run();}),Coord.of(UI.scale(354),y));y+=UI.scale(28);
-   }scroll.cont.pack();scroll.bar.ch(0);
+    Button up=new Button(UI.scale(28),"↑",false).action(()->{move(name,-1);rebuild[0].run();});
+    scroll.cont.add(up,Coord.of(right,y));
+    scroll.cont.add(new Button(UI.scale(28),"↓",false).action(()->{move(name,1);rebuild[0].run();}),Coord.of(right+UI.scale(32),y));
+    scroll.cont.add(new Button(UI.scale(28),"×",false).action(()->{remove(name);rebuild[0].run();}),Coord.of(right+UI.scale(64),y));
+    y+=Math.max(box.sz.y,up.sz.y)+UI.scale(6);
+   }
+   scroll.cont.update();
+   scroll.bar.val=Utils.clip(scroll.bar.val,0,scroll.bar.max);
+   scroll.cont.sy=scroll.bar.val;
   };rebuild[0].run();
   TextEntry entry=panel.add(new TextEntry(UI.scale(280),""),UI.scale(0,260));
-  panel.add(new Button(UI.scale(105),"Add",false).action(()->{add(entry.text());entry.settext("");rebuild[0].run();}),UI.scale(290,260));
-  panel.add(new Label("Hold to bypass automatic menu selection:"),UI.scale(0,300));
+  Button add=panel.add(new Button(UI.scale(105),"Add",false).action(()->{add(entry.text());entry.settext("");rebuild[0].run();}),UI.scale(290,260));
+  Label bypassLabel=panel.add(new Label("Hold to bypass automatic menu selection:"),UI.scale(0,300));
   SDropBox<Integer,Widget> skip=new SDropBox<Integer,Widget>(UI.scale(140),UI.scale(80),UI.scale(18)) {
    protected List<Integer> items(){return Arrays.asList(UI.MOD_SHIFT,UI.MOD_CTRL,UI.MOD_META,0);}
    protected Widget makeitem(Integer value,int index,Coord size){Widget row=new Widget(size);String name=value==UI.MOD_SHIFT?"Shift":value==UI.MOD_CTRL?"Ctrl":value==UI.MOD_META?"Alt":"None";row.add(new Label(name),Coord.z);return row;}
    public void change(Integer value){super.change(value);if(value!=null)bypass(value);}
   };skip.change(bypass());panel.add(skip,UI.scale(255,297));
-  panel.add(new CheckBox("Ctrl selects a single menu option").state(FlowerChoices::single).set(FlowerChoices::single),UI.scale(0,330));
-  panel.add(new CheckBox("Add Pick all to gathering menus").state(FlowerChoices::pickAll).set(FlowerChoices::pickAll),UI.scale(0,358));
-  panel.add(options.new PButton(UI.scale(200),"Back",27,options.main),UI.scale(0,395));panel.pack();return panel;
+  CheckBox singleBox=new CheckBox("Ctrl selects a single menu option");
+  singleBox.state(FlowerChoices::single).set(FlowerChoices::single);
+  panel.add(singleBox,UI.scale(0,330));
+  CheckBox pickBox=new CheckBox("Add Pick all to gathering menus");
+  pickBox.state(FlowerChoices::pickAll).set(FlowerChoices::pickAll);
+  panel.add(pickBox,UI.scale(0,358));
+  OptWnd.PButton back=panel.add(options.new PButton(UI.scale(200),"Back",27,options.main),UI.scale(0,395));
+  panel.pack();
+  panel.fitting(width->{
+   if(options.pane==null)return;
+   int foot=entry.sz.y+UI.scale(12)+bypassLabel.sz.y+UI.scale(10)+singleBox.sz.y+UI.scale(8)+pickBox.sz.y+UI.scale(16);
+   int listHeight=Math.max(UI.scale(120),options.pane.sz.y-foot-UI.scale(8));
+   scroll.resize(Coord.of(width,listHeight));
+   scroll.cont.update();
+   int y=scroll.sz.y+UI.scale(10);
+   entry.resize(width-add.sz.x-UI.scale(10));
+   entry.move(Coord.of(0,y));
+   add.move(Coord.of(width-add.sz.x,y));
+   y+=entry.sz.y+UI.scale(12);
+   bypassLabel.move(Coord.of(0,y));
+   skip.move(Coord.of(Math.max(0,width-skip.sz.x),y-UI.scale(3)));
+   y+=Math.max(bypassLabel.sz.y,skip.sz.y)+UI.scale(10);
+   singleBox.move(Coord.of(0,y));y+=singleBox.sz.y+UI.scale(8);
+   pickBox.move(Coord.of(0,y));y+=pickBox.sz.y+UI.scale(16);
+   back.move(Coord.of(0,y));
+   rebuild[0].run();
+   panel.pack();
+  });
+  return panel;
  }
 }

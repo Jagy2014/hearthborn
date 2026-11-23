@@ -59,6 +59,11 @@ public final class MapFilterModel {
             else if(setting==null)TerrainHighlight.choose(Collections.singleton(resource),value);
             else {setting.show=value;settings.dsave();}
         }
+        public boolean questSearch(){
+            return setting!=null&&hearthborn.ui.QuestForage.searchesFor(resource,null);
+        }
+        public boolean displayChecked(){return shown()||questSearch();}
+        public boolean soundChecked(){return setting!=null&&(setting.notify||questSearch());}
         public boolean corpse(){return setting!=null&&hearthborn.world.GobMarks.corpse(setting.icon.id());}
         public boolean soundEditable(){return setting!=null&&(corpse()||!hearthborn.world.GobMarks.hasDedicatedIconSound(resource));}
     }
@@ -117,7 +122,7 @@ public final class MapFilterModel {
         List<Entry> found=new ArrayList<>();
         for(Entry entry:entries){
             if(type!=Type.ALL&&entry.type()!=type)continue;
-            if(!category.equals("all")&&!category.equals(entry.group)&&!(category.equals("forageables")&&entry.group.equals("herbs")))continue;
+            if(!category.equals("all")&&!category.equals(entry.group))continue;
             boolean matches=true;for(String word:words)if(!entry.hay.contains(word)){matches=false;break;}
             if(matches)found.add(entry);
         }
@@ -149,5 +154,5 @@ public final class MapFilterModel {
         return groups;
     }
     public static boolean section(String category){return category!=null&&category.startsWith("section:");}
-    private static String searchText(String value){return value.toLowerCase(Locale.ROOT).replace('ё','е');}
+    public static String searchText(String value){return value.toLowerCase(Locale.ROOT).replace('ё','е');}
 }

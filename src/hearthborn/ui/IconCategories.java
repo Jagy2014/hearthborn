@@ -24,12 +24,12 @@ public final class IconCategories {
     public enum Category {
         ALL("All","all"),ANIMALS("Animals","kritters"),DOMESTIC("Domestic animals","domestic"),HERBS("Herbs","herbs"),
         ORES("Ores","ores"),ROCKS("Rocks","rocks"),TREES("Trees","trees"),
-        BUSHES("Bushes","bushes"),FORAGEABLES("Forageables","forageables"),SIEGE("Siege machines","siege"),VEHICLES("Vehicles and movables","vehicles"),RESOURCES("Localized resources","resources"),OTHER("Other","other");
+        BUSHES("Bushes","bushes"),FORAGEABLES("Forageables","forageables"),SIEGE("Siege machines","siege"),VEHICLES("Vehicles and movables","vehicles"),RESOURCES("Natural resources","resources"),OTHER("Other","other");
         public final String title,id;
         Category(String title,String id){this.title=title;this.id=id;}
         public boolean enabled(){return Utils.getprefb("hearthborn/icons/category/"+id,true);}
         public void enabled(boolean value){Utils.setprefb("hearthborn/icons/category/"+id,value);}
-        public boolean matches(GobIcon.Setting setting){Category found=classify(setting.res.name);return this==ALL||this==found||this==FORAGEABLES&&found==HERBS;}
+        public boolean matches(GobIcon.Setting setting){Category found=classify(setting.res.name);return this==ALL||this==found;}
     }
 private static final String[] ANIMAL_PATHS = {
 	    "/kritter/",
@@ -172,9 +172,13 @@ private static final String[] ANIMAL_PATHS = {
         if(leaf(name,"catapult","bram","batteringram","wball","wreckingball","wreckingball-fold","archerytower","warflag"))return Category.SIEGE;
         if(name.startsWith("gfx/terobjs/vehicle/")||leaf(name,"rowboat","dugout","coracle","knarr","snekkja","wagon","cart","wheelbarrow","raft","raft-seg","spark","primsled","finesled","sleigh","sled","wskisitem","skis-wilderness","skis"))return Category.VEHICLES;
         if(leaf(name,"tarpit","wellspring","claypit","clay-cave","saltbasin","geyser","headwaters","amberwash","flintwash","meteorite","guanopile","clamreef","coralreef","driftkelp","driftkelpisland","spawningbed","tidepool","looserock","abyssalchasm","windthrow","fairystone","caveorgan","woodheart","icespire","jotunmussel","jotunclam","lilypadlotus","rockcrystal","crystalpatch"))return Category.RESOURCES;
+        if(leaf(name,"champignon-small","fairyshroom"))return Category.FORAGEABLES;
         if(name.contains("/herbs/")){
             String base=name.substring(name.lastIndexOf('/')+1);
-            if(base.contains("berry")||base.contains("bolete")||base.contains("mushroom")||base.contains("puffball")||base.contains("trumpet")||base.contains("blewit")||base.contains("morel")||base.contains("oyster")||leaf(name,"chantrelle","chanterelle","ambergris","flotsam","cavebulb","cattailroots","frogspawn","commonstarfish","giantpuffball","ghostapple","spindlytaproot"))return Category.FORAGEABLES;
+            if(base.contains("berry")||base.contains("bolete")||base.contains("mushroom")||base.contains("shroom")||base.contains("puffball")||base.contains("trumpet")||base.contains("blewit")||base.contains("morel")||base.contains("oyster")||leaf(name,"chantrelle","chanterelle","ambergris","flotsam","cavebulb","cattailroots","frogspawn","commonstarfish","giantpuffball","ghostapple","spindlytaproot",
+                "lingon","indigocap","libertycap","lorchel","royaltoadstool","snowtop","stalagoom","yellowfoot","truffle-black",
+                "cavecoral","goosebarnacle","lakesnail","mussels","razorclams","seasponge","perfectautumnleaf","precioussnowflake"))
+                return Category.FORAGEABLES;
         }
 
         if(name.contains("mm/trees/"))return Category.TREES;

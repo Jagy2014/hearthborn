@@ -75,7 +75,7 @@ public final class ContainerContents extends GAttrib implements RenderTree.Node 
         String id=identity(item);snapshot(item,id);byte[] bytes=images.get(id);if(bytes==null)throw new Loading();
         try{return ImageIO.read(new ByteArrayInputStream(bytes));}catch(IOException invalid){return null;}
     }
-    private static GItem leaf(GItem item){
+    static GItem leaf(GItem item){
         if(item.contents!=null && item.contents.getClass().getName().endsWith("ItemStack"))
             for(GItem child:item.contents.children(GItem.class))return leaf(child);
         return item;

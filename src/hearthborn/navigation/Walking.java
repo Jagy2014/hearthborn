@@ -113,9 +113,8 @@ public final class Walking {
         Gob player=movementBody(map);
         String resource=null;
         if(target!=null)try{resource=hearthborn.util.GameObjects.resourceName(target);}catch(Loading loading){return false;}
-        // Gates, Thingwall and vehicles use server-defined reach. Their solid
-        // centers must not suppress a click or cancel Open when the mesh sits inside the body.
-        if((gate(resource)||vehicle(resource)||"gfx/terobjs/thingwall".equals(resource))&&((Number)args[2]).intValue()==3){cancel(map);return false;}
+        // Fence pieces and gates use the original right-click, not a route to the solid mesh.
+        if(((Number)args[2]).intValue()==3 && nativeInteraction(resource)){cancel(map);return false;}
         // Stairs/ladders still need the server's entrance handling rather than their object center.
         if(transition(resource)&&!resource.endsWith("door"))return false;
         // Object actions belong to the server's context menu. Route only after selection.
@@ -143,6 +142,16 @@ public final class Walking {
         }catch(Loading waiting){return true;}
     }
     public static boolean gate(String resource){return resource!=null && resource.startsWith("gfx/terobjs/arch/") && resource.contains("gate");}
+    private static boolean nativeInteraction(String resource) {
+        if(gate(resource)||vehicle(resource)||"gfx/terobjs/thingwall".equals(resource))return true;
+        String prefix="gfx/terobjs/arch/";
+        if(resource==null||!resource.startsWith(prefix))return false;
+        String piece=resource.substring(prefix.length());
+        if(piece.endsWith("cp"))piece=piece.substring(0,piece.length()-2);
+        else if(piece.endsWith("seg"))piece=piece.substring(0,piece.length()-3);
+        else return false;
+        return piece.equals("pole")||piece.equals("brickwall")||piece.equals("drystonewall")||piece.equals("palisade");
+    }
     public static boolean vehicle(String resource){return resource!=null && resource.startsWith("gfx/terobjs/vehicle/");}
     private static boolean entrance(String resource){return resource!=null&&(resource.startsWith("gfx/terobjs/arch/")||transition(resource));}
     public static boolean transition(String resource) {
@@ -218,7 +227,7 @@ public final class Walking {
         if("Sleep".equals(option)||indoors(map))return false;
         if(menu!=null && nativeMovement(map,menu.goal)){cancel(map);return false;}
         if(menu==null||menu.target!=target||target==null||target.removed||creature(target)||Utils.rtime()-menu.when>60||inCombat(map)||!requested(((Number)menu.args[3]).intValue()))return false;
-        try {String name=hearthborn.util.GameObjects.resourceName(target);if("gfx/terobjs/thingwall".equals(name)||vehicle(name)){cancel(map);return false;}}
+        try {if(nativeInteraction(hearthborn.util.GameObjects.resourceName(target))){cancel(map);return false;}}
         catch(Loading waiting){return false;}
         Gob player=movementBody(map);if(player==null||player.rc.dist(menu.goal)<=MCache.tilesz.x||player.rc.dist(target.rc)<=MCache.tilesz.x)return false;
         cancel(map);Object[] args=menu.args.clone();if(!enabled())args[3]=0;

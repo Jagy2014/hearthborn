@@ -33,9 +33,9 @@ public final class BowCombat {
     private Weapon weapon=Weapon.NONE;
     private WeakReference<GItem> bow;
     private Phase phase=Phase.IDLE;
-    private long target=-1,lastCombatTarget=-1;
+    private long target=-1,lastCombatTarget=-1,pendingShot=-1;
     private boolean issuing,picking,awaitingClick;
-    private double since;
+    private double since,haltedAt;
     private Coord2d position;
     private Coord shotAt,swapAt,shotSize,swapSize;
     private Text shotLabel,swapLabel;
@@ -79,14 +79,25 @@ public final class BowCombat {
             return gob;
         }catch(Loading pending){return null;}
     }
-    private void stop(){picking=awaitingClick=false;phase=Phase.IDLE;position=null;}
+    private void stop(){picking=awaitingClick=false;phase=Phase.IDLE;position=null;pendingShot=-1;}
     private void cancelAim(GameUI gui){
-        boolean started=phase!=Phase.IDLE;stop();
-        if(!started||gui==null||gui.map==null||gui.vhand!=null||!serverShootCursor(gui))return;
+        boolean started=phase!=Phase.IDLE;boolean hadPending=pendingShot>=0;stop();
+        if((!started&&!hadPending)||gui==null||gui.map==null||gui.vhand!=null||!serverShootCursor(gui))return;
         Gob player=gui.map.player();if(player==null)return;
         issuing=true;
         try{gui.map.wdgmsg("click",Coord.z,player.rc.floor(OCache.posres),3,0);}
         finally{issuing=false;}
+    }
+    /** Click under the feet to break a flee/path; Shoot then fires once movement ends. */
+    private void halt(GameUI gui,Gob body){
+        if(gui.map==null||body==null||body.rc==null)return;
+        issuing=true;
+        try{
+            hearthborn.scripts.ScriptRunner.manualFieldInput(gui);ShortcutRunner.cancel(gui);
+            hearthborn.navigation.Walking.abandon(gui.map);
+            gui.map.wdgmsg("click",Coord.z,body.rc.floor(OCache.posres),1,0);
+            haltedAt=Utils.rtime();
+        }finally{issuing=false;}
     }
     private Gob refresh(GameUI gui){
         Weapon now=weapon(gui);if(now!=weapon){cancelAim(gui);weapon=now;}
@@ -118,7 +129,20 @@ public final class BowCombat {
     }
     public static void tick(GameUI gui){
         BowCombat own=existing(gui);if(own==null)return;
-        Gob gob=own.refresh(gui);if(own.phase==Phase.IDLE||gob==null)return;
+        Gob gob=own.refresh(gui);
+        if(own.pendingShot>=0&&own.phase==Phase.IDLE){
+            Gob body=movementBody(gui);
+            if(moving(body)){
+                // Path may still be running after the first halt - nudge again after a beat.
+                if(Utils.rtime()-own.haltedAt>.4)own.halt(gui,body);
+                return;
+            }
+            long id=own.pendingShot;own.pendingShot=-1;
+            Gob shot=animal(gui,id);
+            if(shot!=null)own.shoot(gui,shot);
+            return;
+        }
+        if(own.phase==Phase.IDLE||gob==null)return;
         Gob body=movementBody(gui);
         if(moving(body)||(own.position!=null&&own.position.dist(body.rc)>.05)){own.cancelAim(gui);return;}
         own.position=Coord2d.of(body.rc.x,body.rc.y);
@@ -137,7 +161,12 @@ public final class BowCombat {
     private void shoot(GameUI gui,Gob gob){
         target=gob.id;lastCombatTarget=combatTarget(gui);picking=false;
         Gob body=movementBody(gui);
-        if(moving(body)){gui.ui.msg(L10n.tr("Stop moving before shooting."));return;}
+        if(moving(body)){
+            pendingShot=gob.id;
+            halt(gui,body);
+            return;
+        }
+        pendingShot=-1;
         if(gui.fv!=null&&Utils.rtime()<gui.fv.atkct){gui.ui.msg(L10n.tr("Wait for recovery before shooting."));return;}
         issuing=true;
         try{

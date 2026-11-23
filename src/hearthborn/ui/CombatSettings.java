@@ -14,7 +14,9 @@ package hearthborn.ui;
 
 import haven.*;
 import hearthborn.L10n;
+import hearthborn.combat.ArcheryAim;
 import hearthborn.combat.AutoCombat;
+import hearthborn.combat.ChaseVector;
 import hearthborn.combat.CombatPrefs;
 
 /**
@@ -43,11 +45,15 @@ public final class CombatSettings {
         y = box(panel, 0, y, step, "Auto peace on combat start", CombatPrefs.peace(), CombatPrefs::peace,
             "Offers peace when a fight starts and the opponent is aggressive. Useful for taming.");
         y = box(panel, 0, y, step, "Re-aggro animals", CombatPrefs.reaggro(), CombatPrefs::reaggro,
-            "Attacks an animal again if it drops out of the fight and is still nearby.");
+            "If an animal leaves the fight on its own, attack it again within bow range and keep the compact combat UI up.");
         y = box(panel, 0, y, step, "Auto-pick attacks by openings", AutoCombat.enabled(), AutoCombat::enabled,
             "Picks the deck attack that matches the animal's largest opening. Never attacks players.");
         y = box(panel, 0, y, step, "Always mark current target", CombatPrefs.mark(), CombatPrefs::mark,
             "Marks the target even when it is the only one.");
+        y = box(panel, 0, y, step, "Show chase vectors", ChaseVector.enabled(), ChaseVector::enabled,
+            "Lines from chasers to their targets: attack queues, pickups and follows. White is you, green is party, red is others.");
+        y = box(panel, 0, y, step, "Show archery aim range", ArcheryAim.enabled(), ArcheryAim::enabled,
+            "While drawing a bow or aiming a spear or sling, shows max reach and the aim sector toward the cursor.");
         y = pair(panel, 0, y, step, nest, "Highlight party members in combat",
             CombatPrefs.colorParty(), CombatPrefs::colorParty, CombatPrefs.ringParty(), CombatPrefs::ringParty);
         y = pair(panel, 0, y, step, nest, "Highlight self in combat",

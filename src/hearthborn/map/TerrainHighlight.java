@@ -30,12 +30,19 @@ public final class TerrainHighlight {
     private static final Map<String, String> PRODUCT = products();
     private static final Map<String, List<String>> catalog = new LinkedHashMap<>();
     public static long sequence;
+    private static Set<String> questTiles = Collections.emptySet();
+
+    public static Set<String> questTiles() { return questTiles; }
+    public static void questTiles(Collection<String> tiles) {
+        Set<String> next = Collections.unmodifiableSet(new HashSet<>(tiles));
+        if (!next.equals(questTiles)) { questTiles = next; sequence++; }
+    }
 
     static { load(); }
 
     public static boolean selected(String name) { return selected.contains(name); }
     public static boolean ore(String resource) { return product(resource) != null; }
-    public static boolean empty() { return selected.isEmpty(); }
+    public static boolean empty() { return selected.isEmpty() && questTiles.isEmpty(); }
 
     /** Existing tile catalog and preferences, shared with the map settings window. */
     public static Map<String,List<String>> catalog() {
@@ -66,24 +73,26 @@ public final class TerrainHighlight {
         Coord maps = MCache.cmaps;
         BufferedImage image = TexI.mkbuf(maps);
         if(grid == null || grid.tilesets == null) return image;
-        boolean[] mark = new boolean[maps.x * maps.y];
+        byte[] mark = new byte[maps.x * maps.y];
         for(int y = 0; y < maps.y; y++) {
             for(int x = 0; x < maps.x; x++) {
                 int id = grid.gettile(Coord.of(x, y));
                 if(id < 0 || id >= grid.tilesets.length) continue;
                 MapFile.TileInfo info = grid.tilesets[id];
-                if(info == null || info.res == null || !selected(info.res.name)) continue;
+                if(info == null || info.res == null) continue;
+                byte color = (byte)(questTiles.contains(info.res.name) ? 2 : selected(info.res.name) ? 1 : 0);
+                if(color == 0) continue;
                 for(int dy = -1; dy <= 1; dy++) {
                     for(int dx = -1; dx <= 1; dx++) {
                         int nx = x + dx, ny = y + dy;
                         if(nx >= 0 && ny >= 0 && nx < maps.x && ny < maps.y)
-                            mark[ny * maps.x + nx] = true;
+                            mark[ny * maps.x + nx] = (byte)Math.max(mark[ny * maps.x + nx], color);
                     }
                 }
             }
         }
         for(int i = 0; i < mark.length; i++)
-            if(mark[i]) image.setRGB(i % maps.x, i / maps.x, 0xffff00ff);
+            if(mark[i] != 0) image.setRGB(i % maps.x, i / maps.x, mark[i] == 2 ? 0xb6ffd251 : 0xffff00ff);
         return image;
     }
 

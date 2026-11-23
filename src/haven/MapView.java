@@ -2019,6 +2019,13 @@ public class MapView extends PView implements DTarget, Console.Directory, Widget
         return current.get().getattr(Drawable.class).getres().name;
     }
 
+    /** Ghost object while placing or lifting furniture; null when nothing is being placed. */
+    public Gob placingGob() {
+        Loader.Future<Plob> current=placing;
+        if(current==null||!current.done())return null;
+        return current.get();
+    }
+
     public void uimsg(String msg, Object... args) {
 	if(msg == "place") {
 	    Loader.Future<Plob> placing = this.placing;
@@ -2238,8 +2245,10 @@ public class MapView extends PView implements DTarget, Console.Directory, Widget
                 wdgmsg("click",qualityArgs);return;
             }
 	    if(clickb==3)hearthborn.ui.FlowerChoices.remember(ui,gob);
-	    if(gob != null && clickb == 3)
+	    if(gob != null && clickb == 3) {
 		hearthborn.timers.ObjectTimers.clicked(gob);
+		hearthborn.map.MarkerQuality.tarBarrel(qualityGui, gob);
+	    }
             if(inf==null && clickb==1 && Utils.getprefb("hearthborn/world/center-clicks",false))mc=Coord2d.of(mc.floor(MCache.tilesz)).mul(MCache.tilesz).add(MCache.tilesz.div(2));
             if(gob != null) hearthborn.quality.QualityRoster.picked(getparent(GameUI.class),gob);
             if(gob!=null&&clickb==3)hearthborn.planner.ClaimSurvey.clickedEntrance(getparent(GameUI.class),gob);
@@ -2379,6 +2388,7 @@ public class MapView extends PView implements DTarget, Console.Directory, Widget
 		if(inf != null)
 		    args = Utils.extend(args, hearthborn.ui.ItemProtection.clickargs(ui,inf));
                 hearthborn.storage.StonePileColors.itemact(MapView.this,target,mc);
+                hearthborn.map.MarkerQuality.touched(target);
 		wdgmsg("itemact", args);
 	    }
     }

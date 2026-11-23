@@ -54,12 +54,14 @@ final class TimerWindow {
     private static final int NAME_WIDTH=UI.scale(340),TIME_X=NAME_WIDTH+UI.scale(12),ACTION_X=TIME_X+UI.scale(95),ROW_WIDTH=ACTION_X+UI.scale(132);
     private enum Sort { NONE, NAME, TIME }
     enum Category {
-        AUTOMATIC("Automatic"), CHEESE("Cheese"), MANUAL("Manual");
+        AUTOMATIC("Automatic"), CHEESE("Cheese"), RESOURCES("Natural resources"), MANUAL("Manual");
         final String title;
         Category(String title){this.title=title;}
         boolean accepts(String source){
             if(source==null)return this==MANUAL;
-            return this==(source.startsWith("cheese:")?CHEESE:AUTOMATIC);
+            if(source.startsWith("cheese:"))return this==CHEESE;
+            if(source.startsWith(NaturalResourceTimers.PREFIX))return this==RESOURCES;
+            return this==AUTOMATIC;
         }
     }
     private static final class TimerWnd extends Window {
@@ -81,8 +83,8 @@ final class TimerWindow {
             descending=Utils.getprefb("hearthborn/timers/descending",false);
             int tabX=0;
             for(Category tab:Category.values()){
-                Button button=add(new Button(UI.scale(150),tab.title,false,()->select(tab)),Coord.of(tabX,0));
-                tabs.put(tab,button);tabX+=UI.scale(155);
+                Button button=add(new Button(UI.scale(140),tab.title,false,()->select(tab)),Coord.of(tabX,0));
+                tabs.put(tab,button);tabX+=UI.scale(145);
             }
             tabs.get(category).disable(true);
             nameHeader=add(header("Timer",Sort.NAME),UI.scale(5,35));
@@ -141,6 +143,8 @@ final class TimerWindow {
     }
 
     static String displayName(TimerEntry item) {
+        if(item.source!=null && item.source.startsWith(NaturalResourceTimers.PREFIX))
+            return NaturalResourceTimers.name(item.source,item.name);
         if(StarFall.isTimer(item.source))return StarFall.timerName(item.source);
         if(item.source!=null && item.source.startsWith("siege:")) {
             java.util.regex.Matcher m=java.util.regex.Pattern.compile("^Siege engine #([^ ]+).*$").matcher(item.name);

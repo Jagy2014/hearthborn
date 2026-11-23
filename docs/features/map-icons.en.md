@@ -6,6 +6,10 @@ The **Map Display Settings** have been redesigned, and the map includes a dedica
 
 ![Map icons and display settings](../images/map-settings.png)
 
+## Quality of resources on the map
+
+When you use **Inspect** on a resource that has a marker on the map (a Flint Wash, a clay pit and the like), the quality it reports is written after the marker name: **Flint Wash (q44)**. It is shown while **Show marker names** is on in the map display settings, is kept between sessions, and the marker itself is not changed. Some resources, a clay pit for one, do not tell their quality when inspected. For them the quality is taken from what they give: when you use such a resource and a piece with a quality arrives in your inventory while you stand beside it (Pit Clay from a clay pit), that quality is written after the name. Inspect the resource again, or use it again, to refresh the number.
+
 ## Open the map on a second monitor
 
 You can open the map in a **separate window** and move it to a **second monitor**. See [Map in a separate window](map-window.md).

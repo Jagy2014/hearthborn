@@ -393,7 +393,9 @@ public class GobIcon extends GAttrib {
         }
 
 	public Setting get(Icon icon) {
-	    return(settings.get(new Setting.ID(icon.res.name, icon.id())));
+	    Setting.ID id = new Setting.ID(icon.res.name, icon.id());
+	    Setting preferred = settings.get(hearthborn.map.RadarIcons.canonical(id));
+	    return(preferred == null ? settings.get(id) : preferred);
 	}
 
 	public static class ResID {
@@ -496,6 +498,7 @@ public class GobIcon extends GAttrib {
                 synchronized(Settings.this){
                     for(Map.Entry<Setting.ID,Setting> entry:settings.entrySet())
                         nset.putIfAbsent(entry.getKey(),entry.getValue());
+                    save |= hearthborn.map.RadarIcons.mergeSnapdragon(nset);
                     settings=nset;
                 }
 		if(tag != null)

@@ -113,6 +113,10 @@ public final class WorldLabels {
         return stacked(foundry, parts, ink, ratio);
     }
 
+    static Label captionLines(String first, String second, Color ink) {
+        return stacked(vesselFoundry(), List.of(first, second), ink, hearthborn.ui.LiveScale.ratio());
+    }
+
     /** Lines of one caption, each centered under the widest. */
     private static Label stacked(Text.Foundry foundry, List<String> parts, Color ink, double ratio) {
         List<BufferedImage> lines = new ArrayList<>();

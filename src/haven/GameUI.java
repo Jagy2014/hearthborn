@@ -366,6 +366,7 @@ public class GameUI extends ConsoleHost implements Console.Directory, UI.Notice.
 	hearthborn.world.GobMarks.attach(this);
 	hearthborn.world.PlayerWarnings.attach(this);
 	hearthborn.combat.FighterMark.bind(this);
+	hearthborn.combat.ChaseVector.bind(this);
 	hearthborn.ui.FightBars.attach(this);
 	ui.cons.out = new java.io.PrintWriter(new java.io.Writer() {
 		StringBuilder buf = new StringBuilder();
@@ -397,6 +398,7 @@ public class GameUI extends ConsoleHost implements Console.Directory, UI.Notice.
         hearthborn.combat.BowCombat.dispose(this);
         if(map!=null)hearthborn.navigation.Walking.cancel(map);
         hearthborn.scripts.ShortcutRunner.cancel(this);
+        hearthborn.ui.QuestForage.sessionEnded(this);
         hearthborn.scripts.ScriptRunner.cancel(this);
         if(lastmsg!=null){lastmsg.dispose();lastmsg=null;}noticeText=null;noticeError=false;
         hearthborn.mining.MiningSafety.dispose(this);
@@ -1254,11 +1256,13 @@ public class GameUI extends ConsoleHost implements Console.Directory, UI.Notice.
         hearthborn.inventory.BagTransfers.tick(this);
         if(questHelper.parent==null)add(questHelper);
         questHelper.layout(questBottom());
+        hearthborn.ui.QuestForage.placeChip(this);
         if(qqview!=null && qqview.parent!=null)qqview.parent.hide();
 	inspect.tick(dt);
         hearthborn.scripts.ShortcutRunner.tick(this);
         hearthborn.scripts.ScriptRunner.tick(this);
         hearthborn.combat.BowCombat.tick(this);
+        hearthborn.combat.ArcheryAim.tick(this);
         hearthborn.ui.AutoDrink.tick(this);
         hearthborn.ui.LoginToggles.tick(this);
         hearthborn.ui.LocalActionBelt.tick(this);
@@ -1474,18 +1478,21 @@ public class GameUI extends ConsoleHost implements Console.Directory, UI.Notice.
     public static final KeyBinding kb_rlm = KeyBinding.get("ol-rlm", KeyMatch.nil);
     public static final KeyBinding kb_ico = KeyBinding.get("map-icons", KeyMatch.nil);
     public void toggleIconSettings() {
-		    if(iconconf == null)
-			return;
-		    if(iconwnd == null) {
-			iconwnd = new hearthborn.map.MapSettingsWindow(iconconf).reqclose(() -> {
-			    if(iconwnd != null)
-				iconwnd.reqdestroy();
-			    iconwnd = null;
-			});
-			fitwdg(GameUI.this.add(iconwnd, Utils.getprefc("wndc-icon", new Coord(200, 200))));
-		    } else {
-			iconwnd.reqclose();
-		    }
+        if(iconconf == null)
+            return;
+        if(iconwnd != null) {
+            iconwnd.reqclose();
+            return;
+        }
+        iconwnd = new hearthborn.map.MapSettingsWindow(iconconf).reqclose(() -> {
+            if(iconwnd != null) iconwnd.reqdestroy();
+            iconwnd = null;
+        });
+        // The map raises itself after dispatching the toolbar click.
+        if(mapfile != null) iconwnd.z(mapfile.z + 1);
+        fitwdg(add(iconwnd, Utils.getprefc("wndc-icon", new Coord(200, 200))));
+        iconwnd.raise();
+        setfocus(iconwnd);
     }
 
     /** Shows or hides one claim overlay ("cplot", "vlg" or "prov"), as the system buttons do. */

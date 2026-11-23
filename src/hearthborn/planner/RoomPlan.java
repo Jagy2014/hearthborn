@@ -263,6 +263,6 @@ public final class RoomPlan {
     public Object tooltip(Coord at){refresh();if(!enabled()||!active)return null;Marker marker=hit(at);if(marker==null)return title;
         String name=ObjectNames.name(marker.gob);int seconds=ObjectTimers.remainingSeconds(marker.gob);
         String status=marker.ready?L10n.tr("Ready"):seconds>0?L10n.format("Time left: %s",String.format("%d:%02d",seconds/60,seconds%60)):"";
-        return (name==null?L10n.text("window",marker.kind):name)+(status.isEmpty()?"":" — "+status);
+        return (name==null?L10n.text("window",marker.kind):name)+(status.isEmpty()?"":" - "+status);
     }
 }

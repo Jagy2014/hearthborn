@@ -802,6 +802,13 @@ public class CocoaContext implements Providers.Factory<Toolkit> {
 		    if(event.hasPreciseScrollingDeltas()) {
 			x = event.scrollingDeltaX() / -15;
 			y = event.scrollingDeltaY() / -15;
+			/* Cocoa remaps a vertical trackpad swipe to the horizontal axis
+			 * while Shift is held; put the user's scroll back on Y so
+			 * Shift+wheel can rotate a placement ghost. */
+			if((event.modifierFlags() & AppKit.NSShiftKeyMask) != 0) {
+			    double t = x;
+			    x = y; y = t;
+			}
 		    } else {
 			/* HACK: Assume non-precise scrolling deltas
 			 * mean we have a coarse, physical

@@ -50,7 +50,7 @@ public final class GrainQuality extends Widget {
         if(base==null)return;
         try{
             Double quality=GameObjects.field(row,"rawinfo",ItemInfo.Raw.class)==null?null:QualityOverlay.qualityOf(((ItemInfo.Owner)row).info());
-            String text=base+(quality==null?"":" — Q "+QualityOverlay.format(quality)+better(row,quality));
+            String text=base+(quality==null?"":" - Q "+QualityOverlay.format(quality)+better(row,quality));
             if(!text.equals(label.texts))label.settext(text);
             last=text;
         }catch(Loading pending){}

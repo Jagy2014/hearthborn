@@ -40,7 +40,7 @@ public final class ContainerTools {
     private Coord baseSize;
 
     public ContainerTools(Inventory inv) {this.inv = inv;}
-    public void collapse(){closeSide();}
+    public void collapse(){ContinuousDrop.stop(inv.getparent(GameUI.class));closeSide();}
     /** Persistent inventory windows must not restore an expanded side panel. */
     public static void closed(Window window){
         for(Inventory inventory:window.children(Inventory.class))
@@ -124,6 +124,8 @@ public final class ContainerTools {
             ? ((hearthborn.ui.SmallWindowDeco)deco).closeButton : deco.cbtn;
         toolbar.c = headerPosition(close.c, close.up, toolbar.sz);
         if(side != null) layoutSide();
+        GameUI gui = inv.getparent(GameUI.class);
+        if(gui != null && gui.maininv == inv) ContinuousDrop.tick(gui, dt);
     }
 
     private void showGroups() {
@@ -192,6 +194,22 @@ public final class ContainerTools {
             x = button("stack", hearthborn.L10n.tr("Stack identical items"), () -> InventoryActions.stack(inv), x);
             x = button("unstack", hearthborn.L10n.tr("Unstack all items"), () -> InventoryActions.unstack(inv), x);
             x = button("sort", hearthborn.L10n.tr("Left click: best to worst quality\nRight click: worst to best quality\nGrouped by name; large items, such as cheese trays, are sorted among themselves"), () -> InventoryActions.sort(inv), x);
+            GameUI gui = inv.getparent(GameUI.class);
+            if(gui != null && gui.maininv == inv) {
+                IButton drop = new IButton(icon("adrop"), icon("adrop-d"), icon("adrop-h"), () -> ContinuousDrop.toggle(gui)) {
+                    public boolean mousedown(MouseDownEvent ev) {
+                        if(ev.b == 3) {AutoDropWindow.open(gui); return true;}
+                        return super.mousedown(ev);
+                    }
+                    public void draw(GOut g) {
+                        if(ContinuousDrop.on(gui)) g.chcolor(255, 100, 80, 255);
+                        super.draw(g);
+                        g.chcolor();
+                    }
+                };
+                drop.settip(hearthborn.L10n.tr("Left click: toggle dropping of the chosen types\nRight click: open the auto-drop settings"));
+                add(drop, Coord.of(x, 0)); x += drop.sz.x + UI.scale(2);
+            }
             x = button("extlist", hearthborn.L10n.tr("Container overview"), ContainerTools.this::showGroups, x);
             Window window=inv.getparent(Window.class);
             if(hearthborn.storage.ContainerContents.supported(window)){

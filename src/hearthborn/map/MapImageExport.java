@@ -87,7 +87,7 @@ public final class MapImageExport {
             int done=0;
             for(Coord cell:cells){
                 if(Thread.interrupted())throw new InterruptedException();
-                progress.accept((++done)+" / "+cells.size()+" — "+size.x+" × "+size.y+(layout.divisor>1?" (1:"+layout.divisor+")":""));
+                progress.accept((++done)+" / "+cells.size()+" - "+size.x+" × "+size.y+(layout.divisor>1?" (1:"+layout.divisor+")":""));
                 Coord at=layout.position(cell),end=layout.end(cell);
                 g.drawImage(tile(file,seg,cell),at.x,at.y,end.x-at.x,end.y-at.y,null);
             }

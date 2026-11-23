@@ -167,22 +167,22 @@ public final class AccountStatusFlag extends Img {
     public void dispose(){if(tip!=null)tip.dispose();super.dispose();}
     public void tick(double dt){
         super.tick(dt);
-        if(ui==null||parent==null||ui.root.findchild(Charlist.class)==null)return;
+        placeInRow();
+    }
+    /** All three roles have fixed cells, including before the server sends account status. */
+    public boolean placeInRow(){
+        if(ui==null||parent==null)return false;
         Charlist characters=ui.root.findchild(Charlist.class);
+        if(characters==null||!characters.tvisible())return false;
         Avaview avatar=characters.avalink;
-        if(avatar==null||!avatar.tvisible())return;
-        java.util.List<AccountStatusFlag> flags=new java.util.ArrayList<>();
-        for(AccountStatusFlag flag:ui.root.children(AccountStatusFlag.class))if(flag.tvisible())flags.add(flag);
-        flags.sort(java.util.Comparator.comparingInt(flag->flag.donation?2:flag.subscribed?1:0));
-        int index=flags.indexOf(this);
-        if(index<0)return;
-        java.util.List<Coord> sizes=new java.util.ArrayList<>();
-        for(AccountStatusFlag flag:flags)sizes.add(flag.sz);
+        if(avatar==null||!avatar.tvisible())return false;
         Widget frame=avatar.parent instanceof ProxyFrame?avatar.parent:avatar;
         Coord at=frame.rootpos();
-        Coord position=position(ui.root.sz,Coord.of(at.x,characters.firstCharacterTop()),frame.sz,sizes,index);
+        Coord position=position(ui.root.sz,Coord.of(at.x,characters.firstCharacterTop()),frame.sz,sz,role(),3);
         move(position.sub(parent.rootpos()));
+        return true;
     }
+    private int role(){return donation?2:subscribed?1:0;}
     /** Keep the badges right of the preview at the first character row's height. */
     static Coord position(Coord screen,Coord avatarAt,Coord avatarSize,Coord badge,int index,int count){
         java.util.List<Coord> sizes=new java.util.ArrayList<>();

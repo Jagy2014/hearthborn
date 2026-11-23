@@ -70,7 +70,7 @@ public class VMeter extends LayerMeter {
 	for(Widget child=window.child;child!=null;child=child.next)if(child instanceof Inventory){grid=(Inventory)child;break;}
 	if(grid==null)return;
 	int width=hearthborn.timers.ObjectTimers.oven(window)?hearthborn.ui.FuelReadout.width(bg.sz().x):bg.sz().x;
-	resize(width,grid.sz.y);
+	if(hearthborn.timers.ObjectTimers.stretchFuelMeter(window))resize(width,grid.sz.y);
 	int edge=grid.c.x+grid.sz.x;
 	if(c.x<edge)move(Coord.of(edge,c.y));
 	window.pack();

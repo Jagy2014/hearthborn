@@ -168,8 +168,8 @@ public final class GeneralSettings {
         previous.settip("Animal calls are the same in both languages. Otherwise names are spoken in the interface language.");
         previous = panel.add(new CheckBox("Show dangerous animal radius") {{a = GobMarks.danger();}}.changed(v -> GobMarks.danger(v)), previous.pos("bl").adds(0, 5));
         previous.settip("Red circle around animals that can attack.");
-        previous = panel.add(new CheckBox("Show critter circles") {{a = GobMarks.critters();}}.changed(v -> GobMarks.critters(v)), previous.pos("bl").adds(0, 5));
-        previous.settip("Small circle under critters. Right-click the circle to chase them.");
+        previous = panel.add(new CheckBox("Show critter and arrow circles") {{a = GobMarks.critters();}}.changed(v -> GobMarks.critters(v)), previous.pos("bl").adds(0, 5));
+        previous.settip("Small circles under critters and arrows on the ground. Right-click a critter circle to chase it; click an arrow circle to pick the arrow up.");
         return previous;
     }
     private static SDropBox<Integer,Widget> speedSelector(boolean horse) {

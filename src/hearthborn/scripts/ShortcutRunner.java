@@ -23,11 +23,21 @@ import java.util.function.*;
  */
 public final class ShortcutRunner {
  private static final Map<GameUI,ShortcutRunner> active=new WeakHashMap<>();
- private final GameUI gui;private final Deque<Step> steps=new ArrayDeque<>();private boolean issued,weaponSwitch,executing;private double deadline;private Gob selectedHorse;
+ private final GameUI gui;final Deque<Step> steps=new ArrayDeque<>();private boolean issued,weaponSwitch,executing;private double deadline;private Gob selectedHorse;
  private static class Step {Runnable action;BooleanSupplier ready;double timeout;Step(Runnable action,BooleanSupplier ready,double timeout){this.action=action;this.ready=ready;this.timeout=timeout;}}
- private ShortcutRunner(GameUI gui){this.gui=gui;}
- private void add(Runnable action,BooleanSupplier ready,double timeout){steps.add(new Step(action,ready,timeout));}
- private void add(Runnable action){add(action,()->true,2);}
+ ShortcutRunner(GameUI gui){this.gui=gui;}
+ void add(Runnable action,BooleanSupplier ready,double timeout){steps.add(new Step(action,ready,timeout));}
+ void add(Runnable action){add(action,()->true,2);}
+ /** Plan the next exchange after earlier equipment and inventory updates have arrived. */
+ void afterPrevious(Runnable plan) {
+  add(()->{
+   Step current=steps.removeFirst();
+   Deque<Step> following=new ArrayDeque<>(steps);
+   steps.clear();
+   try{plan.run();}
+   finally{steps.addFirst(current);steps.addAll(following);}
+  });
+ }
  public static void cancel(GameUI gui){
   if(gui==null)return;ShortcutRunner task=active.remove(gui);if(task!=null&&task.selectedHorse!=null)task.selectedHorse.delattr(HorseTarget.class);
  }
@@ -81,10 +91,10 @@ public final class ShortcutRunner {
     DrinkSupply supply=new DrinkSupply();supply.add(item);if(supply.water+supply.tea>0){bot.add(()->item.wdgmsg("iact",Coord.z,0));bot.flower("Drink");break;}
    }break;
    case "ACT_REFILL_DRINKS":bot.refill();break;
-   case "EQUIP_BOW":bot.equip(new String[]{"huntersbow","rangersbow"},6);break;
-   case "EQUIP_SPEAR":bot.equip(new String[]{"boarspear"},6);break;
-   case "EQUIP_SWORD_N_BOARD":bot.equip(new String[]{"roundshield"},6);bot.equip(new String[]{"bronzesword","fyrdsword","hirdsword"},7);break;
-   case "EQUIP_T_SACKS":bot.equip(new String[]{"travellerssack"},6);bot.equip(new String[]{"travellerssack"},7);break;
+   case "EQUIP_BOW":bot.equip(HandGear.BOWS,6);break;
+   case "EQUIP_SPEAR":bot.equip(HandGear.SPEARS,6);break;
+   case "EQUIP_SWORD_N_BOARD":bot.equip(HandGear.SHIELDS,6);bot.equip(HandGear.SWORDS,7);break;
+   case "EQUIP_T_SACKS":bot.equip(HandGear.SACKS,6);bot.equip(HandGear.SACKS,7);break;
    case "SWITCH_BOW_MELEE":
     try{bot.switchBow();}catch(Loading waiting){gui.ui.msg(hearthborn.L10n.tr("Items are still loading. Try again."));return;}
     break;
@@ -117,7 +127,7 @@ public final class ShortcutRunner {
   Set<GItem> found=Collections.newSetFromMap(new IdentityHashMap<>());List<GItem> out=new ArrayList<>();scan(gui.maininv,found,out);scan(gui.equipment(),found,out);return out;
  }
  private static void scan(Widget container,Set<GItem> found,List<GItem> out){if(container==null)return;for(Widget w=container.child;w!=null;w=w.next)if(w instanceof GItem){GItem item=(GItem)w;if(found.add(item)){out.add(item);scan(item.contents,found,out);}}}
- private final Set<GItem> selected=Collections.newSetFromMap(new IdentityHashMap<>());
+ final Set<GItem> selected=Collections.newSetFromMap(new IdentityHashMap<>());
  public static boolean switchingWeapon(GameUI gui){ShortcutRunner bot=active.get(gui);return bot!=null&&bot.weaponSwitch;}
  public static void manualWeaponInput(GameUI gui){ShortcutRunner bot=active.get(gui);if(bot!=null&&bot.weaponSwitch&&!bot.executing)cancel(gui);}
  private static boolean isBow(GItem item){String name=item.getres().basename();return name.equals("huntersbow")||name.equals("rangersbow");}
@@ -185,26 +195,9 @@ public final class ShortcutRunner {
   },3);
   add(()->{if(gui.vhand!=null&&gui.vhand.item!=returning[0])throw new IllegalStateException("Held item changed.");putWeapon(source);},()->gui.vhand==null,3);
  }
- private void equip(String[] names,int slot) {
-  if(gui.vhand!=null)return;
-  Equipory equipment=gui.equipment();if(equipment==null)return;
-  for(Widget w=equipment.child;w!=null;w=w.next)if(w instanceof WItem && (w.c.equals(Equipory.ecoords[6].add(1,1))||w.c.equals(Equipory.ecoords[7].add(1,1))))try {
-   String path=((WItem)w).item.resource().name;
-   if(path.contains("/bucket")||path.endsWith("/pickingbasket")||path.endsWith("/splint")) {
-    gui.ui.msg(hearthborn.L10n.tr("Item in hand cannot be automatically unequipped."));return;
-   }
-  }catch(Loading loading){return;}
-  for(GItem item:owned(gui))try {
-   if(selected.contains(item)||!(item.parent instanceof Inventory))continue;
-   String base=item.resource().basename();if(!Arrays.asList(names).contains(base))continue;
-   selected.add(item);Inventory inventory=(Inventory)item.parent;Coord cell=null;
-   for(Widget w=inventory.child;w!=null;w=w.next)if(w instanceof WItem&&((WItem)w).item==item)cell=w.c.sub(1,1).div(Inventory.sqsz);
-   if(cell==null)return;final Coord original=cell;
-   add(()->item.wdgmsg("take",Coord.z),()->gui.vhand!=null&&gui.vhand.item==item,2);
-   add(()->gui.equipment().wdgmsg("drop",slot),()->gui.vhand==null||gui.vhand.item!=item,2);
-   add(()->{if(gui.vhand!=null)inventory.wdgmsg("drop",original);},()->gui.vhand==null,2);return;
-  }catch(Loading loading){}
- }
+ private void equip(String[] names,int slot) {afterPrevious(()->HandEquip.equip(this,gui,names,slot));}
+ /** Starts a prepared shortcut bot whose steps are already queued. */
+ static void begin(ShortcutRunner bot){if(bot==null||bot.steps.isEmpty())return;cancel(bot.gui);active.put(bot.gui,bot);}
  private void refill() {
   if(gui.vhand!=null){gui.ui.msg(hearthborn.L10n.tr("You must have empty cursor to refill drinks!"));return;}
   Gob source=null;for(Gob gob:near(g->name(g).equals("gfx/terobjs/barrel")||name(g).startsWith("gfx/terobjs/cistern"),32)) {

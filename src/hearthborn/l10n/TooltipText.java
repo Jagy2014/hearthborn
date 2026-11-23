@@ -44,6 +44,11 @@ public final class TooltipText {
     }
 
     private static String phrase(String trimmed) {
+        // Match rich-text phrases before removing punctuation, which can be part of the markup.
+        if(trimmed.indexOf('$') >= 0) {
+            String translated = hearthborn.L10n.find("tooltip", trimmed);
+            if(translated != null) return translated;
+        }
         int start = 0, end = trimmed.length();
         while(start < end && !Character.isLetter(trimmed.charAt(start))) start++;
         while(end > start && !Character.isLetter(trimmed.charAt(end - 1))) end--;

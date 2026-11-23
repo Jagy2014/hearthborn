@@ -95,6 +95,10 @@ public class WItem extends Widget implements DTarget {
     }
 
     private double hoverstart;
+    private Coord pendingHandCoord;
+    private UI.Grab handGrab;
+    private boolean handDown;
+    private void releaseHandGrab(){handDown=false;if(handGrab!=null){handGrab.remove();handGrab=null;}}
     private ItemTip shorttip = null, longtip = null;
     private List<ItemInfo> ttinfo = null;
     public Object tooltip(Coord c, Widget prev) {
@@ -109,6 +113,9 @@ public class WItem extends Widget implements DTarget {
 	} else {
 	    hoverstart = now;
 	}
+	/* Shift opens the stack/container preview - hide the tip so it does not cover the contents. */
+	if(item.contents != null && ui != null && ui.modshift)
+	    return(null);
 	List<ItemInfo> info = item.info();
 	if(info.size() < 1)
 	    return(null);
@@ -156,6 +163,12 @@ public class WItem extends Widget implements DTarget {
 	    resize(Coord.of(sqsz.x * ((sz.x + sqsz.x / 2) / sqsz.x),
 			    sqsz.y * ((sz.y + sqsz.y / 2) / sqsz.y)));
 	    lspr = spr;
+	}
+	/* First click on hand-gear waits for a possible double-click swap; then takes normally. */
+	if(hearthborn.scripts.HandEquip.flushTake(item)) {
+	    Coord at = pendingHandCoord == null ? Coord.z : pendingHandCoord;
+	    pendingHandCoord = null;releaseHandGrab();
+	    item.wdgmsg("take", at);
 	}
     }
 
@@ -217,6 +230,7 @@ public class WItem extends Widget implements DTarget {
 
     @Override
     public void dispose() {
+        hearthborn.scripts.HandEquip.cancelClick(item);releaseHandGrab();
 	qualityOverlay.dispose();
         processOverlay.dispose();
         claimPresence.dispose();
@@ -244,6 +258,14 @@ public class WItem extends Widget implements DTarget {
 		int n = ui.modmeta ? -1 : 1;
 		item.wdgmsg("drop", ev.c, n);
 	    } else {
+                if(hearthborn.scripts.HandEquip.forHands(item)){
+                    pendingHandCoord=ev.c;
+                    if(hearthborn.scripts.HandEquip.click(getparent(GameUI.class),item)){
+                        releaseHandGrab();
+                        if(hearthborn.scripts.HandEquip.pendingClick(item)){handDown=true;handGrab=ui.grabmouse(this);}
+                        return(true);
+                    }
+                }
 		item.wdgmsg("take", ev.c);
 	    }
 	    return(true);
@@ -252,6 +274,15 @@ public class WItem extends Widget implements DTarget {
 	    return(true);
 	}
 	return(super.mousedown(ev));
+    }
+
+    public boolean mouseup(MouseUpEvent ev){if(ev.b==1&&handDown){releaseHandGrab();return true;}return super.mouseup(ev);}
+    public void mousemove(MouseMoveEvent ev){
+        if(handDown&&pendingHandCoord!=null&&ev.c.dist(pendingHandCoord)>UI.scale(4)){
+            Coord at=pendingHandCoord;pendingHandCoord=null;releaseHandGrab();
+            hearthborn.scripts.HandEquip.cancelClick(item);item.wdgmsg("take",at);
+        }
+        super.mousemove(ev);
     }
 
     public boolean drop(Coord cc, Coord ul) {

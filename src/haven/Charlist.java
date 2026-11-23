@@ -255,7 +255,7 @@ public class Charlist extends Widget {
 
 
     private hearthborn.ui.AccountStatusFlag unverified,unsubscribed,donation;
-    private void accountBadges(){
+    public void accountBadges(){
         if(ui==null||parent==null||avalink==null)return;
         if(unverified==null){unverified=ui.root.add(new hearthborn.ui.AccountStatusFlag(false,false));unsubscribed=ui.root.add(new hearthborn.ui.AccountStatusFlag(true,false));donation=ui.root.add(hearthborn.ui.AccountStatusFlag.donation());}
         unverified.show(tvisible()&&!hearthborn.ui.AccountStatusFlag.hasStatus(ui,false));

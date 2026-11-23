@@ -122,7 +122,7 @@ public class RootWidget extends ConsoleHost implements UI.Notice.Handler, Widget
                     }
                 }
                 if(preview!=null && preview.sz.y>UI.scale(200) && characters!=null)preview.fitCharacterPreview(characters.logoutButton());
-                for(hearthborn.ui.AccountStatusFlag badge:badges)badge.tick(0);
+                characters.accountBadges();
                 characterChildren(g,true);
                 hearthborn.ui.LoginArt.drawCharacters(g,sz);
                 characterChildren(g,false);
@@ -150,14 +150,16 @@ public class RootWidget extends ConsoleHost implements UI.Notice.Handler, Widget
     private void characterChildren(GOut g,boolean background) {
         for(Widget w=child,next;w!=null;w=next) {
             next=w.next;
-            if(!w.visible || w instanceof hearthborn.ui.AccountStatusFlag || (!background && (w instanceof hearthborn.ui.NewsPopup || w instanceof hearthborn.ui.ChangelogWindow)))continue;
+            if(!w.visible || w instanceof hearthborn.ui.AccountStatusFlag
+                || (!background && (w instanceof hearthborn.ui.NewsPopup || w instanceof hearthborn.ui.ChangelogWindow)))continue;
             boolean painting=!(w instanceof Charlist) && !(w instanceof hearthborn.ui.ChangelogWindow) && w.findchild(Charlist.class)==null
                 && !(w instanceof Avaview) && !(w instanceof Button) && !(w instanceof IButton)
                 && w.sz.x>=UI.scale(500) && w.sz.y>=UI.scale(280);
             if(painting==background)w.draw(g.reclip(xlate(w.c,true),w.sz));
         }
         if(!background)for(Widget w=child;w!=null;w=w.next) {
-            if(w.visible && w instanceof hearthborn.ui.AccountStatusFlag)w.draw(g.reclip(xlate(w.c,true),w.sz));
+            if(w.visible && w instanceof hearthborn.ui.AccountStatusFlag
+                && ((hearthborn.ui.AccountStatusFlag)w).placeInRow())w.draw(g.reclip(xlate(w.c,true),w.sz));
         }
         /* The news come last: above the account badges, which are drawn over the rest. */
         if(!background)for(Widget w=child;w!=null;w=w.next) {

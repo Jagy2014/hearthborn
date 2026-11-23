@@ -33,7 +33,8 @@ public final class PlantVisibility implements RenderTree.Node {
     private PlantVisibility(ResDrawable drawable, boolean bush) {
         this.drawable = drawable;
         this.bush = bush;
-        this.current = drawable.spr;
+        // A newly streamed tree must not show its full model while its stump loads.
+        this.current = hidden(bush) ? null : drawable.spr;
         this.elapsed=-((System.identityHashCode(drawable)&15)*(0.1/16.0));
     }
 
@@ -49,13 +50,18 @@ public final class PlantVisibility implements RenderTree.Node {
     public static RenderTree.Node visual(ResDrawable drawable) {
         String name = drawable.rres.name;
         boolean bush = name.startsWith("gfx/terobjs/bushes/");
-        if(!name.endsWith("stump") && !name.endsWith("log")
-            && (bush || name.startsWith("gfx/terobjs/trees/")) && PlantGrowth.tree(drawable.spr))
+        // Use the world object's resource category, regardless of the sprite implementation.
+        if(!name.endsWith("stump") && !name.endsWith("log") && !name.endsWith("oldtrunk")
+            && (bush || name.startsWith("gfx/terobjs/trees/")))
             return new PlantVisibility(drawable, bush);
         return ObjectHiding.visual(drawable);
     }
 
-    public void added(RenderTree.Slot slot) { slots.put(slot, slot.add(current)); }
+    public void added(RenderTree.Slot slot) {
+        // A previously detached drawable may be attached again after the setting changes.
+        if(slots.isEmpty()) current = hidden(bush) ? stump : drawable.spr;
+        slots.put(slot, current == null ? null : slot.add(current));
+    }
     public void removed(RenderTree.Slot slot) { slots.remove(slot); }
 
     public static void tick(RenderTree.Node node, double dt) {
@@ -76,16 +82,17 @@ public final class PlantVisibility implements RenderTree.Node {
                 if(bush || generic) missing = true;
                 else generic = true;
             } catch(Loading ignored) {}
-            // A missing or still loading stump never removes the original object's interaction.
-            if(stump != null) next = stump;
+            next = stump;
         }
         if(next != current) try {
             List<RenderTree.Slot> parents = new ArrayList<>(slots.keySet());
-            Collection<RenderTree.Slot> children = RUtils.multiadd(parents, next);
-            RUtils.multirem(new ArrayList<>(slots.values()));
+            Collection<RenderTree.Slot> children = next == null ? Collections.emptyList() : RUtils.multiadd(parents, next);
+            List<RenderTree.Slot> previous = new ArrayList<>(slots.values());
+            previous.removeIf(Objects::isNull);
+            RUtils.multirem(previous);
             slots.clear();
             Iterator<RenderTree.Slot> child = children.iterator();
-            for(RenderTree.Slot parent : parents) slots.put(parent, child.next());
+            for(RenderTree.Slot parent : parents) slots.put(parent, next == null ? null : child.next());
             current = next;
         } catch(Loading ignored) {}
         if(current == stump && stump != null) stump.tick(dt);

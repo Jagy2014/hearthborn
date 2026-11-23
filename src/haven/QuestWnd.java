@@ -201,6 +201,13 @@ public class QuestWnd extends Widget {
 		}
 	    }
 
+            public boolean mousedown(MouseDownEvent event) {
+                Box box = getparent(Box.class);
+                return box != null && event.b == 1 && cond.done == QST_PEND && picture != null
+                    && event.c.isect(Coord.of(iconAt, Math.max(0, (sz.y - UI.scale(22)) / 2)), UI.scale(22, 22))
+                    && hearthborn.ui.QuestForage.open(getparent(GameUI.class), box.id, cond.desc, picture);
+            }
+
 	    private Tex icon() {
 		if(icon != null || missingIcon || picture == null) return icon;
 		try {
@@ -311,7 +318,10 @@ public class QuestWnd extends Widget {
 		    }
 		    this.cond = ncond.toArray(new Condition[0]);
             GameUI gui=getparent(GameUI.class);
-            if(gui!=null)gui.questHelper.capture(this);
+            if(gui!=null) {
+                hearthborn.ui.QuestForage.objectives(gui, id, cond);
+                gui.questHelper.capture(this);
+            }
 		    refresh();
 		    if(cqv != null)
 			cqv.update();
@@ -811,6 +821,7 @@ public class QuestWnd extends Widget {
 		if(qd.length == a) {
 		    cqst.remove(id);
 		    dqst.remove(id);
+                    hearthborn.ui.QuestForage.questEnded(getparent(GameUI.class), id);
 		    continue;
 		}
 
@@ -835,6 +846,7 @@ public class QuestWnd extends Widget {
 			cl.remove(q);
 		    nl.add(q);
 		}
+                if(nl == dqst) hearthborn.ui.QuestForage.questEnded(getparent(GameUI.class), id);
 		if((cl == cqst) && (nl == dqst))
 		    q.done(getparent(GameUI.class));
 		nl.loading = true;

@@ -38,9 +38,28 @@ public final class Inspect {
         Inspected(Gob gob){this.gob=gob;until=Utils.rtime()+10;}
     }
     private final Deque<Inspected> inspected=new ArrayDeque<>();
+    private Inspected resourceInspect;
+    private String priorRefill;
+    private GAttrib priorRefillInfo;
     public void clicked(Gob gob){
         if(gob==null||!active())return;
         inspected.addLast(new Inspected(gob));while(inspected.size()>16)inspected.removeFirst();
+        hearthborn.timers.MeteorTimers.clicked(gob);
+        MapFile.SMarker marker = hearthborn.map.MarkerQuality.naturalMarker(gob);
+        clearResourceInspect();
+        if(marker != null) {
+            resourceInspect = new Inspected(gob);
+            hearthborn.map.MarkerQuality.number(marker);
+            priorRefillInfo = attribute(gob, "haven.res.ui.inspect.SavedInfo");
+            priorRefill = savedRefillLine(priorRefillInfo);
+        }
+    }
+    private static final java.util.regex.Pattern QUALITY=java.util.regex.Pattern.compile("^(?:Quality|Качество)\\s*:\\s*([0-9]+(?:[.,][0-9]+)?)\\.?$");
+    /** The number of a plain "Quality: 44" inspect line, or null for any other message. */
+    public static Double qualityValue(String message){
+        if(message==null)return null;
+        java.util.regex.Matcher match=QUALITY.matcher(message.trim());
+        return match.matches()?Double.valueOf(match.group(1).replace(',','.')):null;
     }
     public static String namedQuality(String name,String message){
         if(name==null||message==null)return message;
@@ -107,6 +126,8 @@ public final class Inspect {
         while(!inspected.isEmpty()&&inspected.peekFirst().until<Utils.rtime())inspected.removeFirst();
         Gob target=inspected.isEmpty()?(active()?object:null):inspected.removeFirst().gob;
         if(target==null)return notice;
+        Double told=qualityValue(notice.message());
+        if(told!=null)hearthborn.map.MarkerQuality.remember(target,told);
         try{
             String name=hearthborn.world.ObjectNames.name(target);Resource resource=hearthborn.util.GameObjects.resource(target);
             if(name==null&&resource!=null)name=hearthborn.L10n.objectName(resource,hearthborn.util.GameObjects.name(resource.name));
@@ -152,7 +173,27 @@ public final class Inspect {
         return active(gui);
     }
 
+    public void refillNotice(String message) {
+        if(resourceInspect != null && resourceInspect.until >= Utils.rtime()
+           && hearthborn.timers.NaturalResourceTimers.observe(resourceInspect.gob, message))
+            clearResourceInspect();
+    }
+
+    private void clearResourceInspect() {
+        resourceInspect = null;
+        priorRefillInfo = null;
+        priorRefill = null;
+    }
+
     public void tick(double dt) {
+        if(resourceInspect != null) {
+            if(resourceInspect.until < Utils.rtime() || resourceInspect.gob.removed) clearResourceInspect();
+            else {
+                GAttrib info = attribute(resourceInspect.gob, "haven.res.ui.inspect.SavedInfo");
+                String fresh = savedRefillLine(info);
+                if(fresh != null && (info != priorRefillInfo || !fresh.equals(priorRefill))) refillNotice(fresh);
+            }
+        }
         if(gui.ui == null || !active()) { clear(); return; }
         MapView map = gui.map;
         Coord at = map.rootxlate(gui.ui.mc);
@@ -192,17 +233,11 @@ public final class Inspect {
         return null;
     }
 
-    /** Game-time "Will refill in …" as real hours, using the same pace as the study clock. */
+    /** Game-time "Will refill in …" as real hours. */
     static String refillHours(String message) {
-        if(message == null) return null;
-        java.util.regex.Matcher match = java.util.regex.Pattern.compile(
-            "(?i)will\\s+refill\\s+in\\s+([0-9]+(?:[.,][0-9]+)?)\\s+(second|minute|hour|day|week)s?").matcher(message.trim());
-        if(!match.find()) return null;
-        double count = Double.parseDouble(match.group(1).replace(',', '.'));
-        String unit = match.group(2).toLowerCase(java.util.Locale.ROOT);
-        double gameSeconds = count * (unit.startsWith("week") ? 7 * 86400d : unit.startsWith("day") ? 86400d
-            : unit.startsWith("hour") ? 3600d : unit.startsWith("minute") ? 60d : 1d);
-        double real = gameSeconds / StudyProgress.GAME_SECONDS_PER_REAL_SECOND / 3600d;
+        long millis = hearthborn.timers.NaturalResourceTimers.remainingMillis(message);
+        if(millis <= 0) return null;
+        double real = millis / 3600000d;
         if(real >= 1) {
             double shown = Math.round(real * 10) / 10.0;
             if(shown == Math.rint(shown)) return String.format(java.util.Locale.ROOT, "%.0fh", shown);
@@ -219,12 +254,15 @@ public final class Inspect {
         return shown + " (" + hours + ")";
     }
     private static String savedRefill(Gob gob) {
-        GAttrib saved = attribute(gob, "haven.res.ui.inspect.SavedInfo");
+        return refillHours(savedRefillLine(attribute(gob, "haven.res.ui.inspect.SavedInfo")));
+    }
+
+    private static String savedRefillLine(GAttrib saved) {
         Object lines = saved == null ? null : field(saved, "lines");
         if(!(lines instanceof Iterable)) return null;
         for(Object line : (Iterable<?>)lines) {
-            String hours = refillHours(String.valueOf(line));
-            if(hours != null) return hours;
+            String raw = String.valueOf(line);
+            if(hearthborn.timers.NaturalResourceTimers.remainingMillis(raw) > 0) return raw;
         }
         return null;
     }

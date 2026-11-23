@@ -63,7 +63,7 @@ final class MineClueHover {
     }
     static String describe(Minesweeper mine,MCache map,Coord at,Minesweeper.Clue clue){
         StringBuilder out=new StringBuilder(L10n.format("Dust clue: %d",clue.count));
-        out.append(" — ").append(L10n.tr(clue.pinned?"Pinned observation":"Temporary observation"));
+        out.append(" - ").append(L10n.tr(clue.pinned?"Pinned observation":"Temporary observation"));
         if(clue.mark!=0)out.append("\n").append(L10n.tr(clue.mark==Minesweeper.FLAG_DANGER?"Your mark: cross":clue.mark==Minesweeper.FLAG_SAFE?"Your mark: check mark":"Your mark: question mark"));
         ClueObservation observed=clue.observation;
         if(observed==null)out.append("\n").append(L10n.tr("Observation time and terrain are unknown (older clue)."));

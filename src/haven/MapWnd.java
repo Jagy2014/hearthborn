@@ -35,6 +35,7 @@ import java.awt.Color;
 import java.awt.event.KeyEvent;
 import java.awt.image.*;
 import haven.render.*;
+import hearthborn.map.MarkerQuality;
 import haven.iosys.tk.*;
 import haven.MapFile.Marker;
 import haven.MapFile.PMarker;
@@ -146,7 +147,7 @@ public class MapWnd extends Window implements Console.Directory {
 		nativeButtons.add(child);
 	}
 	for(Widget child : nativeButtons)
-	    if(child.kb_gkey != kb_hmark)
+	    if(child.kb_gkey != kb_hmark && (!detachedWindow() || child.kb_gkey != kb_compact))
 		column.adopt(child);
 	toolbar.hide();
 	toolbar.resize(Coord.z);
@@ -199,16 +200,50 @@ public class MapWnd extends Window implements Console.Directory {
     }
 
     private static final int btnw = UI.scale(95);
+    private static final int MARKER_PANEL_MIN = UI.scale(200);
+    private static final int MARKER_PANEL_MAX = UI.scale(260);
+    private static final Text.Foundry MARKER_NAMES = new Text.Foundry(Text.sans, 13).aa(true);
     public class Toolbox extends Widget {
 	public final MarkerList list;
 	private final Frame listf;
 	private final Button pmbtn, smbtn, nobtn, tobtn, mebtn, mibtn;
+	private final TextEntry markerSearch;
+	private final IButton clearMarkerSearch;
 	private TextEntry namesel;
 
 	private Toolbox() {
 	    super(UI.scale(200, 200));
 	    listf = add(new Frame(UI.scale(new Coord(200, 200)), false), 0, 0);
 	    list = listf.add(new MarkerList(Coord.of(listf.inner().x, 0)), 0, 0);
+	    markerSearch = add(new TextEntry(MARKER_PANEL_MIN, "") {
+		private Text hint;
+		public void draw(GOut g) {
+		    super.draw(g);
+		    if(!hasfocus && text().isEmpty()) {
+			if(hint == null) hint = fnd.render(hearthborn.L10n.tr("Search markers…"), hearthborn.ui.UiPalette.text2());
+			g.image(hint.tex(), Coord.of(toffx, (sz.y - hint.sz().y) / 2));
+		    }
+		}
+		public void dispose() {
+		    if(hint != null) hint.dispose();
+		    super.dispose();
+		}
+		protected void changed() {
+		    super.changed();
+		    list.filterMarkers(text());
+		    clearMarkerSearch.show(!text().isEmpty());
+		}
+		public void activate(String text) {
+		    List<ListMarker> results = list.allitems();
+		    if(!results.isEmpty()) list.change(results.get(0));
+		}
+	    });
+	    clearMarkerSearch = add(hearthborn.ui.SmallWindowDeco.closeButton(() -> {
+		markerSearch.settext("");
+		setfocus(markerSearch);
+	    }));
+	    clearMarkerSearch.settip("Clear search");
+	    clearMarkerSearch.hide();
 	    pmbtn = add(new Button(btnw, "Placed", false) {
 		    public void click() {
 			mflt = pmarkers;
@@ -245,14 +280,19 @@ public class MapWnd extends Window implements Console.Directory {
 		});
 	}
 
-	public void resize(int h) {
-	    super.resize(new Coord(sz.x, h));
+	void resizePanel(int width, int height) {
+	    super.resize(Coord.of(width, height));
 	    mebtn.c = new Coord(0, sz.y - mebtn.sz.y);
-	    mibtn.c = new Coord(sz.x - btnw, sz.y - mibtn.sz.y);
+	    mibtn.c = new Coord(sz.x - mibtn.sz.x, sz.y - mibtn.sz.y);
 	    nobtn.c = new Coord(0, mebtn.c.y - UI.scale(5) - nobtn.sz.y);
-	    tobtn.c = new Coord(sz.x - btnw, nobtn.c.y);
+	    tobtn.c = new Coord(sz.x - tobtn.sz.x, nobtn.c.y);
 	    pmbtn.c = new Coord(0, nobtn.c.y - UI.scale(5) - pmbtn.sz.y);
-	    smbtn.c = new Coord(sz.x - btnw, pmbtn.c.y);
+	    smbtn.c = new Coord(sz.x - smbtn.sz.x, pmbtn.c.y);
+	    markerSearch.resize(width - clearMarkerSearch.sz.x - UI.scale(4));
+	    clearMarkerSearch.move(Coord.of(width - clearMarkerSearch.sz.x,
+		Math.max(0, (markerSearch.sz.y - clearMarkerSearch.sz.y) / 2)));
+	    markerSearch.move(Coord.z);
+	    int listTop = Math.max(markerSearch.sz.y, clearMarkerSearch.sz.y) + UI.scale(5);
 	    int bottom = pmbtn.c.y - UI.scale(6);
 	    if(namesel != null) {
 		int editor = namesel.sz.y + UI.scale(8);
@@ -262,11 +302,11 @@ public class MapWnd extends Window implements Console.Directory {
 		    editor += mremove.sz.y + UI.scale(8);
 		bottom -= editor;
 	    }
-	    listf.resize(sz.x, Math.max(UI.scale(48), bottom));
-	    listf.c = Coord.z;
+	    listf.resize(sz.x, Math.max(UI.scale(48), bottom - listTop));
+	    listf.move(Coord.of(0, listTop));
 	    list.resize(listf.inner());
 	    if(namesel != null) {
-		namesel.c = new Coord(0, listf.sz.y + UI.scale(6));
+		namesel.c = listf.pos("bl").adds(0, 6);
 		namesel.resize(sz.x);
 		int y = namesel.c.y + namesel.sz.y + UI.scale(6);
 		if(colsel != null) {
@@ -720,8 +760,35 @@ public class MapWnd extends Window implements Console.Directory {
 	    super(sz, MarkerType.iconsz);
 	}
 
-	public List<ListMarker> allitems() {return(markers);}
-	public boolean searchmatch(ListMarker lm, String txt) {return(lm.mark.nm.toLowerCase().indexOf(txt.toLowerCase()) >= 0);}
+	private String query = "";
+	private List<ListMarker> filteredSource, filteredMarkers;
+	private int filteredRevision;
+
+	public List<ListMarker> allitems() {
+	    if(query.isEmpty()) return markers;
+	    int revision = MarkerQuality.captionRevision();
+	    if(filteredSource != markers || filteredRevision != revision) {
+		filteredMarkers = new ArrayList<>();
+		for(ListMarker marker : markers)
+		    if(searchmatch(marker, query)) filteredMarkers.add(marker);
+		filteredSource = markers;
+		filteredRevision = revision;
+	    }
+	    return filteredMarkers;
+	}
+
+	public boolean searchmatch(ListMarker marker, String text) {
+	    return hearthborn.map.MapFilterModel.searchText(MarkerQuality.caption(marker.mark))
+		.contains(hearthborn.map.MapFilterModel.searchText(text));
+	}
+
+	private void filterMarkers(String text) {
+	    query = hearthborn.map.MapFilterModel.searchText(text).trim();
+	    filteredSource = null;
+	    stopsearch();
+	    if(sel != null && !allitems().contains(sel)) change2(null);
+	    scrollval(0);
+	}
 
 	public class Item extends IconText {
 	    public final ListMarker lm;
@@ -732,7 +799,9 @@ public class MapWnd extends Window implements Console.Directory {
 	    }
 
 	    protected BufferedImage img() {throw(new RuntimeException());}
-	    protected String text() {return(lm.mark.nm + hearthborn.map.CaveLevels.markerSuffix(lm.mark.seg));}
+	    protected String text() {return(MarkerQuality.caption(lm.mark) + hearthborn.map.CaveLevels.markerSuffix(lm.mark.seg));}
+	    protected Text.Forge foundry() {return MARKER_NAMES;}
+	    public Object tooltip(Coord c, Widget prev) {return text();}
 	    protected boolean valid(String text) {return(Utils.eq(text, text()));}
 
 	    protected void drawicon(GOut g) {
@@ -818,14 +887,14 @@ public class MapWnd extends Window implements Console.Directory {
 			view.file.update(mark);
 		    });
 		}
-		mremove = tool.add(new Button(UI.scale(200), "Remove", false) {
+		mremove = tool.add(new Button(UI.scale(200), "Delete icon", false) {
 			public void click() {
 			    view.file.remove(mark);
 			    change2(null);
 			}
 		    });
-		MapWnd.this.resize(csz());
 	    }
+	    MapWnd.this.resize(csz());
 	}
     }
 
@@ -840,9 +909,11 @@ public class MapWnd extends Window implements Console.Directory {
         boolean combat=combatPresentation();
 	sz = sz.max(combat?Coord.of(1,1):compact() ? UI.scale(150, 150) : UI.scale(350, 255));
         int mapWidth=viewf.box.bisz().x+leftResize.sz.x+toolbar.sz.x+UI.scale(4);
-        if(!combat)sz.x=Math.max(sz.x,mapWidth+(compact()?0:tool.sz.x+UI.scale(10)));
+        if(!combat)sz.x=Math.max(sz.x,mapWidth+(compact()?0:MARKER_PANEL_MIN+UI.scale(10)));
+	if(boundedFullMap())sz=sz.min(fullMapLimit());
 	super.resize(sz);
-	tool.resize(sz.y);
+	int markerWidth = compact() ? MARKER_PANEL_MIN : Utils.clip(sz.x / 3, MARKER_PANEL_MIN, MARKER_PANEL_MAX);
+	tool.resizePanel(markerWidth, sz.y);
 	hearthborn.map.MapToolbar column = getchild(hearthborn.map.MapToolbar.class);
 	int frameW = sz.x;
 	if(!compact()) {
@@ -884,6 +955,8 @@ public class MapWnd extends Window implements Console.Directory {
 	for(Widget child = gui.child; child != null; child = child.next)
 	    if(child instanceof MapWnd) ((MapWnd)child).markcfg = next;
     }
+
+    public boolean detachedWindow() { return false; }
 
     /** A house floor, including a cellar. Caves stay outside. */
     public boolean indoors() {
@@ -970,9 +1043,23 @@ public class MapWnd extends Window implements Console.Directory {
 	else if(!a)fitOnScreen();
     }
 
-    /** Keeps a map that grew toward the right edge fully inside the parent. */
+    private boolean boundedFullMap() {
+        return parent != null && deco != null && !frameBoosted && !combatPresentation()
+            && parent.sz.x > 0 && parent.sz.y > 0;
+    }
+
+    private Coord fullMapLimit() {
+        Coord available = hearthborn.ui.HudInterfaceScale.fromParent(this, parent.sz);
+        return available.sub(sz.sub(csz())).max(Coord.of(1, 1));
+    }
+
+    /** Shrink an oversized full map before fitting its position into the current window. */
     public void fitOnScreen(){
-	if(parent==null||frameBoosted||parent.sz.x<UI.scale(200)||parent.sz.y<UI.scale(200))return;
+	if(parent==null||frameBoosted||parent.sz.x<=0||parent.sz.y<=0)return;
+	if(boundedFullMap()){
+	    Coord fitted = csz().min(fullMapLimit());
+	    if(!fitted.equals(csz()))resize(fitted);
+	}
 	Coord outer=hearthborn.ui.HudInterfaceScale.size(this);
 	int x=c.x,y=c.y;
 	if(x+outer.x>parent.sz.x)x=parent.sz.x-outer.x;
@@ -989,6 +1076,7 @@ public class MapWnd extends Window implements Console.Directory {
     public void storePlace() {
 	if(frameBoosted || parent == null || c.x < -10000)
 	    return;
+	if(boundedFullMap())fitOnScreen();
 	Utils.setprefc("wndc-map", new Coord(c));
 	Utils.setprefc("wndsz-map", csz());
 	hearthborn.map.MapPlaces.remember(this);

@@ -38,7 +38,9 @@ public final class AutoDrop {
         ORES("Ores", 30, "cassiterite", "chalcopyrite", "malachite", "ilmenite", "limonite", "hematite", "magnetite", "peacockore",
             "leadglance", "cuprite"),
         PRECIOUS("Precious Ores", 999, "galena", "argentite", "hornsilver", "petzite", "sylvanite", "nagyagite"),
-        CURIOS("Mined Curiosities", 30, "catgold", "petrifiedshell", "strangecrystal"),
+        CAT_GOLD("Cat Gold", 30, "catgold"),
+        PETRIFIED_SHELL("Petrified Seashell", 30, "petrifiedshell"),
+        CURIOS("Strange Crystal", 30, "strangecrystal"),
         QUARRYARTZ("Quarryartz", 30, "quarryquartz");
 
         public final String label;

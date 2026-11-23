@@ -14,6 +14,8 @@ package hearthborn.world;
 
 import haven.*;
 import haven.render.*;
+import hearthborn.quality.RosterStore;
+import hearthborn.timers.ObjectTimers;
 import java.awt.Color;
 import java.nio.FloatBuffer;
 import java.util.*;
@@ -26,7 +28,7 @@ import java.util.*;
 public final class ObjectNameLabel extends GAttrib implements RenderTree.Node,PView.Render2D {
     private static final Map<String,Float> doorTops=new HashMap<>();
     private static final Map<String,float[]> doorSlabs=new HashMap<>();
-    private String shown;
+    private String shown, shownQuality;
     private Tex label;
     private double refresh;
     private boolean rack,atDoor;
@@ -41,18 +43,35 @@ public final class ObjectNameLabel extends GAttrib implements RenderTree.Node,PV
         if(refresh>0)return;
         refresh=.5;
         String name=ObjectNames.hasNames()?ObjectNames.label(gob):null;
+        String quality=null;
         rack=false;
         atDoor=false;
-        if(name!=null)try{
+        try{
             Drawable drawable=gob.getattr(Drawable.class);Resource resource=drawable==null?null:drawable.getres();
-            rack=resource!=null&&resource.name.equals("gfx/terobjs/cheeserack");
-            locateDoor(resource);
-            top=resource==null?-1:modelTop(resource);
+            if(resource!=null&&ObjectTimers.furnace(resource.name)){
+                RosterStore.Rec record=RosterStore.trackedGob(gob);
+                if(record!=null&&record.q>0){
+                    quality="q"+RosterStore.fmtQ(record.q).replaceFirst("\\.0$", "");
+                    if(name==null)name=RosterStore.buildingDisplayName(record);
+                }
+            }
+            if(name!=null&&resource!=null){
+                rack=resource.name.equals("gfx/terobjs/cheeserack");
+                locateDoor(resource);
+                top=modelTop(resource);
+            }else top=-1;
         }catch(Loading pending){}
-        if(Objects.equals(name,shown))return;
+        if(Objects.equals(name,shown)&&Objects.equals(quality,shownQuality))return;
         shown=name;
+        shownQuality=quality;
         if(label!=null)label.dispose();
-        label=name==null?null:WorldLabels.caption(name,Color.WHITE,false);
+        label=caption();
+    }
+
+    private Tex caption(){
+        if(shown==null)return null;
+        return shownQuality==null ? WorldLabels.caption(shown,Color.WHITE,false)
+            : WorldLabels.captionLines(shown,shownQuality,Color.WHITE);
     }
 
     private void locateDoor(Resource resource){
@@ -162,7 +181,7 @@ public final class ObjectNameLabel extends GAttrib implements RenderTree.Node,PV
 
     public void draw(GOut g,Pipe state){
         if(label==null)return;
-        if(WorldLabels.stale(label)){label.dispose();label=WorldLabels.caption(shown,Color.WHITE,false);}
+        if(WorldLabels.stale(label)){label.dispose();label=caption();}
         Coord at=atDoor?WorldLabels.anchor(state,g.sz(),doorX,doorY,doorZ):anchor(state,g.sz(),rack,top);
         if(at!=null)WorldLabels.draw(g,label,at,.5,1);
     }

@@ -45,6 +45,7 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
     public ContentsWindow contentswnd = null;
     /** Set once the automatic drop rules have judged this item. */
     public boolean autoDropChecked = false;
+    public boolean markerChecked = false;
     public int infoseq;
     private Widget hovering;
     private boolean hoverset;
@@ -213,6 +214,8 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
 	    spr.tick(dt);
 	updcontinfo();
 	hearthborn.inventory.AutoDrop.check(this);
+	if(!markerChecked)
+	    markerChecked = hearthborn.map.MarkerQuality.item(this);
 	if(!hoverset)
 	    hovering = null;
 	hoverset = false;
@@ -261,15 +264,19 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
     }
 
     public void uimsg(String name, Object... args) {
+        if(name=="tt"||name=="chres"||name=="num")hearthborn.ui.HandMenu.invalidate();
 	if(name == "num") {
 	    num = Utils.iv(args[0]);
 	} else if(name == "chres") {
+            if(markerChecked && hearthborn.map.MarkerQuality.bucketSample(res)) markerChecked = false;
 	    synchronized(this) {
 		res = ui.sess.getresv(args[0]);
 		sdt = (args.length > 1) ? new MessageBuf((byte[])args[1]) : MessageBuf.nil;
 		spr = null;
 	    }
 	} else if(name == "tt") {
+            if(markerChecked && hearthborn.map.MarkerQuality.bucketSample(res))
+                markerChecked = false;
             meterUpdated=System.currentTimeMillis();
 	    info = null;
 	    rawinfo = new ItemInfo.Raw(args);
@@ -588,6 +595,15 @@ public class GItem extends AWidget implements ItemInfo.SpriteOwner, GSprite.Owne
 	    Coord marg = hearthborn.ui.HudInterfaceScale.toParent(this, HoverDeco.hovermarg);
 	    return(reaches(parent.rootxlate(ui.mc), c.add(marg), hearthborn.ui.HudInterfaceScale.size(this).sub(marg), Coord.z));
 	}
+
+        /** An open child preview also keeps its source preview alive. */
+        public boolean pointerOnPreviewTree() {
+            if(st != "hover")return false;
+            if(pointerOnPopup())return true;
+            for(GItem item:children(GItem.class))
+                if(item.contentswnd!=null&&item.contentswnd.pointerOnPreviewTree())return true;
+            return false;
+        }
 
 	private boolean pointerInPopup() {
 	    if(ui == null || parent == null) return(false);

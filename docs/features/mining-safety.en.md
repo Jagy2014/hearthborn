@@ -23,7 +23,7 @@ Press **Escape** to exit annotation mode. Existing marks remain on the map.
 | ✕ | Red | Your own cross mark |
 | ✓ | Green | Your own check mark |
 | ? | Purple | Your own question mark |
-| Empty | — | Remove your mark |
+| Empty | - | Remove your mark |
 
 These symbols represent **your own notes**, not a safety assessment made by the client.
 

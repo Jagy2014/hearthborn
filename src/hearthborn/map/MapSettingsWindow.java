@@ -26,8 +26,12 @@ import java.util.*;
  * @author Jagy2014
  */
 public final class MapSettingsWindow extends Window {
+    private static final Text.Foundry LIST_FONT = new Text.Foundry(Text.sans, 13).aa(true);
+    private static final int GROUP_WIDTH = UI.scale(196);
+    private static final int ROW_HEIGHT = UI.scale(24);
     private final MapFilterModel model;
     private final TextEntry search;
+    private final IButton clearSearch;
     private final GroupList groups;
     private final EntryList list;
     private final Widget details;
@@ -42,8 +46,14 @@ public final class MapSettingsWindow extends Window {
         setfocustab(true);
         model=new MapFilterModel(settings);
         search=add(new TextEntry(UI.scale(420),""){
-            protected void changed(){super.changed();if(list!=null)refill();}
+            protected void changed(){super.changed();clearSearch.show(!text().isEmpty());if(list!=null)refill();}
         },Coord.z);
+        clearSearch=add(hearthborn.ui.SmallWindowDeco.closeButton(()->{
+            search.settext("");
+            setfocus(search);
+        }));
+        clearSearch.settip("Clear search");
+        clearSearch.hide();
         search.settip("Search objects and tiles");
         selectAll=add(new CheckBox("").state(this::allShown).set(on->model.show(shown,on)),Coord.z);
         selectAll.settip("Select all rows in the open category. Search narrows those rows. Other categories stay as they are.");
@@ -61,28 +71,41 @@ public final class MapSettingsWindow extends Window {
 
     protected void added(){
         super.added();
+        int wantedHeight=Math.max(UI.scale(520),groups.totalh()+footerHeight());
+        int room=ui.root.sz.y-(sz.y-csz().y)-UI.scale(40);
         resize(Coord.of(Math.min(UI.scale(660),Math.max(UI.scale(560),ui.root.sz.x-UI.scale(80))),
-            Math.min(UI.scale(520),Math.max(UI.scale(380),ui.root.sz.y-UI.scale(120)))));
+            Math.min(wantedHeight,room)));
         setfocus(search);
+    }
+    private int footerHeight(){
+        int gap=UI.scale(8);
+        return markers.sz.y+markerNames.sz.y+gap*2+(discoveries.visible?discoveries.sz.y+gap:0);
     }
     public void resize(Coord size){
         super.resize(size.max(UI.scale(560,380)));
         if(list==null)return;
-        Coord area=csz();int gap=UI.scale(8),left=UI.scale(180),x=left+gap,width=area.x-x;
-        search.move(Coord.of(x,0));search.resize(Math.max(UI.scale(120),width-count.sz.x-gap));
-        count.move(Coord.of(area.x-count.sz.x,(search.sz.y-count.sz.y)/2));
-        int y=search.sz.y+gap;
-        int footer=markers.sz.y+markerNames.sz.y+discoveries.sz.y+gap*3,detailHeight=UI.scale(104),header=selectAll.sz.y+UI.scale(2);
-        int height=Math.max(UI.scale(80),area.y-y-header-detailHeight-footer-gap);
-        list.move(Coord.of(x,y+header));list.resize(Coord.of(width,height));
-        placeSelectAll();
-        groups.move(Coord.z);groups.resize(Coord.of(left,area.y-footer));
-        details.move(Coord.of(x,y+header+height+gap));details.resize(Coord.of(width,detailHeight));
+        Coord area=csz();
+        int gap=UI.scale(8);
+        groups.resize(Coord.of(GROUP_WIDTH,area.y-footerHeight()));
         int foot=area.y-discoveries.sz.y;
         discoveries.move(Coord.of(0,foot));
+        if(!discoveries.visible)foot=area.y+gap;
         foot-=gap+markerNames.sz.y;markerNames.move(Coord.of(0,foot));
         foot-=gap+markers.sz.y;markers.move(Coord.of(0,foot));
+        details.resize(Coord.of(area.x-GROUP_WIDTH-gap,0));
         showDetails(list.sel);
+    }
+    private void layoutResults(){
+        int gap=UI.scale(8);
+        int x=GROUP_WIDTH+gap,width=details.sz.x;
+        search.move(Coord.of(x,0));
+        int y=search.sz.y+gap+selectAll.sz.y+UI.scale(2);
+        int detailHeight=details.contentsz().y;
+        int detailTop=csz().y-detailHeight;
+        int bottom=detailHeight>0?detailTop-gap:detailTop;
+        list.move(Coord.of(x,y));list.resize(Coord.of(width,Math.max(1,bottom-y)));
+        details.move(Coord.of(x,detailTop));details.resize(Coord.of(width,detailHeight));
+        placeSelectAll();
     }
     private MapWnd map(){GameUI gui=getparent(GameUI.class);return gui==null?null:gui.mapfile;}
     private void playerSound(hearthborn.world.PlayerRelations.Kind kind){
@@ -130,7 +153,10 @@ public final class MapSettingsWindow extends Window {
         int center=list.c.x+itemw-UI.scale(24)-UI.scale(28);
         selectAll.move(Coord.of(center-selectAll.sz.x/2,list.c.y-selectAll.sz.y-UI.scale(2)));
         count.move(Coord.of(csz().x-count.sz.x,search.c.y+(search.sz.y-count.sz.y)/2));
-        search.resize(Math.max(UI.scale(120),list.sz.x-count.sz.x-UI.scale(8)));
+        int gap=UI.scale(4);
+        int clearX=count.c.x-gap-clearSearch.sz.x;
+        clearSearch.move(Coord.of(clearX,search.c.y+Math.max(0,(search.sz.y-clearSearch.sz.y)/2)));
+        search.resize(clearX-search.c.x-gap);
     }
     private String categoryTitle(String group){
         String english=categories.get(group);
@@ -151,13 +177,13 @@ public final class MapSettingsWindow extends Window {
     }
     private void showDetails(MapFilterModel.Entry entry){
         for(Widget child:new ArrayList<>(details.children()))child.destroy();
-        if(entry==null)return;
-        if(entry.setting!=null)details.add(new GobIcon.IconSettings(model.settings,details.sz.x,entry.setting),Coord.z);
-        else if(entry.playerKind!=null)playerSound(entry.playerKind);
-        else {
+        if(entry!=null && entry.setting!=null)details.add(new GobIcon.IconSettings(model.settings,details.sz.x,entry.setting),Coord.z);
+        else if(entry!=null && entry.playerKind!=null)playerSound(entry.playerKind);
+        else if(entry!=null) {
             details.add(new Label(entry.name,details.sz.x),Coord.z);
             details.add(new Label("A checked tile is highlighted on the map.",details.sz.x),UI.scale(0,24));
         }
+        layoutResults();
     }
     public void tick(double dt){
         if(model.refresh())refill(false);
@@ -165,31 +191,35 @@ public final class MapSettingsWindow extends Window {
     }
 
     private final class GroupList extends SListBox<String,Widget> {
-        GroupList(){super(UI.scale(180,360),UI.scale(28));}
+        GroupList(){super(Coord.of(GROUP_WIDTH,UI.scale(360)),ROW_HEIGHT);}
         protected java.util.List<String> items(){return new ArrayList<>(categories.keySet());}
         protected Widget makeitem(String group,int index,Coord size){
             if(MapFilterModel.section(group))return new SListWidget.ItemWidget<String>(this,size,group){
-                { Label title=new Label(categoryTitle(group),CharWnd.attrf);title.setcolor(new Color(220,190,110));
+                { Label title=new Label(categoryTitle(group),LIST_FONT);title.setcolor(new Color(220,190,110));
                   add(title,Coord.of(UI.scale(4),(size.y-title.sz.y)/2)); }
             };
             return new SListWidget.ItemWidget<String>(this,size,group){
                 { IconCategories.Category icon=null;
                   for(IconCategories.Category value:IconCategories.Category.values())if(value.id.equals(group))icon=value;
-                  if(icon!=null)add(new Img(IconCategoryPanel.image(icon)),UI.scale(2,4));
-                  add(SListWidget.TextItem.of(size.sub(UI.scale(27),0),CharWnd.attrf,()->categoryTitle(group)),UI.scale(27,0));
+                  if(icon!=null){
+                      Tex image=IconCategoryPanel.image(icon);
+                      add(new Img(image),Coord.of(UI.scale(2),(size.y-image.sz().y)/2));
+                  }
+                  add(SListWidget.TextItem.of(size.sub(UI.scale(27),0),LIST_FONT,()->categoryTitle(group)),UI.scale(27,0));
+                  settip(categoryTitle(group));
                 }
             };
         }
         public void change(String value){if(value==null||MapFilterModel.section(value))return;super.change(value);category=value;refill();}
     }
     private final class EntryList extends SListBox<MapFilterModel.Entry,Widget> {
-        EntryList(){super(UI.scale(420,250),UI.scale(28));setcanfocus(true);}
+        EntryList(){super(UI.scale(420,250),ROW_HEIGHT);setcanfocus(true);}
         protected java.util.List<MapFilterModel.Entry> items(){return shown;}
         protected Widget makeitem(MapFilterModel.Entry entry,int index,Coord size){return new EntryRow(this,entry,size);}
         public void change(MapFilterModel.Entry entry){super.change(entry);showDetails(entry);}
         public boolean mousedown(MouseDownEvent event){parent.setfocus(this);return super.mousedown(event);}
         public boolean keydown(KeyDownEvent event){
-            if(event.code==java.awt.event.KeyEvent.VK_SPACE){if(sel!=null)sel.shown(!sel.shown());return true;}
+            if(event.code==java.awt.event.KeyEvent.VK_SPACE){if(sel!=null&&!sel.questSearch())sel.shown(!sel.shown());return true;}
             if(event.code==java.awt.event.KeyEvent.VK_UP||event.code==java.awt.event.KeyEvent.VK_DOWN){
                 if(shown.isEmpty())return true;
                 int index=shown.indexOf(sel),direction=event.code==java.awt.event.KeyEvent.VK_UP?-1:1;
@@ -204,16 +234,21 @@ public final class MapSettingsWindow extends Window {
             int right=size.x-UI.scale(24);
             int show=right-UI.scale(28);
             boolean warning=entry.setting!=null&&!entry.corpse()&&hearthborn.world.GobMarks.choosesWarning(entry.resource);
-            adda(new CheckBox("").state(entry::shown).set(entry::shown).settip("Display"),show,size.y/2,.5,.5);
+            adda(new CheckBox("").state(entry::displayChecked).set(on->{if(!entry.questSearch())entry.shown(on);}).settip("Display"),show,size.y/2,.5,.5);
             if(entry.playerKind!=null)adda(new CheckBox(""){
-                public Object tooltip(Coord c,Widget prev){settip(hearthborn.world.PlayerWarnings.choiceName(entry.playerKind));return super.tooltip(c,prev);}
+                public Object tooltip(Coord c,Widget prev){return L10n.tr(hearthborn.world.PlayerWarnings.choiceName(entry.playerKind));}
             }.state(()->hearthborn.world.PlayerWarnings.heard(entry.playerKind)).set(on->hearthborn.world.PlayerWarnings.heard(entry.playerKind,on)),right,size.y/2,.5,.5);
-            else if(entry.soundEditable())adda(new CheckBox("").state(()->entry.setting.notify).set(on->{entry.setting.notify=on;model.settings.dsave();}).settip("Play sound when this icon appears"),right,size.y/2,.5,.5);
+            else if(entry.soundEditable())adda(new CheckBox("").state(entry::soundChecked).set(on->{if(!entry.questSearch()){entry.setting.notify=on;model.settings.dsave();}}).settip("Play sound when this icon appears"),right,size.y/2,.5,.5);
             else if(warning)adda(new CheckBox("").state(()->hearthborn.world.GobMarks.warned(entry.resource)).set(on->hearthborn.world.GobMarks.warned(entry.resource,on)).settip("Play a warning when this animal appears"),right,size.y/2,.5,.5);
             else if(entry.setting!=null)adda(new Label("–").settip(L10n.tr("Uses the animal warning sound.")),right,size.y/2,.5,.5);
             Label kind=new Label(entry.playerKind!=null?"Player":entry.setting==null?"Tile":"Object");kind.setcolor(new Color(190,179,145));
             adda(kind,right-UI.scale(50),size.y/2,1,.5);
-            add(SListWidget.IconText.of(Coord.of(Math.max(UI.scale(40),right-UI.scale(110)),size.y),entry::image,()->entry.name),Coord.z);
+            Coord textSize=Coord.of(Math.max(UI.scale(40),right-UI.scale(110)),size.y);
+            add(new SListWidget.IconText(textSize) {
+                protected java.awt.image.BufferedImage img(){return entry.image();}
+                protected String text(){return entry.name;}
+                protected Text.Forge foundry(){return LIST_FONT;}
+            },Coord.z);
             settip(entry.name);
         }
     }

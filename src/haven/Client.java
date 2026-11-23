@@ -52,17 +52,42 @@ public class Client implements Console.Directory {
 	    wnd.sizing(new Windeye.Sizing().minsize(UI.scale(800, 600)).normsize(Utils.getprefc("mainwnd/size", UI.scale(1024, 768))));
 	else
 	    wnd.sizing(new Windeye.Sizing().fixsize(fsz));
-	if(initfullscreen.get() || Utils.getprefb("mainwnd/fullscreen",false))
-	    wnd.state(Windeye.State.EXCLUSIVE);
-	else if(Utils.getprefb("mainwnd/max", false))
-	    wnd.state(Windeye.State.MAXIMIZED);
 	try(InputStream icon = hearthborn.assets.Assets.open("icons/app/hearthborn.png")) {
 	    wnd.icon(javax.imageio.ImageIO.read(icon));
 	} catch(IOException e) {
 	    throw(new Error(e));
 	}
 	wnd.add(queue);
+	/* Show before exclusive fullscreen: NEWT/JOGL can leave a blank or stuck
+	 * window if setFullscreen runs while the window is still hidden (common after
+	 * enabling Fullscreen in settings and restarting). */
 	wnd.show(true);
+	restoreWindowState();
+    }
+
+    private void restoreWindowState() {
+	boolean wantFs = initfullscreen.get() || Utils.getprefb("mainwnd/fullscreen", false);
+	boolean wantMax = Utils.getprefb("mainwnd/max", false);
+	try {
+	    if(wantFs)
+		wnd.state(Windeye.State.EXCLUSIVE);
+	    else if(wantMax)
+		wnd.state(Windeye.State.MAXIMIZED);
+	} catch(RuntimeException error) {
+	    new Warning(error, "could not restore fullscreen/maximized window state").issue();
+	    Utils.setprefb("mainwnd/fullscreen", false);
+	    try {wnd.state(wantMax ? Windeye.State.MAXIMIZED : Windeye.State.NORMAL);}
+	    catch(RuntimeException ignored) {try {wnd.state(Windeye.State.NORMAL);} catch(RuntimeException ignored2) {}}
+	}
+	/* Exclusive mode that silently fails can leave a 0×0 drawable; fall back. */
+	if(wantFs) {
+	    Coord sz = wnd.size();
+	    if(sz == null || sz.x < 64 || sz.y < 64) {
+		Utils.setprefb("mainwnd/fullscreen", false);
+		try {wnd.state(wantMax ? Windeye.State.MAXIMIZED : Windeye.State.NORMAL);}
+		catch(RuntimeException ignored) {}
+	    }
+	}
     }
 
     public static class EventQueue implements Toolkit.EventListener {

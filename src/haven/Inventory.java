@@ -121,7 +121,7 @@ public class Inventory extends Widget implements DTarget {
 		continue;
 	    if(child.c.x >= right - UI.scale(8)) {
 		child.move(child.c.add(extra.x, 0));
-		if(child instanceof VMeter && hearthborn.timers.ObjectTimers.largeGrid(window))
+		if(child instanceof VMeter && hearthborn.timers.ObjectTimers.stretchFuelMeter(window))
 		    child.resize(oven?hearthborn.ui.FuelReadout.width(VMeter.bg.sz().x):VMeter.bg.sz().x, sz.y);
 	    }
 	}
@@ -166,6 +166,7 @@ public class Inventory extends Widget implements DTarget {
     }
     
     public void addchild(Widget child, Object... args) {
+        hearthborn.ui.HandMenu.invalidate();
 	add(child);
 	Coord c = (Coord)args[0];
 	if(child instanceof GItem) {
@@ -175,6 +176,7 @@ public class Inventory extends Widget implements DTarget {
     }
     
     public void cdestroy(Widget w) {
+        hearthborn.ui.HandMenu.invalidate();
 	super.cdestroy(w);
 	if(w instanceof GItem) {
 	    GItem i = (GItem)w;

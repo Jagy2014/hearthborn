@@ -35,7 +35,9 @@ public final class CombatLayout {
     private boolean fighting(){
         // A peace offer changes gst/current and may remove Fightsess, but the
         // relationship remains until the server actually removes the opponent.
-        return gui.fv!=null&&!gui.fv.lsrel.isEmpty() || gui.findchild(Fightsess.class)!=null;
+        // While re-aggro is chasing a fled animal, keep compact UI so the HUD does not flash back.
+        return gui.fv!=null&&!gui.fv.lsrel.isEmpty() || gui.findchild(Fightsess.class)!=null
+            || hearthborn.combat.FighterMark.holdingLayout();
     }
     public void refresh(){
         boolean now=fighting();

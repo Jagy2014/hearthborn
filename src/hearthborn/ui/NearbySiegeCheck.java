@@ -78,7 +78,7 @@ public final class NearbySiegeCheck {
         java.util.function.Consumer<UI> sound=sound(gui,gob);
         state.announced=true;
         gob.setattr(new ObjectHighlight(gob));
-        String message=L10n.format("Nearby: %s — %d tiles away (loaded objects only).",L10n.tr(kind),(int)Math.ceil(gob.rc.dist(player.rc)/MCache.tilesz.x));
+        String message=L10n.format("Nearby: %s - %d tiles away (loaded objects only).",L10n.tr(kind),(int)Math.ceil(gob.rc.dist(player.rc)/MCache.tilesz.x));
         gui.ui.msg(message,java.awt.Color.WHITE,sound==null?UI.InfoMessage.sfx:null);
         if(sound!=null)sound.accept(gui.ui);
     }

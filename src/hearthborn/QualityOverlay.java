@@ -119,21 +119,17 @@ public final class QualityOverlay implements Disposable {
         return 1;
     }
 
-    /** One quality line for the whole stack, using the amount-weighted mean. */
+    /**
+     * Stacks keep the native quality tip (blue mark), same as other items - StackTips copies it from a member.
+     * Only strip leftover QBuff / old average lines so they do not double up.
+     */
     public static void presentAverage(GItem item, List<ItemInfo> info) {
         if(!stacked(item)) return;
         java.util.Iterator<ItemInfo> tips = info.iterator();
-        while(tips.hasNext()) if(tips.next().getClass().getName().endsWith(".QBuff")) tips.remove();
-        Double average = stackQuality(item);
-        if(average != null) info.add(new Average(item, average));
-    }
-
-    private static final class Average extends ItemInfo.Tip {
-        final double quality;
-        Average(ItemInfo.Owner owner, double quality) {super(owner); this.quality = quality;}
-        public int order() {return 10;}
-        public java.awt.image.BufferedImage tipimg() {
-            return RichText.render(String.format("$col[192,192,255]{%s} %s", L10n.tr("Quality:"), format(quality)), 0).img;
+        while(tips.hasNext()) {
+            String name = tips.next().getClass().getName();
+            if(name.endsWith(".QBuff") || name.endsWith("QualityOverlay$Average"))
+                tips.remove();
         }
     }
 

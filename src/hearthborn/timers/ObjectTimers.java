@@ -39,6 +39,7 @@ public final class ObjectTimers {
     private static final Map<String, Integer> waiting = new HashMap<>();
     private static final Map<String, Tex> cache = new HashMap<>();
     private static final BufferedImage TIMER_ICON = timerIcon();
+    private static final BufferedImage FURNACE_ICON = furnaceIcon();
     private static final Set<String> told = new HashSet<>();
     private static boolean loaded;
     private static Gob clicked;
@@ -75,6 +76,8 @@ public final class ObjectTimers {
     public static void clicked(Gob gob) {
         hearthborn.util.ObjectWindows.clicked(gob);
         ClaimTimers.clicked(gob);
+        MeteorTimers.clicked(gob);
+        hearthborn.map.MarkerQuality.touched(gob);
         clicked = gob;
         clickedAt = Utils.rtime();
     }
@@ -131,7 +134,8 @@ public final class ObjectTimers {
                 Coord3f point = map.screenxf(new Coord3f(position.x, position.y, position.z + 15));
                 if(point == null)
                     continue;
-                WorldLabels.draw(g, tex(clock(left)), point.round2(), 0.5, 1);
+                boolean furnace = furnace(resource(gob));
+                WorldLabels.draw(g, tex(clock(left), furnace), point.round2(), 0.5, 1);
             } catch(Loading ignored) {}
         }
     }
@@ -210,6 +214,11 @@ public final class ObjectTimers {
         }
     }
 
+    public static boolean furnace(String resource) {
+        Kind kind = Kind.ofGob(resource);
+        return requiresFire(kind) || kind == Kind.STEEL || kind == Kind.FINERY;
+    }
+
     private static boolean requiresFire(Kind kind) {
         return kind == Kind.SMELTER || kind == Kind.STACK || kind == Kind.KILN || kind == Kind.OVEN;
     }
@@ -279,6 +288,9 @@ public final class ObjectTimers {
     }
 
     public static boolean oven(Window window){return window!=null&&Kind.of(window.cap)==Kind.OVEN;}
+    public static boolean stretchFuelMeter(Window window){
+        return largeGrid(window)&&Kind.of(window.cap)!=Kind.SMELTER;
+    }
     /** Grids that show several marks on each portion, same size as the oven. Food tables stay ordinary. */
     public static boolean largeGrid(Window window){
         if(window==null)return false;
@@ -508,6 +520,28 @@ public final class ObjectTimers {
         }
     }
 
+    private static BufferedImage furnaceIcon() {
+        BufferedImage image = TexI.mkbuf(Coord.of(48, 48));
+        java.awt.Graphics2D pen = image.createGraphics();
+        pen.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_ON);
+        pen.setColor(Color.BLACK);
+        pen.fillOval(0, 0, 48, 48);
+        pen.setColor(Color.WHITE);
+        pen.fillOval(3, 3, 42, 42);
+        pen.setColor(Color.BLACK);
+        for(int tick = 0; tick < 12; tick++) {
+            double angle = tick * Math.PI / 6;
+            int x = 24 + (int)Math.round(16 * Math.sin(angle));
+            int y = 24 - (int)Math.round(16 * Math.cos(angle));
+            pen.fillOval(x - 2, y - 2, 4, 4);
+        }
+        pen.setStroke(new java.awt.BasicStroke(3, java.awt.BasicStroke.CAP_ROUND, java.awt.BasicStroke.JOIN_ROUND));
+        pen.drawLine(24, 24, 24, 13);
+        pen.drawLine(24, 24, 31, 28);
+        pen.dispose();
+        return image;
+    }
+
     private static String clock(int seconds) {
         int hours = seconds / 3600;
         int minutes = (seconds % 3600) / 60;
@@ -516,12 +550,12 @@ public final class ObjectTimers {
             : seconds >= 60 ? String.format("%d:%02d", minutes, rest) : String.format("%02d", rest);
     }
 
-    /** The countdown is drawn exactly like the object's name above it: same bold font, black stroke and halo, no plate, with a small hourglass in front. */
-    private static Tex tex(String label) {
-        Tex tex = cache.get(label);
+    private static Tex tex(String label, boolean furnace) {
+        String key = (furnace ? "f:" : "o:") + label;
+        Tex tex = cache.get(key);
         if(tex != null && WorldLabels.stale(tex)) {
             tex.dispose();
-            cache.remove(label);
+            cache.remove(key);
             tex = null;
         }
         if(tex == null) {
@@ -530,8 +564,8 @@ public final class ObjectTimers {
                     old.dispose();
                 cache.clear();
             }
-            tex = WorldLabels.captionWithIcon(label, Color.WHITE, TIMER_ICON);
-            cache.put(label, tex);
+            tex = WorldLabels.captionWithIcon(label, Color.WHITE, furnace ? FURNACE_ICON : TIMER_ICON);
+            cache.put(key, tex);
         }
         return tex;
     }

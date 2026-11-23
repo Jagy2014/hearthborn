@@ -51,12 +51,19 @@ public final class SettingsSearch {
     private final OptWnd options;
     private final List<Widget> grid=new ArrayList<>();
     private final Field field;
+    private final IButton clear;
     private final Results results;
     private List<Entry> index;
 
     private SettingsSearch(OptWnd options,int width){
         this.options=options;
         field=new Field(width);
+        clear=SmallWindowDeco.closeButton(()->{
+            field.settext("");
+            field.parent.setfocus(field);
+        });
+        clear.settip("Clear search");
+        clear.hide();
         results=new Results(Coord.of(width,ROWS*rowHeight()));
         results.hide();
     }
@@ -66,6 +73,8 @@ public final class SettingsSearch {
     public static SettingsSearch install(OptWnd options,int width){
         SettingsSearch search=new SettingsSearch(options,width);
         options.main.add(search.field,Coord.z);
+        options.main.add(search.clear);
+        search.resizeField(width);
         search.below=search.field.pos("bl").adds(0,8).y;
         options.main.add(search.results,Coord.of(0,search.below));
         return search;
@@ -91,27 +100,32 @@ public final class SettingsSearch {
             b.move(Coord.of(right?width+gap:0,b.c.y));
         }
         int total=second==Integer.MAX_VALUE?width:width*2+gap;
-        field.resize(total);
+        resizeField(total);
         results.resize(Coord.of(total,results.sz.y));
     }
     private Widget pane;
     /** Sidebar layout: the field spans the column, and the results take the place of the section pane while a query is typed. */
     public void sidebar(int columnWidth,Coord at,int width,Widget pane){
         this.pane=pane;
-        field.resize(columnWidth);
+        resizeField(columnWidth);
         results.move(at);
         results.resize(Coord.of(width,results.sz.y));
     }
     /** Called once the rest of the main panel exists, so the controls hidden during a search are known. */
     public void finish(){
         grid.clear();
-        if(pane==null)for(Widget w=options.main.child;w!=null;w=w.next)if(w!=field&&w!=results)grid.add(w);
+        if(pane==null)for(Widget w=options.main.child;w!=null;w=w.next)if(w!=field&&w!=clear&&w!=results)grid.add(w);
+    }
+
+    private void resizeField(int width){
+        field.resize(width-clear.sz.x-UI.scale(4));
+        clear.move(Coord.of(field.c.x+width-clear.sz.x,field.c.y+Math.max(0,(field.sz.y-clear.sz.y)/2)));
     }
 
     private final class Field extends TextEntry {
         private Text hint;
         Field(int width){super(width,"");}
-        protected void changed(){super.changed();refresh(text());}
+        protected void changed(){super.changed();clear.show(!text().isEmpty());refresh(text());}
         public void draw(GOut g){
             super.draw(g);
             if(text().isEmpty()){

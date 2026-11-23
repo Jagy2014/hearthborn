@@ -57,6 +57,7 @@ public final class LocalActionBelt {
     public static void tick(GameUI gui){
         if(gui.menu==null)return;
         Map<Integer,String> saved=bindings(gui);if(saved.isEmpty()||!due(gui))return;
+        if(saved.values().stream().anyMatch(path->path.startsWith("hearthborn/hand-item/")))HandMenu.restore(gui.menu);
         synchronized(gui.menu.paginae){
             for(MenuGrid.Pagina page:gui.menu.paginae)try {
                 String path=page.res().name;

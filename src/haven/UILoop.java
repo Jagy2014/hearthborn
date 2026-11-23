@@ -108,16 +108,22 @@ public abstract class UILoop implements Console.Directory {
     private Indir<Tex> prevtooltex = null;
     private Disposable freetooltex = null;
     private boolean prevframed = false;
+    private final hearthborn.ui.TooltipHover tooltipHover = new hearthborn.ui.TooltipHover();
     private void drawtooltip(UI ui, GOut g) {
 	Object tooltip;
+	Widget owner;
+	Coord pointer;
 	hearthborn.UiFonts.beginTip();
 	try {
 	    synchronized(ui) {
-		tooltip = ui.tooltip(ui.mc);
+		pointer = ui.mc;
+		tooltip = ui.tooltip(pointer);
+		owner = ui.tooltipOwner();
 	    }
 	} finally {
 	    hearthborn.UiFonts.endTip();
 	}
+	tooltip = tooltipHover.visible(owner, tooltip, Utils.rtime());
 	Indir<Tex> tt = null;
 	boolean framed = prevframed;
 	if(Utils.eq(tooltip, prevtooltip)) {
@@ -177,9 +183,9 @@ public abstract class UILoop implements Console.Directory {
 	    Coord sz = framed ? tsz.add(Window.wbox.bisz()).add(margin.mul(2)) : tsz;
 	    Coord edge = UI.scale(16, 16);
 	    /* Below and to the right of the pointer, clear of the arrow; above it only when there is no room underneath. */
-	    Coord pos = ui.mc.add(UI.scale(8), UI.scale(26));
+	    Coord pos = pointer.add(UI.scale(8), UI.scale(26));
 	    if(pos.y + sz.y > g.sz().y - edge.y)
-		pos = Coord.of(pos.x, ui.mc.y - sz.y - UI.scale(8));
+		pos = Coord.of(pos.x, pointer.y - sz.y - UI.scale(8));
 	    if(pos.x < edge.x)
 		pos.x = edge.x;
 	    if(pos.y < edge.y)
@@ -188,16 +194,16 @@ public abstract class UILoop implements Console.Directory {
 		pos.x = Math.max(edge.x, g.sz().x - edge.x - sz.x);
 	    if(pos.y + sz.y > g.sz().y - edge.y)
 		pos.y = Math.max(edge.y, g.sz().y - edge.y - sz.y);
-            if(ui.tooltipOwner() instanceof hearthborn.ui.EquipmentStrip) {
-                pos=((hearthborn.ui.EquipmentStrip)ui.tooltipOwner()).tooltipPosition(ui.mc,sz,g.sz());
-            } else if(ui.tooltipOwner() instanceof hearthborn.ui.AccountStatusFlag) {
-                pos=((hearthborn.ui.AccountStatusFlag)ui.tooltipOwner()).tooltipPosition(ui.mc,sz,g.sz());
-            } else if(ui.tooltipOwner() instanceof Cal) {
-                pos=hearthborn.ui.CalendarInfo.tooltipPosition(ui.mc,sz,g.sz());
+            if(owner instanceof hearthborn.ui.EquipmentStrip) {
+                pos=((hearthborn.ui.EquipmentStrip)owner).tooltipPosition(pointer,sz,g.sz());
+            } else if(owner instanceof hearthborn.ui.AccountStatusFlag) {
+                pos=((hearthborn.ui.AccountStatusFlag)owner).tooltipPosition(pointer,sz,g.sz());
+            } else if(owner instanceof Cal) {
+                pos=hearthborn.ui.CalendarInfo.tooltipPosition(pointer,sz,g.sz());
             } else {
-                hearthborn.map.MapToolbar bar=hearthborn.map.MapToolbar.containing(ui.tooltipOwner());
+                hearthborn.map.MapToolbar bar=hearthborn.map.MapToolbar.containing(owner);
                 if(bar!=null)
-                    pos=bar.tooltipPosition(ui.tooltipOwner(),sz,g.sz());
+                    pos=bar.tooltipPosition(owner,sz,g.sz());
             }
 	    if(hearthborn.ui.UiTheme.light()) {
 		/* The tip of a light theme is inverted: a dark brown plate, a thin wood-coloured line, cream text. */

@@ -54,6 +54,12 @@ public final class Toolbars {
         if(!separate(id))return true;
         return enabled(id);
     }
+    /** The belt slot under the n-th button of an additional toolbar, or -1 while the toolbar is off or has no such button. */
+    public static int panelSlot(GameUI gui,String id,int index){
+        if(gui==null)return -1;
+        for(Row row:gui.children(Row.class))if(id.equals(row.id))return row.visible()?row.slotOf(index):-1;
+        return -1;
+    }
     public static void layout(GameUI gui){for(Bar bar:gui.children(Bar.class))bar.layout();}
     public static boolean functionKey(GameUI gui,Widget.GlobKeyEvent event){
         if(gui==null||gui.beltwdg==null||event.mods!=0||event.code<KeyEvent.VK_F1||event.code>KeyEvent.VK_F12)return false;
@@ -306,6 +312,8 @@ public final class Toolbars {
         public final String id;
         private final GameUI gui;
         private final Tex[] labels=new Tex[12];
+        private final Tex[] keyLabels=new Tex[12];
+        private final String[] keyTexts=new String[12];
         private UI.Grab drag;
         private Coord offset;
         private Coord logicalSize=Coord.z;
@@ -320,6 +328,8 @@ public final class Toolbars {
         public boolean moved(){return Utils.getprefb(movedKey(),false);}
         /** Puts the panel somewhere else for good, as if the player had dropped it there. */
         void relocate(Coord at){move(at);Utils.setprefb(movedKey(),true);Utils.setprefc(positionKey(),saved=c);}
+        /** The belt slot of the button at this place on the panel, or -1. */
+        public int slotOf(int index){return index>=0&&index<slots.length?slots[index]:-1;}
         public Coord slotAt(int index){return index>=0&&index<at.length?at[index]:Coord.z;}
         public void layout(){
             boolean on=enabled(id);
@@ -426,6 +436,13 @@ public final class Toolbars {
                 if("function".equals(id)){
                     if(labels[i]==null)labels[i]=ToolbarFrame.keyLabel("F"+(i+1));
                     content.aimage(labels[i],ToolbarFrame.keyAnchor(at[i],slot),1,1);
+                }else if(extra(id)&&i<keyLabels.length){
+                    String text=hearthborn.input.PanelKeys.label(id,i);
+                    if(!java.util.Objects.equals(text,keyTexts[i])){
+                        if(keyLabels[i]!=null)keyLabels[i].dispose();
+                        keyLabels[i]=text==null?null:ToolbarFrame.keyLabel(text);keyTexts[i]=text;
+                    }
+                    if(keyLabels[i]!=null)content.aimage(keyLabels[i],ToolbarFrame.keyAnchor(at[i],slot),1,1);
                 }
             }
         }
@@ -436,7 +453,7 @@ public final class Toolbars {
             if(slot<0||(ui!=null&&ui.modmeta))return ToolbarFrame.moveTip();
             return null;
         }
-        public void dispose(){if(drag!=null)drag.remove();for(Tex label:labels)if(label!=null)label.dispose();super.dispose();}
+        public void dispose(){if(drag!=null)drag.remove();for(Tex label:labels)if(label!=null)label.dispose();for(Tex label:keyLabels)if(label!=null)label.dispose();super.dispose();}
     }
     /** The backing plate of a separate strip; clean strips let the world show between their cells. */
     static void panel(GOut g,Coord size){if(!clean())ToolbarFrame.background(g,size);}

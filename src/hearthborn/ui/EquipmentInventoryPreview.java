@@ -69,10 +69,13 @@ public final class EquipmentInventoryPreview {
         inventory.move(strip.previewPosition(inventory,cell,cellSize));
         inventory.show();inventory.raise();
     }
+    boolean pointerInside(UI ui){
+        return window!=null&&ui.mc.isect(window.rootpos(),HudInterfaceScale.size(window));
+    }
     void tick(UI ui,boolean enabled){
         if(window==null)return;
         if(!enabled||!window.visible()||window.parent==null){release(true);return;}
-        if(ui.mc.isect(window.rootpos(),HudInterfaceScale.size(window)))lastHover=Utils.rtime();
+        if(pointerInside(ui))lastHover=Utils.rtime();
         if(Utils.rtime()-lastHover>.3)release(true);
     }
     void close(){release(true);}

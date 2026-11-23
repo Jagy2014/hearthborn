@@ -133,6 +133,10 @@ public final class L10n {
                 if(base != null) value = base + count.group(2);
             }
         }
+        if(value == null && context.equals("ingredient")) {
+            String withoutArticle = english.replaceFirst("(?i)^an?\\s+", "");
+            if(!withoutArticle.equals(english)) value = lookup(context, withoutArticle);
+        }
         if(value == null && context.equals("tooltip")) value = edged(english);
         return value;
     }

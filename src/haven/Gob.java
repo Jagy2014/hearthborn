@@ -451,6 +451,7 @@ public class Gob implements RenderTree.Node, Sprite.Owner, Skeleton.ModOwner, Eq
 	setattr(new hearthborn.world.GobMarks(this));
 	setattr(new hearthborn.world.PlayerWarnings(this));
 	setattr(new hearthborn.combat.FighterMark(this));
+	setattr(new hearthborn.combat.ChaseVector(this));
         setattr(new hearthborn.storage.ContainerLook(this));
         setattr(new hearthborn.world.PlantGrowth(this));
         setattr(new hearthborn.world.ObjectNameLabel(this));

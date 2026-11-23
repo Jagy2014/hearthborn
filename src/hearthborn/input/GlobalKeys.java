@@ -124,6 +124,7 @@ public final class GlobalKeys {
  }
  public static String holder(KeyBinding binding,KeyMatch key){
   if(key==null||key==KeyMatch.nil)return null;
+  PanelKeys.ensure();
   String wanted=signature(key);
   List<KeyBinding> others=new ArrayList<>();
   if(combat(binding)){
@@ -171,23 +172,42 @@ public final class GlobalKeys {
    }catch(Loading loading){ui.msg(hearthborn.L10n.tr("Items are still loading. Try again."));}
    return true;
   }
-  return false;
+  return PanelKeys.handle(gui,event);
  }
  public static OptWnd.Panel panel(OptWnd options) {
   OptWnd.Panel panel=options.new Panel();Tabs tabs=new Tabs(Coord.of(0,UI.scale(32)),UI.scale(400,380),panel);
-  Tabs.Tab original=tabs.add(),general=tabs.add(),combat=tabs.add();
+  Tabs.Tab original=tabs.add(),general=tabs.add(),toolbars=tabs.add(),combat=tabs.add();
   Button[] tabButtons={
-   panel.add(new Button(UI.scale(120),"Original",false).action(()->tabs.showtab(original)),Coord.z),
-   panel.add(new Button(UI.scale(120),"Additional",false).action(()->tabs.showtab(general)),Coord.z),
-   panel.add(new Button(UI.scale(120),"Combat keys",false).action(()->tabs.showtab(combat)),Coord.z)};
+   panel.add(new Button(UI.scale(96),"Original",false).action(()->tabs.showtab(original)),Coord.z),
+   panel.add(new Button(UI.scale(96),"Additional",false).action(()->tabs.showtab(general)),Coord.z),
+   panel.add(new Button(UI.scale(96),"Toolbars",false).action(()->tabs.showtab(toolbars)),Coord.z),
+   panel.add(new Button(UI.scale(96),"Combat keys",false).action(()->tabs.showtab(combat)),Coord.z)};
   // Side by side by their real width: a translated caption makes a button wider than it was asked to be.
-  for(int x=0,i=0;i<tabButtons.length;i++){tabButtons[i].move(Coord.of(x,0));x+=tabButtons[i].sz.x+UI.scale(4);}
+  int[] top={UI.scale(32)};
+  Runnable arrange=()->{
+   // A row of tabs that does not fit its pane goes on to a second row; the lists start under the last one.
+   int limit=tabs.sz.x>0?tabs.sz.x:UI.scale(400),x=0,y=0;
+   for(Button tab:tabButtons){
+    if(x>0&&x+tab.sz.x>limit){x=0;y+=tab.sz.y+UI.scale(2);}
+    tab.move(Coord.of(x,y));x+=tab.sz.x+UI.scale(4);
+   }
+   top[0]=y+tabButtons[0].sz.y+UI.scale(2);tabs.c=Coord.of(0,top[0]);for(Tabs.Tab shown:tabs.tabs)shown.move(tabs.c);
+  };
+  arrange.run();
   OptWnd.BindingPanel nativeBindings=options.new BindingPanel(options.main);
   for(Widget child:new ArrayList<>(nativeBindings.children()))if(child instanceof OptWnd.PButton)child.destroy();
   nativeBindings.pack();original.add(nativeBindings,UI.scale(10,0));nativeBindings.show();
   Scrollport scroll=general.add(new Scrollport(UI.scale(400,350)),Coord.z);int y=0;
   for(Action action:actions)if(!action.id.equals("ACT_SHOOT")){y=row(scroll.cont,action.name,action.binding,y);}
   scroll.cont.pack();
+  Scrollport bars=toolbars.add(new Scrollport(UI.scale(400,350)),Coord.z);y=0;
+  for(String id:PanelKeys.PANELS){
+   Widget heading=bars.cont.add(new Label(hearthborn.L10n.tr(PanelKeys.title(id))),Coord.of(UI.scale(5),y+UI.scale(4)));
+   y+=heading.sz.y+UI.scale(10);
+   for(int i=0;i<PanelKeys.count(id);i++)y=row(bars.cont,String.format("Button %d",i+1),PanelKeys.binding(id,i),y);
+   y+=UI.scale(8);
+  }
+  bars.cont.pack();
   Scrollport fighting=combat.add(new Scrollport(UI.scale(400,350)),Coord.z);y=0;
   for(int i=0;i<Fightsess.kb_acts.length;i++){y=row(fighting.cont,String.format("Combat action %d",i+1),Fightsess.kb_acts[i],y);}
   y=row(fighting.cont,"Switch targets",Fightsess.kb_relcycle,y);
@@ -197,14 +217,16 @@ public final class GlobalKeys {
   OptWnd.BindingPanel[] bindings=new OptWnd.BindingPanel[]{nativeBindings};
   panel.fitting(width->{
    if(options.pane==null)return;
-   int top=UI.scale(32),height=options.pane.sz.y-top-UI.scale(12),listWidth=width;
+   int height,listWidth=width;
+   tabs.resize(Coord.of(listWidth,Math.max(1,tabs.sz.y)));arrange.run();
+   height=options.pane.sz.y-top[0]-UI.scale(12);
    tabs.resize(Coord.of(listWidth,height));
    bindings[0].destroy();
    int pointer=UI.scale(10)+UI.scale(24);
    bindings[0]=options.new BindingPanel(options.main,Coord.of(listWidth,height-pointer-UI.scale(4)));
    for(Widget child:new ArrayList<>(bindings[0].children()))if(child instanceof OptWnd.PButton)child.destroy();
    bindings[0].pack();original.add(bindings[0],Coord.z);bindings[0].show();
-   for(Scrollport list:new Scrollport[]{scroll,fighting}){list.resize(Coord.of(listWidth,height));list.cont.update();}
+   for(Scrollport list:new Scrollport[]{scroll,bars,fighting}){list.resize(Coord.of(listWidth,height));list.cont.update();}
    back.move(Coord.z);
    panel.pack();
   });

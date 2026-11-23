@@ -292,9 +292,16 @@ public class OptWnd extends Window {
 			}
 		    }, prev.pos("bl").adds(0, 5));
 		prev = add(new CheckBox("Fullscreen").state(() -> ui.wnd.state()==Windeye.State.EXCLUSIVE).set(on -> {
-                ui.wnd.state(on?Windeye.State.EXCLUSIVE:Windeye.State.NORMAL);
-                Utils.setprefb("mainwnd/fullscreen",on);
+                try {
+                    ui.wnd.state(on?Windeye.State.EXCLUSIVE:Windeye.State.NORMAL);
+                    Utils.setprefb("mainwnd/fullscreen",on);
+                    if(on) Utils.setprefb("mainwnd/max",false);
+                } catch(RuntimeException error) {
+                    Utils.setprefb("mainwnd/fullscreen",false);
+                    error("Fullscreen could not be applied on this display.");
+                }
             }),prev.pos("bl").adds(0,5));
+		prev.settip("Exclusive fullscreen. If the client fails to open after a restart, turn this off or delete the mainwnd/fullscreen preference.");
             prev = add(new CheckBox("Smooth text").state(hearthborn.UiFonts::smooth).set(value -> {
                 hearthborn.UiFonts.smooth(value);
                 ui.msg(hearthborn.L10n.tr("Text smoothing applies after you close the client window completely and start it again (logging out to the character screen is not enough)."));

@@ -274,7 +274,7 @@ public final class FishFry {
             layout.cmp.add(RichText.render("$b{" + title + "}", 0).img, Coord.of(0, layout.cmp.sz.y));
             String head = String.format("%s: $col[128,128,255]{%s%%}, %s: $col[255,192,128]{%s\u2030}",
                 L10n.text("tooltip", "Energy"), Utils.odformat2(meal.energy, 2),
-                L10n.text("tooltip", "Hunger"), Double.isFinite(meal.hunger) ? Utils.odformat2(meal.hunger, 2) : "—");
+                L10n.text("tooltip", "Hunger"), Double.isFinite(meal.hunger) ? Utils.odformat2(meal.hunger, 2) : "-");
             layout.cmp.add(RichText.render(head, 0).img, Coord.of(0, layout.cmp.sz.y));
             points(layout, meal.fep, false);
             points(layout, meal.bonus, true);

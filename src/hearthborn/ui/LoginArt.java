@@ -25,14 +25,13 @@ import javax.imageio.ImageIO;
  * @author Jagy2014
  */
 public final class LoginArt {
-    private static final Plate signin = new Plate("/hearthborn/assets/icons/screens/login.png");
     private static final Plate characters = new Plate("/hearthborn/assets/icons/screens/characters.png");
 
     private LoginArt() {}
 
     /** The visible painting excludes letterboxing on wide or tall displays. */
     public static Area bounds(Coord screen) {
-        return bounds(screen, signin);
+        return bounds(screen, characters);
     }
 
     public static Area characterBounds(Coord screen) {
@@ -46,7 +45,7 @@ public final class LoginArt {
     }
 
     public static void draw(GOut g, Coord sz) {
-        draw(g, sz, signin);
+        draw(g, sz, characters);
     }
 
     public static void drawCharacters(GOut g, Coord sz) {

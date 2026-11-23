@@ -226,6 +226,7 @@ public abstract class SListBox<I, W extends Widget> extends SListWidget<I, W> im
     }
 
     public void resize(Coord sz) {
+	if(this.sz.y != sz.y) n = -1;
 	super.resize(sz);
 	if(sb != null) {
 	    sb.resize(sz.y);

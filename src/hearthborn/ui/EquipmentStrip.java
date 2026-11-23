@@ -69,7 +69,13 @@ public final class EquipmentStrip extends Widget implements DTarget {
         for(Widget w=equipment.child;w!=null;w=w.next) if(w instanceof WItem && w.c.equals(position)) return (WItem)w;
         return null;
     }
-    public void tick(double dt) {show(Toolbars.enabled("equipment"));layout();fit();arrows.update(getparent(GameUI.class),equipment(),visible());inventoryPreview.tick(ui,visible()&&drag==null&&!ui.modmeta&&slotEnabled(11)&&ContainerPreviews.allowed(ui));super.tick(dt);}
+    public void tick(double dt) {
+        show(Toolbars.enabled("equipment"));layout();fit();arrows.update(getparent(GameUI.class),equipment(),visible());
+        // mousehover does not re-run when only Shift changes, so the strip must open or close previews here.
+        syncPreviews();
+        inventoryPreview.tick(ui,visible()&&drag==null&&!ui.modmeta&&slotEnabled(11)&&(ContainerPreviews.allowed(ui)||inventoryPreview.pointerInside(ui)));
+        super.tick(dt);
+    }
     public void presize(){layout();fit();}
     private void fit(){
         if(parent==null||drag!=null)return;
@@ -94,27 +100,57 @@ public final class EquipmentStrip extends Widget implements DTarget {
     }
     public boolean mousehover(MouseHoverEvent ev,boolean on) {
         if(drag!=null||ui.modmeta)return false;
-        int i=index(logical(ev.c));WItem view=item(equipment(),i);
-        if(on&&i>=0&&ContainerPreviews.allowed(ui)){
-            GItem next=view!=null&&view.item.contents!=null?view.item:null;
-            if(previewItem!=next){
-                if(previewItem!=null){
-                    previewItem.hovering(null);
-                    if(previewItem.contentswnd!=null)previewItem.contentswnd.dismissHover();
-                }
-                inventoryPreview.close();previewItem=next;
-            }
+        // Leaving the strip for the bag popup must not clear; ContentsWindow keeps the hover alive.
+        if(!ContainerPreviews.allowed(ui)){releasePreviewSource();return super.mousehover(ev,on);}
+        if(!on)return super.mousehover(ev,on);
+        return showPreviewAt(logical(ev.c))||super.mousehover(ev,on);
+    }
+    /** Honour Shift-only without waiting for mouse movement; do not dismiss a bag the pointer has entered. */
+    private void syncPreviews() {
+        if(ui==null||!visible()||drag!=null||ui.modmeta){clearPreviews();return;}
+        if(!ContainerPreviews.allowed(ui)){releasePreviewSource();return;}
+        Coord local=rootxlate(ui.mc);
+        if(local.isect(Coord.z,sz))showPreviewAt(logical(local));
+    }
+    private void releasePreviewSource() {
+        if(previewItem!=null){
+            previewItem.hovering(null);
+            GItem.ContentsWindow popup=previewItem.contentswnd;
+            if(popup!=null&&popup.pointerOnPreviewTree())return;
+            if(popup!=null)popup.dismissHover();
+            previewItem=null;
         }
-        if(on&&i>=0&&slots[i]==11&&(view==null||view.item.contents==null)&&ContainerPreviews.allowed(ui)){
+    }
+    private void clearPreviews() {
+        if(previewItem!=null){
+            previewItem.hovering(null);
+            if(previewItem.contentswnd!=null)previewItem.contentswnd.dismissHover();
+            previewItem=null;
+        }
+        inventoryPreview.close();
+    }
+    private boolean showPreviewAt(Coord logical) {
+        int i=index(logical);WItem view=item(equipment(),i);
+        if(i<0){clearPreviews();return false;}
+        GItem next=view!=null&&view.item.contents!=null?view.item:null;
+        if(previewItem!=next){
+            if(previewItem!=null){
+                previewItem.hovering(null);
+                if(previewItem.contentswnd!=null)previewItem.contentswnd.dismissHover();
+            }
+            inventoryPreview.close();
+            previewItem=next;
+        }
+        if(slots[i]==11&&(view==null||view.item.contents==null)){
             inventoryPreview.hover(this,ToolbarScale.size(cell(i),scale),ToolbarScale.size(Inventory.invsq.sz(),scale));
             return true;
         }
-        if(on && view!=null && view.item.contents!=null && ContainerPreviews.allowed(ui)) {
+        if(view!=null&&view.item.contents!=null){
             if(hoverAnchor==null)hoverAnchor=add(new Widget(Coord.z));
             hoverAnchor.resize(ToolbarScale.size(Inventory.invsq.sz(),scale));
             hoverAnchor.move(ToolbarScale.size(cell(i),scale));view.item.hovering(hoverAnchor);return true;
         }
-        return super.mousehover(ev,on);
+        return false;
     }
     /** Keep the whole source strip reachable, also when opening a bag inside this preview. */
     public Coord previewPosition(Window popup,Widget anchor){

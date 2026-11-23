@@ -205,9 +205,7 @@ public final class ClaimPlan extends Window {
         java.util.List<ClaimSurvey.Plan> plans=ClaimSurvey.plans();ClaimSurvey.Plan plan=selectedPlan;
         if(plan==null){
             plan=new ClaimSurvey.Plan();plan.id=UUID.randomUUID().toString();
-            String name=L10n.tr(tag.equals("vlg")?"Village claim":"Personal claim");
-            if(tag.equals("vlg"))for(Polity polity:gui.children(Polity.class))if("Village".equals(polity.cap)){name=polity.name;break;}
-            plan.name=name+" · "+(plans.size()+1);plans.add(plan);
+            plan.name=ClaimSurvey.defaultPlanName(tag,plans.size()+1);plans.add(plan);
         }else replace(plans,plan);
         plan.tag=tag;plan.grid=grid.id;plan.x=anchor.x-grid.x;plan.y=anchor.y-grid.y;
         ClaimSurvey.savePlans(plans);selectedPlan=plan;
@@ -465,7 +463,7 @@ public final class ClaimPlan extends Window {
                 g.chcolor();
             }
             if(!editing){
-                String full=entry.listName()+(Objects.equals(entry.region,canvas.region)?"":L10n.tr(" — another level"));
+                String full=entry.listName()+(Objects.equals(entry.region,canvas.region)?"":L10n.tr(" - another level"));
                 int limit=(area?editLeft:edit.c.x)-UI.scale(4);
                 double quality=area?0:entry.quality();
                 if(quality>0){
@@ -560,7 +558,7 @@ public final class ClaimPlan extends Window {
         private double rated=-1;
         double quality(){if(rated<0)rated=computeQuality();return rated;}
         private double computeQuality(){
-            if(gob!=null){hearthborn.quality.RosterStore.Rec record=hearthborn.quality.RosterStore.trackedGob(gob.id);if(record!=null&&record.q>0)return record.q;
+            if(gob!=null){hearthborn.quality.RosterStore.Rec record=hearthborn.quality.RosterStore.trackedGob(gob);if(record!=null&&record.q>0)return record.q;
                 for(ClaimSurvey.GridRecord grid:ClaimSurvey.records(region))if(grid.id==gridId)for(ClaimSurvey.ObjectRecord object:grid.objects.values()){
                     if(Objects.equals(resource,object.resource)&&Math.abs(grid.x*MCache.tilesz.x+object.x-at.x)<OCache.posres.x&&Math.abs(grid.y*MCache.tilesz.y+object.y-at.y)<OCache.posres.y)return object.quality;
                 }
@@ -569,7 +567,7 @@ public final class ClaimPlan extends Window {
         }
         String listName(){
             String custom=gob!=null?ObjectNames.name(gob):saved==null?null:ObjectNames.knownName(ownerKey,saved.name);
-            return type.equals("Building")&&custom!=null?L10n.tr("House")+" — "+custom:name();
+            return type.equals("Building")&&custom!=null?L10n.tr("House")+" - "+custom:name();
         }
         String displayName(){return name()+(quality()>0?" · Q "+hearthborn.quality.RosterStore.fmtQ(quality()):"");}
         String name(){if(area!=null)return area.name;if(type.equals("Fence")||type.equals("Gate"))return L10n.tr(type);
@@ -895,7 +893,7 @@ public final class ClaimPlan extends Window {
             if((entry==null||entry.area!=null)&&min!=null&&at.isect(Coord.z,sz)){
                 Coord tile=tileAt(at);if(layerShown("fields"))for(PlanFields.Field field:fields)if(field.tiles.contains(tile))return field.source.tooltip();
             }
-            if(entry==null)return null;String name=entry.displayName();if(entry.ready)name+=" — "+L10n.tr("Ready");return name;
+            if(entry==null)return null;String name=entry.displayName();if(entry.ready)name+=" - "+L10n.tr("Ready");return name;
         }
         public boolean mousedown(MouseDownEvent event){if(event.b==1&&measuring&&min!=null){measureStart=measureEnd=tileAt(event.c);measureGrab=ui.grabmouse(this);measured();return true;}if(event.b==1){Entry entry=hit(event.c);
                 if(entry!=null){

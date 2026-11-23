@@ -12,6 +12,7 @@
 
 package hearthborn.meteor;
 import hearthborn.timers.Timers;
+import hearthborn.ui.CalendarInfo;
 import hearthborn.ui.StudyProgress;
 import hearthborn.ui.WorldIdentity;
 
@@ -36,6 +37,8 @@ public final class StarFall extends Widget {
     private static final Map<String,Forecast> saved=new HashMap<>();
     private static final Map<Session,Forecast> live=new WeakHashMap<>();
     private static final Map<Session,String> liveKeys=new WeakHashMap<>();
+    /** Worlds already told that Star Gaze will not get another night before this bound ends. */
+    private static final Set<String> lastChanceWarned=new HashSet<>();
     private static boolean loaded;
     public static boolean enabled(){return Utils.getprefb("hearthborn/star-fall",true);}
     public static void enabled(boolean value){Utils.setprefb("hearthborn/star-fall",value);}
@@ -147,6 +150,16 @@ public final class StarFall extends Widget {
         if(forecast.until<=now)return L10n.tr("Starfall - forecast elapsed; use Star Gaze at night to refresh it");
         return L10n.format("Starfall - forecast: within %s",timeText(forecast.remaining(now)));
     }
+    /** True when the upper bound ends before the next night begins - no further Star Gaze night after this one. */
+    static boolean lastChanceForGaze(Astronomy astronomy,Forecast forecast,long now){
+        if(astronomy==null||forecast==null||forecast.until<=now)return false;
+        return forecast.remaining(now)/3_600_000d<CalendarInfo.hoursUntilNextNightStart(astronomy);
+    }
+    static String lastChanceTip(Astronomy astronomy){
+        return astronomy!=null&&astronomy.night
+            ?L10n.tr("This is the last night you can use Star Gaze.")
+            :L10n.tr("Star Gaze can no longer be used.");
+    }
     static final class Announcements {
         private boolean announced;
         boolean update(Boolean available,boolean enabled){
@@ -177,7 +190,7 @@ public final class StarFall extends Widget {
         Forecast previous=current(ui);
         String source=timerId(ui);if(source!=null)Timers.forget(source);
         if(previous==null)return;
-        String key=key(ui);if(key!=null)saved.remove(key);
+        String key=key(ui);if(key!=null){saved.remove(key);lastChanceWarned.remove(key);}
         live.values().removeIf(value->value==previous);
         LocalStore.write("star-fall-v2",new HashMap<>(saved));
     }
@@ -201,6 +214,8 @@ public final class StarFall extends Widget {
         Boolean available=menuState.poll(gui.menu);
         hearthborn.meteor.MeteorTriangulation.menu(ui,available);
         hearthborn.meteor.MeteorTriangulation.tick(gui);
+        // Star Gaze gone: this starfall has ended - drop any retained bound for the world.
+        if(Boolean.FALSE.equals(available))clear(ui);
         forecast=current(ui);
         String source=timerId(ui);
         if(forecast!=null&&(!Objects.equals(trackedSource,source)||trackedUntil!=forecast.until)){
@@ -208,9 +223,20 @@ public final class StarFall extends Widget {
         }
         boolean enabled=enabled();
         if(!enabled)showerAvailable=false;else if(available!=null)showerAvailable=available;
-        if(gui.syslog!=null&&announcements.update(available,enabled))
-            ui.msg(loginMessage(forecast,astronomy(),System.currentTimeMillis()),new java.awt.Color(100,230,255),
+        long now=System.currentTimeMillis();
+        Astronomy sky=astronomy();
+        boolean lastChance=lastChanceForGaze(sky,forecast,now);
+        String worldKey=key(ui);
+        if(!lastChance&&worldKey!=null)lastChanceWarned.remove(worldKey);
+        // A new Star Gaze cycle must not reopen an elapsed forecast from a previous fall.
+        if(gui.syslog!=null&&announcements.update(available,enabled)){
+            if(forecast!=null&&forecast.until>0&&forecast.until<=now){clear(ui);forecast=null;trackedUntil=0;trackedSource=null;lastChance=false;}
+            ui.msg(loginMessage(forecast,sky,now),new java.awt.Color(100,230,255),
                 Audio.resclip(Resource.local().loadwait("sfx/hud/mmap/bell1")));
+        }
+        // One warning only: never also fold it into the login line (that duplicated the text in chat).
+        if(gui.syslog!=null&&enabled&&lastChance&&worldKey!=null&&lastChanceWarned.add(worldKey))
+            ui.msg(lastChanceTip(sky),new java.awt.Color(255,180,80),null);
         if(enabled&&Boolean.TRUE.equals(available)&&gui.buffs!=null){
             if(icon==null&&!iconUnavailable)try{
                 Resource.Image image=Resource.remote().load(EVENT).get().layer(Resource.imgc);
@@ -221,12 +247,15 @@ public final class StarFall extends Widget {
         }else if(indicator!=null){indicator.destroy();indicator=null;}
     }
     private String tooltipText(){
-        String text=announcement(astronomy());
+        Astronomy sky=astronomy();
+        String text=announcement(sky);
+        long now=System.currentTimeMillis();
         if(forecast!=null&&forecast.until>0){
             String received=DateTimeFormatter.ofLocalizedDateTime(FormatStyle.SHORT).withLocale(Locale.forLanguageTag(L10n.language()))
                 .withZone(ZoneId.systemDefault()).format(Instant.ofEpochMilli(forecast.received));
-            text+="\n"+forecast.caption(System.currentTimeMillis())+"\n"+L10n.format("Forecast received: %s",received)+"\n"+
+            text+="\n"+forecast.caption(now)+"\n"+L10n.format("Forecast received: %s",received)+"\n"+
                 L10n.tr("Real time. This is an upper estimate, not an exact impact time.")+"\n"+L10n.tr("Right-click to clear this forecast and its timer.");
+            if(lastChanceForGaze(sky,forecast,now))text+="\n"+lastChanceTip(sky);
         }
         return text;
     }

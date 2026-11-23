@@ -45,7 +45,7 @@ public final class Changelog {
         }
     }
 
-    /** The heading of the newest entry, such as "v1.0.0 — Initial Release"; null when there is none. */
+    /** The heading of the newest entry, such as "v1.0.0 - Initial Release"; null when there is none. */
     public static String latest(String markdown) {
         if(markdown == null) return null;
         for(String line : markdown.split("\r?\n"))
@@ -66,7 +66,7 @@ public final class Changelog {
         if(latest != null) Utils.setpref(SEEN, version(latest));
     }
 
-    /** "v1.0.0" of "v1.0.0 — Initial Release": the name may be reworded, the version is what counts. */
+    /** "v1.0.0" of "v1.0.0 - Initial Release": the name may be reworded, the version is what counts. */
     public static String version(String heading) {
         int space = heading.indexOf(' ');
         return space < 0 ? heading : heading.substring(0, space);

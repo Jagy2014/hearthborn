@@ -36,6 +36,7 @@ public final class MapToolbar extends Widget {
     private static final Map<String, Tex> ART = new HashMap<>();
     public static void clearArt(){for(Tex tex:ART.values())if(tex!=null)tex.dispose();ART.clear();}
     private final MapWnd map;
+    private final Widget close;
     private final Map<Widget, Integer> ranks = new IdentityHashMap<>();
     private int focus = -1;
 
@@ -47,9 +48,13 @@ public final class MapToolbar extends Widget {
         toggle("pointer", "Display pointers", null);
         button("claim", () -> "Show personal claim borders on map", () -> ClaimBorders.enabled("cplot", !ClaimBorders.enabled("cplot")), null, () -> ClaimBorders.enabled("cplot"));
         button("village", () -> "Show village claim borders on map", () -> ClaimBorders.enabled("vlg", !ClaimBorders.enabled("vlg")), null, () -> ClaimBorders.enabled("vlg"));
-        toggle("trail", "Show session trail\nRight click: clear trail", () -> MapDisplay.clearTrail(map.getparent(GameUI.class)));
-        keep(control("extlist", () -> "Open map in a separate window", () -> DetachedMap.toggle(map), null, () -> false), 13);
-        keep(control("close", () -> "Close", map::reqclose, null, () -> false), 1000);
+        toggle("trail", "Show walked path: ordinary walking lasts for this session; shore-scout path is saved with sample markers until cleared\nRight click: clear both paths and sample markers", () -> MapDisplay.clearTrail(map.getparent(GameUI.class)));
+        if(map.detachedWindow()) {
+            close = null;
+        } else {
+            keep(control("extlist", () -> "Open map in a separate window", () -> DetachedMap.toggle(map), null, () -> false), 13);
+            close = keep(control("close", () -> "Close", map::reqclose, null, () -> false), 1000);
+        }
     }
 
     public void draw(GOut g) {
@@ -128,7 +133,7 @@ public final class MapToolbar extends Widget {
         if(icon.equals("view")) return 4;
         if(icon.equals("grid")) return 5;
         if(icon.equals("trail")) return 6;
-        if(icon.equals("pointer")) return 7;
+        if(icon.equals("pointer")) return 8;
         if(icon.equals("claim")) return 10;
         if(icon.equals("village")) return 11;
         return 100;
@@ -213,6 +218,7 @@ public final class MapToolbar extends Widget {
     public void place(int width) {
         if(parent == null)
             return;
+        if(close != null) close.show(map.deco == null);
         List<Widget> row = ordered();
         int pad = UI.scale(2), gap = UI.scale(2), count = row.size();
         int cell = SIZE;
@@ -242,7 +248,7 @@ public final class MapToolbar extends Widget {
     private List<Widget> ordered() {
         List<Widget> row = new ArrayList<>();
         for(Widget child = this.child; child != null; child = child.next)
-            if(ranks.containsKey(child)) row.add(child);
+            if(child.visible && ranks.containsKey(child)) row.add(child);
         row.sort(Comparator.comparingInt(ranks::get));
         return row;
     }

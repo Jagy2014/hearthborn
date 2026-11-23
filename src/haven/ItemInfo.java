@@ -187,11 +187,17 @@ public abstract class ItemInfo {
 	}
 
 	public BufferedImage tipimg() {
-            if(str instanceof hearthborn.l10n.LocalizedText &&
-               !str.text.equals(((hearthborn.l10n.LocalizedText)str).displayText)) {
-                BufferedImage original = hearthborn.l10n.TooltipText.literal(() ->
-                    Text.render(str.text, new java.awt.Color(160, 160, 160)).img);
-                return catimgs(0, str.img, original);
+            // LocalizedText is drawn when the name is built, outside UiFonts.beginTip, so its image stays at the ordinary size.
+            // Quality and the other lines are drawn inside the tip, at TIP_FACTOR. Rebuild the title (and the English line)
+            // under the tip font so they match; outside a tip keep the cached image so English mode does not grow a second line.
+            if(str instanceof hearthborn.l10n.LocalizedText) {
+                hearthborn.l10n.LocalizedText loc = (hearthborn.l10n.LocalizedText)str;
+                if(!str.text.equals(loc.displayText)) {
+                    BufferedImage title = hearthborn.UiFonts.tipping() ? Text.render(loc.displayText).img : str.img;
+                    BufferedImage original = hearthborn.l10n.TooltipText.literal(() ->
+                        Text.render(str.text, new java.awt.Color(160, 160, 160)).img);
+                    return catimgs(0, title, original);
+                }
             }
 	    return(str.img);
 	}

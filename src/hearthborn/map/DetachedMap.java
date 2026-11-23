@@ -14,6 +14,7 @@ package hearthborn.map;
 
 import haven.*;
 import haven.render.*;
+import haven.iosys.tk.AWTToolkit;
 import haven.rs.DrawBuffer;
 import java.awt.Color;
 import java.awt.EventQueue;
@@ -185,6 +186,7 @@ public final class DetachedMap {
             setcanfocus(false);
         }
         protected boolean worldMarks() {return false;}
+        public boolean detachedWindow() {return true;}
         public void drag(Coord offset) {}
         public void draw(GOut g) {if(painting) super.draw(g);}
         public boolean mousedown(MouseDownEvent event) {return false;}
@@ -196,10 +198,48 @@ public final class DetachedMap {
         }
     }
 
+    /** Printable input comes from KEY_TYPED; navigation and shortcuts come from KEY_PRESSED. */
+    static void forwardKey(MapWnd map, KeyEvent event) {
+        if(event.getID() == KeyEvent.KEY_TYPED) {
+            char text = event.getKeyChar();
+            if(text == KeyEvent.CHAR_UNDEFINED || Character.isISOControl(text)) return;
+        } else if(event.getID() == KeyEvent.KEY_PRESSED) {
+            if(!event.isActionKey() && !event.isControlDown() && !event.isMetaDown()) {
+                switch(event.getKeyCode()) {
+                    case KeyEvent.VK_BACK_SPACE:
+                    case KeyEvent.VK_DELETE:
+                    case KeyEvent.VK_ENTER:
+                    case KeyEvent.VK_ESCAPE:
+                    case KeyEvent.VK_TAB:
+                        break;
+                    default:
+                        return;
+                }
+            }
+        } else {
+            return;
+        }
+        map.ui.dispatchWithin(map, new Widget.KeyDownEvent(new AWTToolkit.AWTKeyDownEvent(event)));
+    }
+
+    static Widget.MouseWheelEvent wheelEvent(Coord at, int amount, double precise) {
+        int direction = hearthborn.ui.WheelSettings.direction();
+        return new Widget.MouseWheelEvent(at, amount * direction, precise * direction);
+    }
+
     private class Panel extends JPanel {
         Panel() {
             setBackground(Color.BLACK);
             setFocusable(true);
+            setFocusTraversalKeysEnabled(false);
+            addFocusListener(new FocusAdapter() {
+                public void focusGained(FocusEvent event) {focusHost(true);}
+                public void focusLost(FocusEvent event) {focusHost(false);}
+            });
+            addKeyListener(new KeyAdapter() {
+                public void keyPressed(KeyEvent event) {sendKey(event);}
+                public void keyTyped(KeyEvent event) {sendKey(event);}
+            });
             addMouseListener(new MouseAdapter() {
                 public void mousePressed(MouseEvent e) {
                     requestFocusInWindow();
@@ -217,13 +257,24 @@ public final class DetachedMap {
             });
             addMouseWheelListener(e -> {
                 Coord c = at(e.getX(), e.getY());
-                int amount = e.getWheelRotation() * hearthborn.ui.WheelSettings.swingDirection();
-                double sub = e.getPreciseWheelRotation() * hearthborn.ui.WheelSettings.swingDirection();
-                tasks.add(() -> {if(host != null) new Widget.MouseWheelEvent(c, amount, sub).dispatch(host);});
+                Widget.MouseWheelEvent event = wheelEvent(c, e.getWheelRotation(), e.getPreciseWheelRotation());
+                tasks.add(() -> {if(host != null) host.ui.dispatchWithin(host, event);});
             });
             addComponentListener(new ComponentAdapter() {
                 public void componentResized(ComponentEvent e) {tasks.add(DetachedMap.this::sync);}
             });
+        }
+
+        private void focusHost(boolean focused) {
+            tasks.add(() -> {
+                if(host == null || host.hasfocus == focused) return;
+                host.hasfocus = focused;
+                if(focused) host.gotfocus(); else host.lostfocus();
+            });
+        }
+
+        private void sendKey(KeyEvent event) {
+            tasks.add(() -> {if(host != null) forwardKey(host, event);});
         }
 
         private Coord at(int x, int y) {
@@ -238,8 +289,8 @@ public final class DetachedMap {
             Coord c = at(e.getX(), e.getY());
             tasks.add(() -> {
                 if(host == null) return;
-                if(down) new Widget.MouseDownEvent(c, button).dispatch(host);
-                else new Widget.MouseUpEvent(c, button).dispatch(host);
+                Widget.Event event = down ? new Widget.MouseDownEvent(c, button) : new Widget.MouseUpEvent(c, button);
+                host.ui.dispatchWithin(host, event);
             });
         }
 
@@ -247,7 +298,7 @@ public final class DetachedMap {
             Coord c = at(e.getX(), e.getY());
             tasks.add(() -> {
                 if(host == null) return;
-                new Widget.MouseMoveEvent(c).dispatch(host);
+                host.ui.dispatchWithin(host, new Widget.MouseMoveEvent(c));
                 new Widget.MouseHoverEvent(c).dispatch(host);
             });
         }

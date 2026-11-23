@@ -16,7 +16,7 @@ import haven.*;
  * @author Jagy2014
  */
 public final class ContainerPreviews {
-    public static boolean shiftOnly(){return Utils.getprefb("hearthborn/inventory/preview-shift-only",false);}
+    public static boolean shiftOnly(){return Utils.getprefb("hearthborn/inventory/preview-shift-only",true);}
     public static void shiftOnly(boolean value){Utils.setprefb("hearthborn/inventory/preview-shift-only",value);}
     public static boolean allowed(UI ui){return !shiftOnly() || (ui!=null && ui.modshift);}
     private ContainerPreviews(){}

@@ -55,6 +55,8 @@ public final class GobMarks extends GAttrib {
     private static final Spec[] COVERED = {new Spec(100f,new Color(50,190,120,45),new Color(50,210,130,210)),new Spec(125f,new Color(50,190,120,45),new Color(50,210,130,210)),new Spec(150f,new Color(50,190,120,45),new Color(50,210,130,210))};
     private static final Spec DANGER_MARK = new Spec(120f, new Color(192, 0, 0, 140), new Color(192, 0, 0, 220));
     private static final Spec CRITTER_MARK = new Spec(10f, new Color(150, 230, 255, 140), null);
+    /** Same size as critters, clearer blue, for arrows lying on the ground. */
+    private static final Spec ARROW_MARK = new Spec(10f, new Color(70, 170, 255, 160), null);
     private static final Map<String, Alarm> ALARMS = alarms();
     /** aggressive animals. Horses, deer, and other tameable beasts are not in it. */
     private static final String[] AGGRESSIVE = {
@@ -81,8 +83,9 @@ public final class GobMarks extends GAttrib {
     private final Held objectMark = new Held();
     private final Held dangerMark = new Held();
     private final Held critterMark = new Held();
+    private final Held arrowMark = new Held();
     private String known;
-    private boolean knownCritter,knownCreature,knownAggressive,knownBat;
+    private boolean knownCritter,knownCreature,knownAggressive,knownBat,knownArrow;
     private Spec knownPlace;
     private boolean dead;
     private int poseWait,unknownPoses;
@@ -336,11 +339,13 @@ public final class GobMarks extends GAttrib {
             known = name;
             knownCritter=critter(name);knownCreature=name.startsWith("gfx/kritter/")||knownCritter;
             knownBat=name.contains("/bat");knownAggressive=aggressiveSpecies(name);knownPlace=place(name);
+            knownArrow=arrow(name);
             dead = false;
             poseWait = 0;unknownPoses=0;
             clear(objectMark);
             clear(dangerMark);
             clear(critterMark);
+            clear(arrowMark);
         }
         boolean creature = knownCreature;
         if(creature && --poseWait <= 0) {
@@ -367,6 +372,7 @@ public final class GobMarks extends GAttrib {
         boolean aggressive=knownBat?!batCape():knownAggressive;
         show(dangerMark, dangerRadii && living && aggressive, DANGER_MARK, false);
         show(critterMark, critterCircles && living && knownCritter && !aggressive, CRITTER_MARK, true);
+        show(arrowMark, critterCircles && knownArrow, ARROW_MARK, true);
         if(living && unknownPoses==0 && knownCreature) alarm(name);
     }
 
@@ -518,6 +524,39 @@ public final class GobMarks extends GAttrib {
         }
         return false;
     }
+    /** Aggro circle drawn around dangerous animals; scripts use the same distance to steer clear. */
+    public static double dangerRadius(){return DANGER_MARK.radius;}
+    /** True for living aggressive animals (boar, bear, orca, …), not horses or corpses. */
+    public static boolean livingThreat(Gob gob){
+        if(gob==null||gob.id==player)return false;
+        String name;
+        try{
+            Drawable drawable=gob.getattr(Drawable.class);
+            Resource res=drawable==null?null:drawable.getres();
+            name=res==null?null:res.name;
+        }catch(Loading pending){return false;}
+        if(name==null||!aggressive(name))return false;
+        GobMarks marks=gob.getattr(GobMarks.class);
+        if(marks!=null)return !marks.dead;
+        Boolean down=fallen(gob);
+        return down==null||!down;
+    }
+    private static Boolean fallen(Gob gob){
+        Drawable drawable=gob.getattr(Drawable.class);
+        if(!(drawable instanceof Composite))return false;
+        Collection<ResData> poses=((Composite)drawable).poseResources();
+        if(poses.isEmpty())return null;
+        boolean waiting=false;
+        for(ResData pose:poses){
+            try{
+                String path=pose.res.get().name;
+                String leaf=path.substring(path.lastIndexOf('/')+1);
+                if(leaf.equals("dead")||leaf.equals("waterdead")||leaf.equals("knock")
+                    ||leaf.endsWith("-dead")||leaf.endsWith("-waterdead")||leaf.endsWith("-knock"))return true;
+            }catch(Loading loading){waiting=true;}
+        }
+        return waiting?null:false;
+    }
 
     /** The player's equipment window, read again each tick so putting the cape on or taking it off updates at once. */
     private static boolean batCape() {
@@ -542,6 +581,12 @@ public final class GobMarks extends GAttrib {
                     marks.ctick(0);
             }
         }
+    }
+
+    private static boolean arrow(String name) {
+        if(name == null || !name.startsWith("gfx/terobjs/items/")) return false;
+        String leaf = name.substring(name.lastIndexOf('/') + 1);
+        return leaf.equals("arrow") || leaf.startsWith("arrow-");
     }
 
     private static boolean critter(String name) {

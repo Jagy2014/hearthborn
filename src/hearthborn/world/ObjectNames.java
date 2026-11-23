@@ -92,7 +92,7 @@ public final class ObjectNames {
         HashMap<String,HashMap<String,String>> data=new HashMap<>();
         data.put("names",new HashMap<>(names));data.put("owners",new HashMap<>(owners));data.put("numbers",new HashMap<>(numbers));data.put("counters",new HashMap<>(counters));data.put("places",new HashMap<>(places));data.put("touched",new HashMap<>(touched));LocalStore.write("object-names",data);
     }
-    /** Assigns the next number only for an object the player has opened, timed, or renamed. */
+    /** Assigns the next number only after opening, timing, renaming or recording quality. */
     private static boolean number(String key){
         Type type=Type.of(key);if(type==null)return false;
         boolean changed=touched.put(key,"1")==null;
@@ -120,6 +120,11 @@ public final class ObjectNames {
             boolean changed=number(key);if(!key.equals(owners.put(source,key)))changed=true;
             if(changed){save();Timers.namesChanged();}
         }catch(Loading ignored){}
+    }
+    /** Explicit quality recording also counts as interacting with this one object. */
+    public static void touch(Gob gob) {
+        String key=key(gob);if(key==null)throw new Loading();
+        load();if(number(key)){save();Timers.namesChanged();}
     }
     public static boolean hasNames(){load();return !names.isEmpty()||!numbers.isEmpty();}
     /** Stable automatic number, independent of the current language and custom name. */
@@ -159,7 +164,7 @@ public final class ObjectNames {
         if(owner==null)for(Map.Entry<String,String> entry:owners.entrySet())
             if(source.startsWith(entry.getKey()+":") && (owner==null || entry.getKey().length()>prefix.length())){owner=entry.getValue();prefix=entry.getKey();}
         String name=owner==null?null:names.getOrDefault(owner,automatic(owner));
-        String result=name==null?fallback:source.equals(prefix)?name:name+" — "+fallback.replaceFirst(" #[0-9a-fA-F]+","");
+        String result=name==null?fallback:source.equals(prefix)?name:name+" - "+fallback.replaceFirst(" #[0-9a-fA-F]+","");
         String place=owner==null?null:places.get(owner);
         if(source.startsWith("cheese:") && place!=null) {
             String label=place.equals("CELLAR")?L10n.tr("Basement"):place.equals("CABIN")?L10n.tr("Cabin"):place.equals("MINE")?L10n.tr("Mine"):L10n.tr("Outside");

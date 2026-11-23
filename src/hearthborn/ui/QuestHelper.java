@@ -43,15 +43,16 @@ public final class QuestHelper extends Window {
     private String signature="";
 
     public static final class Snapshot {
-        final int mtime,ncond,ndcond;
+        final int ncond;
         public final List<QuestWnd.Quest.Condition> conditions;
         Snapshot(QuestWnd.Quest quest,QuestWnd.Quest.Condition[] source){
-            mtime=quest.mtime;ncond=quest.ncond;ndcond=quest.ndcond;
+            ncond=quest.ncond;
             List<QuestWnd.Quest.Condition> copy=new ArrayList<>();
             for(QuestWnd.Quest.Condition condition:source)copy.add(new QuestWnd.Quest.Condition(condition.desc,condition.done,condition.status));
             conditions=Collections.unmodifiableList(copy);
         }
-        boolean current(QuestWnd.Quest quest){return mtime==quest.mtime&&ncond==quest.ncond&&ndcond==quest.ndcond;}
+        // The quest summary and its condition details can arrive in either order.
+        boolean current(QuestWnd.Quest quest){return ncond==quest.ncond;}
     }
     public QuestHelper(GameUI gui){
         super(UI.scale(300,150),"Quest journal");this.gui=gui;
@@ -284,11 +285,12 @@ public final class QuestHelper extends Window {
             y+=titleLine.sz().y+UI.scale(2);
             List<String> lines=new ArrayList<>();
             List<String> pictures=new ArrayList<>();
+            List<String> objectives=new ArrayList<>();
             Snapshot snapshot=open?cache.get(quest.id):null;
             if(snapshot!=null&&snapshot.current(quest))for(QuestWnd.Quest.Condition condition:snapshot.conditions){
-                if(condition.done!=QuestWnd.Quest.QST_DONE){lines.add(objective(quest,condition));pictures.add(QuestPictures.resource(condition.desc));}
+                if(condition.done!=QuestWnd.Quest.QST_DONE){lines.add(objective(quest,condition));pictures.add(QuestPictures.resource(condition.desc));objectives.add(condition.desc);}
             }
-            if(lines.isEmpty()){lines.add(progress(quest));pictures.add(null);}
+            if(lines.isEmpty()){lines.add(progress(quest));pictures.add(null);objectives.add(null);}
             shown=String.join("\n",lines);
             if(open){
                 for(int i=0;i<lines.size();i++){
@@ -299,7 +301,7 @@ public final class QuestHelper extends Window {
                     int textWidth=FONT.strsize(line).x;
                     Text row=textWidth<=limit?FONT.render(line,lineColor):FONT.renderwrap(line,lineColor,limit);
                     if(textWidth>limit)textWidth=row.sz().x;
-                    pieces.add(new Piece(row.tex(),y,picture,textWidth));
+                    pieces.add(new Piece(row.tex(),y,picture,textWidth,objectives.get(i)));
                     y+=Math.max(row.sz().y,picture==null?0:UI.scale(22))+UI.scale(1);
                 }
                 resize(Coord.of(width,Math.max(ROW,y+UI.scale(4))));
@@ -328,15 +330,26 @@ public final class QuestHelper extends Window {
             super.draw(g);
         }
         public boolean mousedown(MouseDownEvent event){
-            if(event.b==1)select(quest.id);else if(event.b==3)details(quest.id);return true;
+            if(event.b==1){
+                for(Piece piece:pieces)
+                    if(piece.hit(event.c)&&QuestForage.open(gui,quest.id,piece.objective,piece.picture))return true;
+                select(quest.id);
+            }else if(event.b==3)details(quest.id);
+            return true;
         }
         public Object tooltip(Coord at,Widget previous){return QuestHelper.this.tooltip(quest);}
         public void dispose(){for(Piece piece:pieces)piece.dispose();super.dispose();}
     }
     private static final class Piece {
-        final Tex tex;final int y;final String picture;final int textWidth;
+        final Tex tex;final int y;final String picture,objective;final int textWidth;
         private Tex icon;private boolean missing;
-        Piece(Tex tex,int y,String picture,int textWidth){this.tex=tex;this.y=y;this.picture=picture;this.textWidth=textWidth;}
+        Piece(Tex tex,int y,String picture,int textWidth){this(tex,y,picture,textWidth,null);}
+        Piece(Tex tex,int y,String picture,int textWidth,String objective){
+            this.tex=tex;this.y=y;this.picture=picture;this.textWidth=textWidth;this.objective=objective;
+        }
+        boolean hit(Coord point){
+            return picture!=null&&point.isect(Coord.of(UI.scale(7)+UI.scale(4)+textWidth,y),UI.scale(22,22));
+        }
         void draw(GOut g,int x){
             int shift=picture==null?0:Math.max(0,(UI.scale(22)-tex.sz().y)/2);
             g.image(tex,Coord.of(x,y+shift));

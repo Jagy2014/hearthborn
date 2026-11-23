@@ -24,46 +24,65 @@ import java.util.*;
  * @author Jagy2014
  */
 public final class ObjectGeometry {
-    public static List<Area> obstacles(Iterable<Gob> objects,Gob player){return geometry(objects,player,true);}
-    public static List<Area> hitboxes(Iterable<Gob> objects,Gob player){return geometry(objects,player,false);}
-    private static List<Area> geometry(Iterable<Gob> objects, Gob player,boolean padding) {
+    public static List<Area> obstacles(Iterable<Gob> objects,Gob player){return geometry(objects,player,true,false);}
+    public static List<Area> hitboxes(Iterable<Gob> objects,Gob player){return geometry(objects,player,false,false);}
+    /** Footprint of a placement ghost, including the resource's build outline. */
+    public static List<Area> placement(Gob gob){return geometry(java.util.Collections.singletonList(gob),null,false,true);}
+    /** Local collision polygons for a gob, used by the outline glued to the placement ghost. */
+    public static List<Coord2d[]> local(Gob gob,boolean includeBuild){
+        List<Coord2d[]> result=new ArrayList<>();
+        if(gob==null||gob.removed)return result;
+        try{
+            for(Resource source:sources(gob)){
+                boolean explicit=false;
+                for(Resource.Obstacle obstacle:source.layers(Resource.obst))
+                    if((includeBuild||!obstacle.id.equals("build"))&&obstacle.p.length>0)explicit=true;
+                // Placement ghosts often keep Neg as the only reliable footprint; keep it even when obst exists.
+                if(!explicit||includeBuild)for(Resource.Neg neg:source.layers(Resource.negc)){
+                    if(neg.ac.x!=neg.bc.x&&neg.ac.y!=neg.bc.y)
+                        result.add(new Coord2d[]{
+                            new Coord2d(neg.ac.x,neg.ac.y),new Coord2d(neg.bc.x,neg.ac.y),
+                            new Coord2d(neg.bc.x,neg.bc.y),new Coord2d(neg.ac.x,neg.bc.y)});
+                }
+                for(Resource.Obstacle obstacle:source.layers(Resource.obst)){
+                    if(obstacle.id.equals("build")&&!includeBuild)continue;
+                    for(Coord2d[] polygon:obstacle.p)if(polygon.length>=3)result.add(polygon);
+                }
+            }
+        }catch(Loading ignored){}
+        return result;
+    }
+    private static List<Resource> sources(Gob gob){
+        Drawable drawable=gob.getattr(Drawable.class);
+        Resource res=drawable==null?null:drawable.getres();
+        List<Resource> sources=new ArrayList<>();
+        if(res==null||res.name.equals("gfx/terobjs/arch/cellardoor"))return sources;
+        if(drawable instanceof ResDrawable){
+            MessageBuf state=((ResDrawable)drawable).stateData();
+            if(res.name.startsWith("gfx/terobjs/arch/")&&res.name.endsWith("gate")&&!state.eom()&&state.uint8()==1)return sources;
+        }
+        sources.add(res);
+        for(int index=0;index<sources.size()&&index<16;index++){
+            for(RenderLink.Res link:sources.get(index).layers(RenderLink.Res.class)){
+                Resource linked=null;
+                if(link.l instanceof RenderLink.MeshMat)linked=((RenderLink.MeshMat)link.l).mesh.get();
+                else if(link.l instanceof RenderLink.ResSprite)linked=((RenderLink.ResSprite)link.l).res.get();
+                if(linked!=null&&!sources.contains(linked))sources.add(linked);
+            }
+        }
+        return sources;
+    }
+    private static List<Area> geometry(Iterable<Gob> objects, Gob player,boolean padding,boolean includeBuild) {
         List<Area> result = new ArrayList<>();
         for(Gob gob : objects) {
             if(gob == player || gob.removed) continue;
             try {
                 Drawable drawable = gob.getattr(Drawable.class);
                 Resource res = drawable == null ? null : drawable.getres();
-                if(res == null || res.name.equals("gfx/terobjs/arch/cellardoor")) continue;
+                if(res == null) continue;
                 double stroke=padding?(res.name.startsWith("gfx/terobjs/stockpile-")?7:5):0;
-                if(drawable instanceof ResDrawable) {
-                    MessageBuf state=((ResDrawable)drawable).stateData();
-                    if(res.name.startsWith("gfx/terobjs/arch/") && res.name.endsWith("gate") && !state.eom() && state.uint8()==1)continue;
-                }
-                List<Resource> sources=new ArrayList<>();sources.add(res);
-                for(int index=0;index<sources.size() && index<16;index++) {
-                    for(RenderLink.Res link:sources.get(index).layers(RenderLink.Res.class)) {
-                        Resource linked=null;
-                        if(link.l instanceof RenderLink.MeshMat)linked=((RenderLink.MeshMat)link.l).mesh.get();
-                        else if(link.l instanceof RenderLink.ResSprite)linked=((RenderLink.ResSprite)link.l).res.get();
-                        if(linked!=null && !sources.contains(linked))sources.add(linked);
-                    }
-                }
-                for(Resource source:sources) {
-                boolean explicit=false;
-                for(Resource.Obstacle obstacle:source.layers(Resource.obst))if(!obstacle.id.equals("build")&&obstacle.p.length>0)explicit=true;
-                if(!explicit)for(Resource.Neg neg : source.layers(Resource.negc)) {
-                    if(neg.ac.x != neg.bc.x && neg.ac.y != neg.bc.y)
-                        result.add(polygon(gob, new Coord2d[] {
-                            new Coord2d(neg.ac.x, neg.ac.y), new Coord2d(neg.bc.x, neg.ac.y),
-                            new Coord2d(neg.bc.x, neg.bc.y), new Coord2d(neg.ac.x, neg.bc.y)
-                        },stroke));
-                }
-                for(Resource.Obstacle obstacle : source.layers(Resource.obst)) {
-                    if(obstacle.id.equals("build")) continue;
-                    for(Coord2d[] polygon : obstacle.p)
-                        if(polygon.length >= 3) result.add(polygon(gob, polygon,stroke));
-                }
-                }
+                for(Coord2d[] polygon:local(gob,includeBuild))
+                    if(polygon.length>=3)result.add(polygon(gob,polygon,stroke));
             } catch(Loading ignored) { }
         }
         return result;

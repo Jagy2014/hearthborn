@@ -43,7 +43,7 @@ public final class CombatPrefs {
     public static boolean peace() { return cached_peace; }
     public static void peace(boolean on) { cached_peace=on; Utils.setprefb(P+"peace",on); }
 
-    private static volatile boolean cached_reaggro=Utils.getprefb(P+"reaggro",false);
+    private static volatile boolean cached_reaggro=Utils.getprefb(P+"reaggro",true);
     public static boolean reaggro() { return cached_reaggro; }
     public static void reaggro(boolean on) { cached_reaggro=on; Utils.setprefb(P+"reaggro",on); }
 

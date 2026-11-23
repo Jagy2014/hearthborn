@@ -116,6 +116,39 @@ public final class RadarIcons {
     public static synchronized void learn(Gob gob,GobIcon icon){load();String id=identity(gob);if(id==null)return;String path=icon.res.get().name;if(!path.equals(learned.put(id,path))){dirty=true;paths.clear();}}
     /** The icons of tame livestock (the mare, the cow, the tame reindeer): they are off until the player turns them on. */
     public static boolean tameIcon(String icon){return icon!=null&&(icon.startsWith("radar/tame/")||icon.contains("teimdeer"));}
+    private static final String SNAPDRAGON = "gfx/invobjs/herbs/snapdragon";
+    private static final String SNAPDRAGON_SMALL = "gfx/invobjs/small/snapdragon";
+
+    /** The small inventory image is an alternate resource for the same plant, not a second radar option. */
+    public static GobIcon.Setting.ID canonical(GobIcon.Setting.ID id) {
+        return id.res.equals(SNAPDRAGON_SMALL) ? new GobIcon.Setting.ID(SNAPDRAGON, id.sub) : id;
+    }
+
+    public static boolean mergeSnapdragon(java.util.Map<GobIcon.Setting.ID,GobIcon.Setting> settings) {
+        boolean changed = false;
+        for(GobIcon.Setting.ID id : new java.util.ArrayList<>(settings.keySet())) {
+            if(!id.res.equals(SNAPDRAGON_SMALL)) continue;
+            GobIcon.Setting preferred = settings.get(canonical(id));
+            if(preferred == null) continue;
+            GobIcon.Setting alternate = settings.remove(id);
+            preferred.show |= alternate.show;
+            if((!preferred.notify && alternate.notify)
+               || (preferred.filens == null && GobIcon.NotificationSetting.DEFAULT.equals(preferred.resns))) {
+                if(alternate.filens != null || !GobIcon.NotificationSetting.DEFAULT.equals(alternate.resns)) {
+                    preferred.resns = alternate.resns;
+                    preferred.filens = alternate.filens;
+                }
+            }
+            preferred.notify |= alternate.notify;
+            if(!preferred.markset && alternate.markset) {
+                preferred.markset = true;
+                preferred.mark = alternate.mark;
+            }
+            changed = true;
+        }
+        return changed;
+    }
+
     public static void configure(GobIcon.Settings.Loader loader){
         java.util.Map<String,Boolean> icons=new java.util.LinkedHashMap<>();
         java.util.Properties world=hearthborn.l10n.Catalog.load("/hearthborn/map/world-icons.properties");

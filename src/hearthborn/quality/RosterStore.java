@@ -29,9 +29,12 @@ public class RosterStore {
     private static final Object lock = new Object();
     private static Map<String, Rec> recs = new ConcurrentHashMap<>();
     private static boolean loaded = false;
+    private static final Map<String,Rec> objects = new HashMap<>();
+    private static final Map<Gob,Rec> liveObjects = new WeakHashMap<>();
 
     public static class Rec implements java.io.Serializable {
         private static final long serialVersionUID=1L;
+        public String key;
 	public String kind;
 	public long gobId;
 	public String name = "";
@@ -182,6 +185,7 @@ public class RosterStore {
 	    if(r == null) {
 		r = new Rec();
 		r.kind = "meta";
+                r.key=STAMP_KEY;
 		recs.put(STAMP_KEY, r);
 	    } else if(next.equals(r.comment)) {
 		return;
@@ -232,17 +236,62 @@ public class RosterStore {
 	return res.startsWith("gfx/terobjs/");
     }
 
-    public static void noteBuilding(Gob gob,double quality,boolean force){
-        String resource=GameObjects.resourceName(gob);
-        Rec previous=get(buildingKey(gob.id));
-        noteBuilding(gob.id,GameObjects.name(resource),quality>0?quality:previous==null?0:previous.q,force,isWoodyPlant(resource));
-        Rec record=get(buildingKey(gob.id));if(record==null)return;
-        String objectKey=hearthborn.world.ObjectNames.persistentKey(gob);
-        synchronized(lock){
-            if(!Objects.equals(record.objectKey,objectKey)||!Objects.equals(record.resource,resource)){
-                record.objectKey=objectKey;record.resource=resource;save();
-            }
+    /** Persistent row identity is independent of a server's reusable gob ID. */
+    public static String key(Rec record) {return record.key;}
+
+    private static String indexKey(Rec record) {
+        return record.objectKey==null?null:("barrel".equals(record.kind)?"k:":"b:")+record.objectKey;
+    }
+    private static void index(Rec record) {
+        String identity=indexKey(record);
+        if(identity!=null)objects.put(identity,record);
+    }
+    private static Rec objectRecord(Gob gob,boolean vessel) {
+        load();
+        synchronized(lock) {
+            Rec record=liveObjects.get(gob);
+            if(record!=null&&recs.get(record.key)==record&&"barrel".equals(record.kind)==vessel)return record;
+            String identity=hearthborn.world.ObjectNames.persistentKey(gob);
+            record=identity==null?null:objects.get((vessel?"k:":"b:")+identity);
+            if(record!=null)liveObjects.put(gob,record);
+            return record;
         }
+    }
+    private static void identify(Rec record,Gob gob,String identity,String resource) {
+        String previous=indexKey(record);
+        if(previous!=null)objects.remove(previous,record);
+        record.objectKey=identity;record.resource=resource;record.gobId=gob.id;
+        index(record);liveObjects.put(gob,record);
+    }
+    public static void noteBuilding(Gob gob,double quality,boolean force) {
+        String identity=hearthborn.world.ObjectNames.key(gob);
+        if(identity==null)throw new Loading();
+        String resource=GameObjects.resourceName(gob);
+        boolean woody=isWoodyPlant(resource);
+        String name=GameObjects.name(resource);
+        load();
+        synchronized(lock) {
+            Rec record=objectRecord(gob,false);
+            if(record==null) {
+                if(!force)return;
+                record=new Rec();record.key="b:"+UUID.randomUUID();record.kind=woody?"tree":"building";
+                applyStamp(record);recs.put(record.key,record);
+            }
+            double q=quality>0?tenths(quality):record.q;
+            if(record.q==q&&Objects.equals(record.name,name)&&Objects.equals(record.objectKey,identity)
+                &&Objects.equals(record.resource,resource)&&record.gobId==gob.id)return;
+            identify(record,gob,identity,resource);
+            record.kind=woody?"tree":"building";record.name=name;record.q=q;save();
+        }
+    }
+    /** Resolves a loaded object by saved map identity, never by a coinciding server ID. */
+    public static Rec trackedGob(Gob gob) {
+        if(gob==null)return null;
+        Rec record=objectRecord(gob,false);
+        return record!=null?record:objectRecord(gob,true);
+    }
+    public static boolean matches(Rec record,Gob gob) {
+        return record!=null&&record==trackedGob(gob);
     }
     private static final Properties legacyBuildingNames=hearthborn.l10n.Catalog.load("/hearthborn/l10n/ru/window.properties");
     public static String buildingDisplayName(Rec record){
@@ -278,6 +327,7 @@ public class RosterStore {
 		    return;
 		r = new Rec();
 		r.kind = woody?"tree":"building";
+                r.key=key;
 		r.gobId = id;
 		applyStamp(r);
 		recs.put(key, r);
@@ -330,8 +380,10 @@ public class RosterStore {
 	} catch (Loading ignored) {}
 	if(item.num > 1)
 	    n = Math.max(n, item.num);
-        int count=Math.max(1,Math.round(n));Rec best=found.get(id);
-        if(best==null||q>best.q){best=new Rec();best.name=id;best.q=q;best.count=count;found.put(id,best);}
+        int count=Math.max(1,Math.round(n));
+        String group=KIND_SEED.equals(plantKind(id))?id:saplingKey(id,q);
+        Rec best=found.get(group);
+        if(best==null||q>best.q){best=new Rec();best.name=id;best.q=q;best.count=count;found.put(group,best);}
         else if(q==best.q)best.count+=count;
     }
 
@@ -354,12 +406,13 @@ public class RosterStore {
 	if(count < 0)
 	    count = 0;
 	load();
-	String key = seedKey(id);
+	String key = KIND_SEED.equals(kind)?seedKey(id):saplingKey(id,q);
 	synchronized(lock) {
 	    Rec r = recs.get(key);
 	    if(r == null) {
 		r = new Rec();
 		r.kind = kind;
+                r.key=key;
 		r.name = id;
 		applyStamp(r);
 		recs.put(key, r);
@@ -381,6 +434,10 @@ public class RosterStore {
 	}
     }
 
+    public static String saplingKey(String id,double quality) {
+        return "p:"+id+":"+Double.toString(tenths(quality));
+    }
+
     private static int parseCount(String amount) {
 	if((amount == null) || amount.isEmpty())
 	    return(0);
@@ -393,7 +450,7 @@ public class RosterStore {
 	}
     }
 
-    private static long pendingVessel;
+    private static Gob pendingVessel;
 
     public static boolean isVesselGob(Gob gob) {
 	if(gob == null)
@@ -406,22 +463,13 @@ public class RosterStore {
 	    || res.startsWith("gfx/terobjs/demijohn");
     }
 
-    public static void markVesselPick(long id) {
-	pendingVessel = id;
+    public static void markVesselPick(Gob gob) {pendingVessel=gob;}
+
+    public static boolean shouldNoteVessel(Gob gob) {
+        return gob!=null&&(pendingVessel==gob||objectRecord(gob,true)!=null);
     }
 
-    public static boolean shouldNoteVessel(long id) {
-	if(id == 0)
-	    return(false);
-	if(pendingVessel == id)
-	    return(true);
-	load();
-	return recs.get(barrelKey(id)) != null;
-    }
-
-    public static void clearVesselPick() {
-	pendingVessel = 0;
-    }
+    public static void clearVesselPick() {pendingVessel=null;}
 
     public static boolean isEmptyBarrel(String name) {
 	if((name == null) || name.isEmpty())
@@ -433,39 +481,29 @@ public class RosterStore {
 	return n.equals(empty) || n.contains("Пусто");
     }
 
-    public static void noteBarrel(long id, String contents, double q, String amount) {
-	q = tenths(q);
-	load();
-	String key = barrelKey(id);
-	String name = (contents == null) ? "" : contents;
-	String amt = (amount == null) ? "" : amount;
-	synchronized(lock) {
-	    Rec r = recs.get(key);
-	    if(isEmptyBarrel(name)) {
-		if(r != null) {
-		    recs.remove(key);
-		    save();
-		}
-		return;
-	    }
-	    if(r == null) {
-		r = new Rec();
-		r.kind = "barrel";
-		r.gobId = id;
-		applyStamp(r);
-		recs.put(key, r);
-	    } else if((r.q == q) && name.equals(r.name) && amt.equals(r.amount == null ? "" : r.amount)) {
-		if(pendingVessel == id)
-		    pendingVessel = 0;
-		return;
-	    }
-	    r.name = name;
-	    r.q = q;
-	    r.amount = amt;
-	    if(pendingVessel == id)
-		pendingVessel = 0;
-	    save();
-	}
+    public static void noteBarrel(Gob gob,String contents,double quality,String amount) {
+        String identity=hearthborn.world.ObjectNames.key(gob);
+        if(identity==null)throw new Loading();
+        String resource=GameObjects.resourceName(gob);
+        load();
+        synchronized(lock) {
+            Rec record=objectRecord(gob,true);
+            if(isEmptyBarrel(contents)) {
+                if(record!=null)remove(record.key);
+                if(pendingVessel==gob)pendingVessel=null;
+                return;
+            }
+            if(record==null) {
+                record=new Rec();record.kind="barrel";record.key="k:"+UUID.randomUUID();
+                applyStamp(record);recs.put(record.key,record);
+            }
+            double q=tenths(quality);String amt=amount==null?"":amount;
+            if(pendingVessel==gob)pendingVessel=null;
+            if(record.q==q&&Objects.equals(record.name,contents)&&Objects.equals(record.amount,amt)
+                &&Objects.equals(record.objectKey,identity)&&record.gobId==gob.id)return;
+            identify(record,gob,identity,resource);
+            record.name=contents;record.q=q;record.amount=amt;save();
+        }
     }
 
     public static void setComment(String key, String comment) {
@@ -487,8 +525,7 @@ public class RosterStore {
     public static void remove(String key) {
 	load();
 	synchronized(lock) {
-	    if(recs.remove(key) != null)
-		save();
+	    if(recs.remove(key) != null) {reindex();save();}
 	}
     }
 
@@ -502,8 +539,7 @@ public class RosterStore {
 		if(recs.remove(key) != null)
 		    any = true;
 	    }
-	    if(any)
-		save();
+	    if(any) {reindex();save();}
 	}
     }
 
@@ -588,12 +624,25 @@ public class RosterStore {
 	return out;
     }
 
-    @SuppressWarnings("unchecked")
+    private static void reindex() {
+        objects.clear();
+        for(Rec record:recs.values())if("building".equals(record.kind)||"tree".equals(record.kind)||"barrel".equals(record.kind))index(record);
+    }
     private static void load() {
-        if(loaded)return;
-        loaded=true;
-        Object saved=LocalStore.read("quality-roster");
-        if(saved instanceof Map)recs.putAll((Map<String,Rec>)saved);
+        synchronized(lock) {
+            if(loaded)return;
+            Object saved=LocalStore.read("quality-roster");
+            if(saved instanceof Map)for(Map.Entry<?,?> entry:((Map<?,?>)saved).entrySet()) {
+                if(!(entry.getKey() instanceof String)||!(entry.getValue() instanceof Rec))continue;
+                Rec record=(Rec)entry.getValue();String key=(String)entry.getKey();
+                if(KIND_SAPLING.equals(record.kind)) {
+                    String qualityKey=saplingKey(record.name,record.q);
+                    if(!((Map<?,?>)saved).containsKey(qualityKey)&&!recs.containsKey(qualityKey))key=qualityKey;
+                }
+                record.key=key;recs.put(key,record);
+            }
+            reindex();loaded=true;
+        }
     }
 
     private static void save() {

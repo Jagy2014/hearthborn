@@ -86,12 +86,13 @@ public final class VesselInfo {
     public static void observe(Window window,Gob gob) {
         VesselInfo stats=read(window);
         if(stats.loading)return;
+        if(!stats.empty)hearthborn.map.MarkerQuality.vessel(gob,stats.contents,stats.quality);
         if(stats.empty || !stats.contents.isEmpty())
             hearthborn.storage.ContainerLook.observed(gob,stats.empty?null:L10n.text("ingredient",stats.contents));
-        if(!RosterStore.shouldNoteVessel(gob.id))return;
-        if(stats.empty)RosterStore.noteBarrel(gob.id,"Empty",0,"");
+        if(!RosterStore.shouldNoteVessel(gob))return;
+        if(stats.empty)RosterStore.noteBarrel(gob,"Empty",0,"");
         else if(!stats.contents.isEmpty()) {
-            RosterStore.noteBarrel(gob.id,L10n.text("ingredient",stats.contents),stats.quality,stats.amount);
+            RosterStore.noteBarrel(gob,L10n.text("ingredient",stats.contents),stats.quality,stats.amount);
             RosterStore.observeBarrelSeeds(stats.amount.contains("seed")?"Seeds of "+stats.contents:stats.contents,stats.quality,stats.amount);
         }
     }

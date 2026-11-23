@@ -605,7 +605,15 @@ public class Makewindow extends Widget {
 	    if(lack > 0) {
 		lacking = true;
 		String name;
-		try {name = in.spec.name();} catch(Loading l) {name = "?";}
+		try {
+		    Spec spec = in.spec;
+		    name = spec.name();
+		    Resource resource = spec.resource();
+		    Resource.Tooltip tooltip = resource.layer(Resource.tooltip);
+		    name = tooltip != null && Objects.equals(name, tooltip.original)
+		        ? hearthborn.L10n.resource("tooltip", resource.name, name)
+		        : hearthborn.L10n.text("tooltip", name);
+		} catch(Loading l) {name = "?";}
 		names.add(name);
 		counts.add(lack);
 	    }

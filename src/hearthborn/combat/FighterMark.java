@@ -47,6 +47,8 @@ public final class FighterMark extends GAttrib implements RenderTree.Node, PView
     };
     private static final Text.Foundry numf = new Text.Foundry(Text.mono.deriveFont(java.awt.Font.BOLD), 14);
     private static volatile GameUI gui;
+    /** Keep compact combat UI while a fled animal is being re-attacked. */
+    private static double holdLayoutUntil;
     /** Ground band: inner radius 4, thickness 1.75. */
     private static final FastMesh RING = band(4f, 5.75f);
     private static final Pipe.Op RING_STATE = Pipe.Op.compose(
@@ -103,6 +105,11 @@ public final class FighterMark extends GAttrib implements RenderTree.Node, PView
 
     public static void clearAll() { damage.clear(); }
 
+    /** True briefly after an animal flees while re-aggro is on, so compact UI does not flicker off. */
+    public static boolean holdingLayout() {
+        return CombatPrefs.reaggro() && Utils.rtime() < holdLayoutUntil;
+    }
+
     public static void reaggro(long gobid) {
         GameUI game = gui;
         if((game == null) || (game.map == null) || KnockoutState.unconscious(game))
@@ -111,7 +118,8 @@ public final class FighterMark extends GAttrib implements RenderTree.Node, PView
         Gob player = game.map.player();
         if((target == null) || (player == null) || (target.rc == null) || (player.rc == null))
             return;
-        if(player.rc.dist(target.rc) > 200)
+        // Cover ranger-bow reach; animals often step out of melee before the del arrives.
+        if(player.rc.dist(target.rc) > ArcheryAim.RANGERS_BOW + 20)
             return;
         GobHealth health = target.getattr(GobHealth.class);
         if((health != null) && (health.hp <= 0))
@@ -124,7 +132,12 @@ public final class FighterMark extends GAttrib implements RenderTree.Node, PView
         } catch(Loading l) {
             return;
         }
-        game.act(0, target.rc.floor(OCache.posres), target, "atk");
+        holdLayoutUntil = Utils.rtime() + 4;
+        // Same sequence as the aggro hotkeys: raise attack, click the animal, clear the cursor.
+        game.act("atk");
+        Coord at = target.rc.floor(OCache.posres);
+        game.map.wdgmsg("click", Coord.z, at, 1, 0, 0, (int)target.id, at, 0, -1);
+        game.map.wdgmsg("click", Coord.z, player.rc.floor(OCache.posres), 3, 0);
     }
 
     private Color look(boolean ring) {

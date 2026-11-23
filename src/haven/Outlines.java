@@ -63,15 +63,20 @@ public class Outlines implements RenderTree.Node {
 		};
 
 		Expression sample(boolean nrm, Expression c, Expression s, Coord o) {
+		    // A neighbor beyond the preview edge must not sample the opposite
+		    // edge (or fetch an undefined texel in the multisampled pass).
 		    if(ms) {
 			Expression ctc = ivec2(floor(mul(c, FrameConfig.u_screensize.ref())));
 			if(!o.equals(Coord.z))
 			    ctc = add(ctc, ivec2(o));
+			ctc = clamp(ctc, ivec2(l(0)), sub(ivec2(FrameConfig.u_screensize.ref()), ivec2(l(1))));
 			return(texelFetch((nrm?msnrm:msdep).ref(), ctc, s));
 		    } else {
 			Expression ctc = c;
 			if(!o.equals(Coord.z))
 			    ctc = add(c, mul(vec2(o), FrameConfig.u_pixelpitch.ref()));
+			Expression half = mul(FrameConfig.u_pixelpitch.ref(), l(0.5));
+			ctc = clamp(ctc, half, sub(vec2(l(1.0)), half));
 			return(texture2D((nrm?snrm:sdep).ref(), ctc));
 		    }
 		}

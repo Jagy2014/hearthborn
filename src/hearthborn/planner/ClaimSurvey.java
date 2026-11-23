@@ -222,7 +222,7 @@ public final class ClaimSurvey {
             Coord tile=gob.rc.floor(MCache.tilesz).sub(grid.ul);int cell=tile.x+tile.y*100;
             if(cell<0||cell>=10000||!record.personal.get(cell)&&!record.village.get(cell))continue;
             if(crop){byte[] terrain=ground.get(grid.id);if(terrain!=null)terrain[cell]=4;continue;}
-            ObjectRecord object=new ObjectRecord();object.resource=resource;object.type=type;object.footprint=ClaimPlan.footprint(gob);object.name=ObjectNames.name(gob);if(type.equals("Rack"))object.number=ObjectNames.automaticNumber(gob);hearthborn.quality.RosterStore.Rec quality=hearthborn.quality.RosterStore.trackedGob(gob.id);if(quality!=null)object.quality=quality.q;object.icon=ContainerContents.rememberedIcon(gob);object.x=gob.rc.x-grid.ul.x*MCache.tilesz.x;object.y=gob.rc.y-grid.ul.y*MCache.tilesz.y;object.seen=System.currentTimeMillis();
+            ObjectRecord object=new ObjectRecord();object.resource=resource;object.type=type;object.footprint=ClaimPlan.footprint(gob);object.name=ObjectNames.name(gob);if(type.equals("Rack"))object.number=ObjectNames.automaticNumber(gob);hearthborn.quality.RosterStore.Rec quality=hearthborn.quality.RosterStore.trackedGob(gob);if(quality!=null)object.quality=quality.q;object.icon=ContainerContents.rememberedIcon(gob);object.x=gob.rc.x-grid.ul.x*MCache.tilesz.x;object.y=gob.rc.y-grid.ul.y*MCache.tilesz.y;object.seen=System.currentTimeMillis();
             if(type.equals("Rack"))changed|=reconcileRack(record,object);
             String key=object.key();ObjectRecord old=record.objects.get(key);if(object.quality<=0&&old!=null)object.quality=old.quality;
             if(old==null||Double.compare(old.quality,object.quality)!=0||!Objects.equals(old.number,object.number)||!Objects.equals(old.type,object.type)||!Objects.equals(old.name,object.name)||!Objects.equals(old.icon,object.icon)||!Arrays.equals(old.footprint,object.footprint)||object.seen-old.seen>60000){record.objects.put(key,object);changed=true;}
@@ -305,6 +305,10 @@ public final class ClaimSurvey {
         ClaimMemo(long fingerprint,Set<Coord> tiles,String plan){this.fingerprint=fingerprint;this.tiles=tiles;this.plan=plan;}
     }
     private static final Map<String,ClaimMemo> claimMemos=new HashMap<>();
+    /** Membership alone does not identify which village owns the land being surveyed. */
+    static String defaultPlanName(String tag,int number){
+        return hearthborn.L10n.tr("vlg".equals(tag)?"Village claim":"Personal claim")+" · "+number;
+    }
     private static void rememberClaim(GameUI gui,String tag){
         Gob player=gui.map.player();if(player==null)return;Coord here=player.rc.floor(MCache.tilesz);
         Collection<GridRecord> grids=records();boolean claimed=false;long fingerprint=1;
@@ -322,9 +326,7 @@ public final class ClaimSurvey {
         java.util.List<Plan> all=plans();
         for(Plan plan:all)if(plan.snapshot==null&&tag.equals(plan.tag))for(GridRecord grid:grids)if(grid.id==plan.grid&&selected.contains(Coord.of(grid.x+plan.x,grid.y+plan.y))){claimMemos.put(memoKey,new ClaimMemo(fingerprint,selected,plan.id));return;}
         MCache.Grid grid=player.glob.map.getgridt(here);Plan plan=new Plan();plan.id=UUID.randomUUID().toString();plan.tag=tag;plan.grid=grid.id;plan.x=here.x-grid.ul.x;plan.y=here.y-grid.ul.y;
-        plan.name=hearthborn.L10n.tr(tag.equals("vlg")?"Village claim":"Personal claim");
-        if(tag.equals("vlg"))for(Polity polity:gui.children(Polity.class))if("Village".equals(polity.cap)){plan.name=polity.name;break;}
-        plan.name+=" · "+(all.size()+1);all.add(plan);savePlans(all);claimMemos.put(memoKey,new ClaimMemo(fingerprint,selected,plan.id));
+        plan.name=defaultPlanName(tag,all.size()+1);all.add(plan);savePlans(all);claimMemos.put(memoKey,new ClaimMemo(fingerprint,selected,plan.id));
     }
     static final class EntryPoint {
         String region;long grid;double x,y,until;

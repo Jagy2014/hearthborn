@@ -40,7 +40,11 @@ public final class AutoDropSettings {
             }, box.pos("ur").adds(6, -2).x(UI.scale(212)));
             prev = box;
         }
-        panel.add(options.new PButton(UI.scale(200), "Back", 27, back), prev.pos("bl").adds(0, 20));
+        prev = panel.add(new Label("Drop while the inventory button is on:"), prev.pos("bl").adds(0, 16));
+        prev.settip(L10n.tr("Separate from mining rules above. Lists what is in the backpack (and types you already chose). Tick a row here to use the backpack drop button; quality is ignored."));
+        GameUI gui = panel.ui == null ? null : panel.ui.root.getchild(GameUI.class);
+        Widget list = panel.add(new ContinuousDrop.TypeList(gui), prev.pos("bl").adds(0, 6));
+        panel.add(options.new PButton(UI.scale(200), "Back", 27, back), list.pos("bl").adds(0, 20));
         panel.pack();
         return panel;
     }

@@ -34,7 +34,7 @@ public final class ScriptRunner {
     }
     static class Task {
         final GameUI gui;final Deque<Step> steps=new ArrayDeque<>();
-        GItem held;Runnable cleanup;boolean returnIssued;String flower;boolean fuelRun;Gob fuelTarget;String fuelResource;int fuelTotal,fuelAdded;boolean cheeseRun;String curdResource;GItem cheeseTray;int cheeseLeft;final Set<GItem> filledTrays=Collections.newSetFromMap(new IdentityHashMap<>());
+        GItem held;Inventory returnInventory;Coord returnCell;Runnable cleanup;boolean returnIssued;String flower;boolean fuelRun;Gob fuelTarget;String fuelResource;int fuelTotal,fuelAdded;boolean cheeseRun;String curdResource;GItem cheeseTray;int cheeseLeft;final Set<GItem> filledTrays=Collections.newSetFromMap(new IdentityHashMap<>());
         String collectionType;Coord2d collectionOrigin;int collected;Window collectionWindow;boolean hanging;
         final Set<Long> collectedObjects=new HashSet<>();
         Set<Window> previousWindows;
@@ -244,7 +244,7 @@ public final class ScriptRunner {
         void finishCheese(){returnHeld();add(()->{},()->hand()==null||hand()!=held,3);}
         void returnHeld(){
             if(returnIssued||hand()==null||hand()!=held)return;
-            Inventory inventory=gui.maininv;
+            Inventory inventory=returnInventory==null?gui.maininv:returnInventory;
             if(inventory==null)return;
             Coord size=gui.vhand.sz.add(Inventory.sqsz.sub(1,1)).div(Inventory.sqsz);
             for(int y=0;y<=inventory.isz.y-size.y;y++)for(int x=0;x<=inventory.isz.x-size.x;x++) {
@@ -255,7 +255,7 @@ public final class ScriptRunner {
                     Coord at=w.c.sub(1,1).div(Inventory.sqsz),extent=w.sz.add(Inventory.sqsz.sub(1,1)).div(Inventory.sqsz);
                     if(x<at.x+extent.x&&x+size.x>at.x&&y<at.y+extent.y&&y+size.y>at.y)free=false;
                 }
-                if(free){returnIssued=true;inventory.wdgmsg("drop",cell);return;}
+                if(free){returnIssued=true;returnInventory=inventory;returnCell=cell;inventory.wdgmsg("drop",cell);return;}
             }
         }
     }
@@ -273,9 +273,9 @@ public final class ScriptRunner {
     }
     public static void cancel(GameUI gui){finish(gui,false,true);}
     /** Manual map movement takes over from field automation immediately. */
-    public static void manualFieldInput(GameUI gui){Task task=current(gui);if(task instanceof FieldTask||task instanceof ButcherScripts.Task||task instanceof ShearScripts.Task&&((ShearScripts.Task)task).working()||task instanceof TrellisTask&&((TrellisTask)task).working())cancel(gui);}
+    public static void manualFieldInput(GameUI gui){Task task=current(gui);if(task instanceof FieldTask||task instanceof ButcherScripts.Task||task instanceof ShearScripts.Task&&((ShearScripts.Task)task).working()||task instanceof WaterScripts.Task||task instanceof DigScripts.Task||task instanceof ScoutScripts.Task||task instanceof TrellisTask&&((TrellisTask)task).working())cancel(gui);}
     public static boolean fieldRunning(GameUI gui){return current(gui) instanceof FieldTask;}
-    public static boolean managesDrinking(GameUI gui){Task task=current(gui);return task instanceof FieldTask||task instanceof ButcherScripts.Task||task instanceof TrellisTask;}
+    public static boolean managesDrinking(GameUI gui){Task task=current(gui);return task instanceof FieldTask||task instanceof ButcherScripts.Task||task instanceof TrellisTask||task instanceof WaterScripts.Task||task instanceof DigScripts.Task||task instanceof ScoutScripts.Task;}
     /** A manual inventory/stockpile command invalidates the field's seed reservation. */
     public static void fieldInput(Widget sender,String message){
         fieldInput(sender,message,new Object[0]);
@@ -292,7 +292,9 @@ public final class ScriptRunner {
         if(task instanceof ButcherScripts.Task&&sender instanceof GItem&&message.equals("iact")
             &&((GItem)sender).contents instanceof Inventory&&args.length>=2
             &&args[1] instanceof Number&&((Number)args[1]).intValue()==0)return;
-        if((task instanceof FieldTask||task instanceof ButcherScripts.Task||task instanceof ShearScripts.Task||task instanceof TrellisTask&&((TrellisTask)task).working())&&issuing.get()!=task)cancel(gui);
+        Task issued=issuing.get();
+        if(task instanceof ScoutScripts.Task&&issued!=null&&issued==((ScoutScripts.Task)task).probe)return;
+        if((task instanceof FieldTask||task instanceof ButcherScripts.Task||task instanceof ShearScripts.Task||task instanceof WaterScripts.Task||task instanceof DigScripts.Task||task instanceof ScoutScripts.Task||task instanceof TrellisTask&&((TrellisTask)task).working())&&issued!=task)cancel(gui);
     }
     public static boolean hideFuelCursor(GameUI gui,GItem item){Task task=active.get(gui);return task!=null&&((task.fuelRun&&matchesFuel(item,task.fuelResource))||(task.cheeseRun&&resource(item).equals(task.curdResource)));}
     public static boolean running(GameUI gui){return active.containsKey(gui);}
@@ -324,9 +326,28 @@ public final class ScriptRunner {
         catch(RuntimeException failure){finish(gui,false,false);new Warning(failure,"Automation script failed").issue();task.error("The script could not complete the action.");}
         finally{issuing.remove();}
     }
+    /** Runs one step of a task that another task drives; true when it has nothing left to do. Failures arrive as IllegalStateException. */
+    static boolean advance(Task task){
+        Step step=task.steps.peekFirst();if(step==null)return true;
+        try {
+            /* Keep the parent script as issuing (scout tick). Switching to the nested probe
+             * made fieldInput cancel the scout on take/itemact. */
+            task.check();
+            if(!step.issued&&!task.canIssue())return false;
+            if(step.until==0)step.until=Utils.rtime()+step.timeout;
+            if(!step.issued){step.action.run();step.issued=true;}
+            if(step.ready.getAsBoolean())task.steps.removeFirst();
+            else if(Utils.rtime()>step.until)throw new IllegalStateException("The script timed out waiting for the server.");
+        }catch(Loading loading){if(step.until!=0&&Utils.rtime()>step.until)throw new IllegalStateException("The script timed out waiting for the server.");}
+        return task.steps.isEmpty();
+    }
     public static void run(GameUI gui,String script){
         if(ButcherScripts.supports(script)){ButcherScripts.run(gui);return;}
         if(ShearScripts.supports(script)){ShearScripts.run(gui);return;}
+        if(WaterScripts.supports(script)){WaterScripts.run(gui);return;}
+        if(DigScripts.supports(script)){DigScripts.run(gui,script);return;}
+        if(ScoutScripts.supports(script)){ScoutScripts.run(gui);return;}
+        if("hands".equals(script)){hearthborn.ui.HandMenu.open(gui);return;}
         if(gui==null||gui.map==null||gui.map.player()==null)return;
         if(running(gui)){cancel(gui);return;}
         if(gui.fv!=null&&gui.fv.current!=null)return;
@@ -368,10 +389,23 @@ public final class ScriptRunner {
             if(lower.contains("too tired")||lower.contains("слишком устали"))((MiningCraftScripts.Task)task).error="Cellar digging: too tired to dig.";
         }
     }
-    public static boolean flowerPending(GameUI gui){Task task=active.get(gui);return task!=null&&task.flower!=null;}
+    /**
+     * The task that is waiting for a flower menu: the active script, or a nested scout
+     * probe (water pour-out) that sets {@code flower} while the scout stays active.
+     */
+    static Task flowerTask(GameUI gui){
+        Task task=active.get(gui);if(task==null)return null;
+        if(task.flower!=null)return task;
+        if(task instanceof ScoutScripts.Task){
+            Task probe=((ScoutScripts.Task)task).probe;
+            if(probe!=null&&probe.flower!=null)return probe;
+        }
+        return null;
+    }
+    public static boolean flowerPending(GameUI gui){return flowerTask(gui)!=null;}
     public static int flowerChoice(GameUI gui,String[] options){
-        Task task=active.get(gui);if(task==null||task.flower==null)return -1;
-        for(int i=0;i<options.length;i++)if(Arrays.asList(task.flower.split("\\|" )).contains(options[i])){task.flower=null;return i;}
+        Task task=flowerTask(gui);if(task==null||task.flower==null)return -1;
+        for(int i=0;i<options.length;i++)if(Arrays.asList(task.flower.split("\\|")).contains(options[i])){task.flower=null;return i;}
         return -1;
     }
     private static boolean rawHide(GItem item){
