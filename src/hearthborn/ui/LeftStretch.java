@@ -23,6 +23,7 @@ public final class LeftStretch extends Widget {
     private final Window window;
     private final String pref;
     private UI.Grab grab;
+    private MagneticWindows.StackResize stack;
     private Coord from,size,origin;
     private int right;
     private Coord restC,restSz;
@@ -40,10 +41,15 @@ public final class LeftStretch extends Widget {
     protected void added(){place();}
     public void presize(){place();}
     public void draw(GOut g){
-        ResizeMarks.draw(g,Coord.of(0,sz.y),true);
+        ResizeMarks.draw(g,Coord.of(HudFrames.sideInset(window.deco,false),sz.y),true);
     }
     public boolean mousedown(MouseDownEvent event){
         if(event.b!=1||!checkhit(event.c))return false;
+        stack=MagneticWindows.resizeStack(window,true);
+        if(stack!=null){
+            from=parentpos(window.parent,event.c);
+            grab=ui.grabmouse(this);window.raise();return true;
+        }
         if(restore())return true;
         from=parentpos(window.parent,event.c);size=window.csz();origin=new Coord(window.c);
         right=window.c.x+HudInterfaceScale.size(window).x;
@@ -52,13 +58,16 @@ public final class LeftStretch extends Widget {
     }
     public void mousemove(MouseMoveEvent event){
         if(grab==null)return;
-        Coord delta=HudInterfaceScale.fromParent(window,parentpos(window.parent,event.c).sub(from));
+        Coord travel=parentpos(window.parent,event.c).sub(from);
+        if(stack!=null){stack.resize(travel);return;}
+        Coord delta=HudInterfaceScale.fromParent(window,travel);
         if(Math.abs(delta.x)>UI.scale(3)||Math.abs(delta.y)>UI.scale(3))cornerClickable=false;
         window.resize(size.add(-delta.x,delta.y));
         settle(Coord.of(right-HudInterfaceScale.size(window).x,origin.y));
     }
     public boolean mouseup(MouseUpEvent event){
         if(grab==null||event.b!=1)return false;
+        if(stack!=null){stack.finish();stack=null;release();return true;}
         Coord before=size;
         release();released(before);remember();return true;
     }

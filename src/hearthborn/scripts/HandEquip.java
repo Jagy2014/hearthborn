@@ -150,11 +150,12 @@ public final class HandEquip {
         Coord size=size(item);for(Space space:spaces){Coord at=space.reserve(size,space.inventory==source?origin:null);if(at!=null)return new Place(space.inventory,at);}return null;
     }
     static List<Space> spaces(GameUI gui,GItem ignore,Inventory source) {
-        return spaces(gui,ignore,source,Coord.z);
+        return spaces(gui,ignore,source,Coord.z,false);
     }
-    private static List<Space> spaces(GameUI gui,GItem ignore,Inventory source,Coord shrink) {
+    private static List<Space> spaces(GameUI gui,GItem ignore,Inventory source,Coord shrink,boolean backpackFirst) {
         List<Inventory> inventories=new ArrayList<>();
         Inventory belt=belt(gui);if(belt!=null)inventories.add(belt);
+        if(backpackFirst&&gui.maininv!=null&&!inventories.contains(gui.maininv))inventories.add(gui.maininv);
         if(source!=null&&!inventories.contains(source))inventories.add(source);
         if(gui.maininv!=null&&!inventories.contains(gui.maininv))inventories.add(gui.maininv);
         List<Space> result=new ArrayList<>();for(Inventory inventory:inventories)result.add(new Space(inventory,ignore,inventory==gui.maininv?shrink:Coord.z,inventory==belt));return result;
@@ -186,11 +187,17 @@ public final class HandEquip {
         }
     }
     static boolean queue(ShortcutRunner bot,GameUI gui,GItem item,int slot) {
+        return queue(bot,gui,item,slot,false);
+    }
+    static boolean queueBowWithBothHandsOccupied(ShortcutRunner bot,GameUI gui,GItem bow) {
+        return queue(bot,gui,bow,LEFT,true);
+    }
+    private static boolean queue(ShortcutRunner bot,GameUI gui,GItem item,int slot,boolean drawingBow) {
         if(gui.vhand!=null||!(item.parent instanceof Inventory)||(slots(item)&(1<<slot))==0)return false;
         Inventory source=(Inventory)item.parent;Coord origin=cell(item);if(origin==null)return false;
         // Unknown handedness is conservative only when both hands contain distinct items.
         // The server's first equipment update teaches subsequent swaps the actual requirement.
-        boolean both=twoHander(item)||knownSlots(item)==0&&slots(item)==HANDS;
+        boolean both=drawingBow||twoHander(item)||knownSlots(item)==0&&slots(item)==HANDS;
         WItem target=hand(gui,slot),opposite=hand(gui,slot==LEFT?RIGHT:LEFT);
         GItem displaced=target==null?null:target.item,extra=both&&opposite!=null&&opposite.item!=displaced?opposite.item:null;
         final int destinationSlot=slot;
@@ -198,9 +205,9 @@ public final class HandEquip {
         Coord firstShrink=inventoryBonus(extra,otherSlot);
         Coord finalShrink=firstShrink.add(inventoryBonus(displaced,slot));
         // A first return must still fit after the second sack is removed.
-        List<Space> before=spaces(gui,null,source,finalShrink);Place extraPlace=extra==null?null:place(before,extra,source,null);
+        List<Space> before=spaces(gui,null,source,finalShrink,drawingBow);Place extraPlace=extra==null?null:place(before,extra,source,null);
         if(extra!=null&&extraPlace==null)return noRoom(gui);
-        List<Space> after=spaces(gui,item,source,finalShrink);
+        List<Space> after=spaces(gui,item,source,finalShrink,drawingBow);
         if(extraPlace!=null)for(Space space:after)if(space.inventory==extraPlace.inventory)space.mark(extraPlace.cell,space.footprint(size(extra)));
         Place mainPlace=displaced==null?null:place(after,displaced,source,origin);
         if(displaced!=null&&mainPlace==null)return noRoom(gui);

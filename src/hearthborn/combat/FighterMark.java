@@ -39,6 +39,7 @@ public final class FighterMark extends GAttrib implements RenderTree.Node, PView
     private static final Color PARTY = new Color(16, 255, 16, 180);
     private static final Color ENEMY = new Color(246, 86, 153, 180);
     private static final Color TARGET = new Color(255, 0, 0, 200);
+    private static final Color PREVIEW = new Color(255, 220, 75, 220);
     private static final Color[] OPEN = {
         new Color(210, 210, 64), new Color(81, 165, 56), new Color(39, 82, 191), new Color(192, 28, 28)
     };
@@ -57,10 +58,14 @@ public final class FighterMark extends GAttrib implements RenderTree.Node, PView
     private Color tinted;
     private Color ringColor;
     private Gob.Overlay ring;
+    private volatile boolean preview;
+    private Gob.Overlay previewArrow;
     private int[] shown;
     private Tex damageTex;
 
     public FighterMark(Gob gob) { super(gob); }
+
+    void preview(boolean marked) { preview = marked; }
 
     public static void bind(GameUI game) { gui = game; }
 
@@ -163,13 +168,30 @@ public final class FighterMark extends GAttrib implements RenderTree.Node, PView
     }
 
     public void ctick(double dt) {
-        Color next = look(true);
+        Color combatRing = look(true);
+        Color next = preview && !TARGET.equals(combatRing) ? PREVIEW : combatRing;
         if((next == null) || ((ringColor != null) && !ringColor.equals(next)))
             clearRing();
         if((next != null) && (ring == null)) {
             ringColor = next;
             ring = new Gob.Overlay(gob, new Band(gob, next));
             gob.addol(ring, false);
+        }
+        boolean combatArrow = preview && gui != null && Fightsess.active && gui.fv != null && gui.fv.current != null
+            && gui.fv.current.gobid == gob.id && gui.fv.lsrel.size() > (CombatPrefs.mark() ? 0 : 1);
+        if(preview && !combatArrow) {
+            if(previewArrow == null) {
+                try {
+                    Gob.Overlay arrow = new Gob.Overlay(gob, new PreviewArrow(gob));
+                    gob.addol(arrow, false);
+                    previewArrow = arrow;
+                } catch(Loading pending) {}
+            }
+        } else if(previewArrow != null) {
+            Sprite sprite = previewArrow.spr;
+            previewArrow.remove(false);
+            previewArrow = null;
+            gob.defer(sprite::dispose);
         }
     }
 
@@ -315,6 +337,20 @@ public final class FighterMark extends GAttrib implements RenderTree.Node, PView
         public void added(RenderTree.Slot slot) {
             slot.add(RING, Pipe.Op.compose(RING_STATE, color));
         }
+    }
+
+    private static final class PreviewArrow extends Sprite {
+        private final Sprite arrow;
+
+        PreviewArrow(Gob gob) {
+            super(gob, null);
+            arrow = Fightsess.targetArrow(gob);
+        }
+
+        public void added(RenderTree.Slot slot) { slot.add(arrow, new IgnoreClicks()); }
+        public boolean tick(double dt) { arrow.tick(dt); return false; }
+        public void gtick(haven.render.Render render) { arrow.gtick(render); }
+        public void dispose() { arrow.dispose(); }
     }
 
     private Tex outlined(String text, Color color) {

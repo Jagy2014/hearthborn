@@ -109,6 +109,8 @@ public final class QuestPictures {
             String current = names.get(slug);
             if(current == null || rank(path) < rank(current)) names.put(slug, path);
         }
+        names.put("wineglance", "gfx/invobjs/cuprite");
+        names.put("petrifiedseashell", "gfx/invobjs/petrifiedshell");
         String bladderwrack = names.get("bladderwrack");
         if(bladderwrack != null) names.put("washedupbladderwrack", bladderwrack);
         return names;

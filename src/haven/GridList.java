@@ -105,7 +105,7 @@ public abstract class GridList<T> extends Widget {
     }
 
     protected void drawbg(GOut g) {
-        if(hearthborn.ui.UiTheme.onPanel(this))
+        if(hearthborn.ui.UiTheme.onPanel(this)&&!hearthborn.ui.UiTheme.characterGlass(this))
             hearthborn.ui.UiTheme.panel(g, sz);
     }
 

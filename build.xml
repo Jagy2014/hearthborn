@@ -111,7 +111,7 @@
       <fileset dir="src" excludes="**/*.java,**/.DS_Store,${private-agent-files}" />
     </copy>
     <copy todir="build/classes/hearthborn/assets">
-      <fileset dir="assets" includes="icons/**/*.png,audio/**/*.wav,fonts/**/*.ttf,fonts/**/LICENSE" excludes="${private-agent-files}" />
+      <fileset dir="assets" includes="icons/**/*.png,buttons/**/*.png,audio/**/*.wav,fonts/**/*.ttf,fonts/**/LICENSE" excludes="${private-agent-files}" />
     </copy>
     <copy file="docs/changelog.md" tofile="build/classes/hearthborn/changelog/en.md" />
     <copy file="docs/changelog.ru.md" tofile="build/classes/hearthborn/changelog/ru.md" />

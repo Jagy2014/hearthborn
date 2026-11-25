@@ -44,18 +44,17 @@ public final class EquipmentStrip extends Widget implements DTarget {
     private GItem previewItem;
     private Coord offset;
     private boolean vertical;
-    private double scale=ToolbarScale.equipment();
+    private double scale=ToolbarScale.scale();
     private Coord logicalSize(){return cell(Math.max(0,slots.length-1)).add(Inventory.invsq.sz()).add(ToolbarFrame.inset());}
     public EquipmentStrip() {super(Coord.z);layout();for(int i=0;i<qualities.length;i++)qualities[i]=new hearthborn.QualityOverlay();show(Toolbars.enabled("equipment"));}
     private Coord cell(int i) {
-        Coord slot=Inventory.invsq.sz();int gap=Toolbars.clean()?ToolbarFrame.gap():0;
-        return ToolbarFrame.inset().add(vertical?Coord.of(0,i*(slot.y+gap)):Coord.of(i*(slot.x+gap),0));
+        return ToolbarFrame.cell(i,vertical);
     }
     private Coord logical(Coord point){return ToolbarScale.logical(point,scale);}
     private void layout(){
         slots=java.util.Arrays.stream(SLOTS).filter(EquipmentStrip::slotEnabled).toArray();
         vertical=Toolbars.vertical("equipment");Coord size=logicalSize();
-        double base=ToolbarScale.equipment();scale=vertical&&parent!=null?Math.min(base,Math.max(1,parent.sz.y)/(double)size.y):base;
+        double base=ToolbarScale.scale();scale=vertical&&parent!=null?Math.min(base,Math.max(1,parent.sz.y)/(double)size.y):base;
         Coord target=ToolbarScale.size(size,scale);if(!sz.equals(target))resize(target);
     }
     private int index(Coord c) {
@@ -84,11 +83,10 @@ public final class EquipmentStrip extends Widget implements DTarget {
     }
     public void draw(GOut g) {
         g=ToolbarScale.graphics(g,logicalSize(),scale);
-        Toolbars.panel(g,logicalSize());
         Equipory equipment=equipment();
         for(int i=0;i<slots.length;i++) {
             Coord c=cell(i);
-            if(Toolbars.clean())ToolbarFrame.hotbarSlot(g,c,Inventory.invsq.sz());else UiTheme.slot(g,c,Inventory.invsq.sz());
+            ToolbarFrame.hotbarSlot(g,c,Inventory.invsq.sz());
             WItem item=item(equipment,i);
             if(item!=null){
                 item.draw(g.reclip(c.add(1,1),Inventory.invsq.sz().sub(2,2)),false);

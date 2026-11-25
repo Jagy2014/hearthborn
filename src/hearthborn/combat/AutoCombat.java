@@ -38,6 +38,7 @@ public final class AutoCombat {
     private static final Set<String> ATTACKS = new HashSet<>();
     private static final Map<String, String> OPENING = new HashMap<>();
     private static final Map<String, Integer> COST = new HashMap<>();
+    private static final SwordCombat sword = new SwordCombat();
 
     private static final Text.Foundry LABEL = new Text.Foundry(Text.sans.deriveFont(java.awt.Font.BOLD), 16);
 
@@ -84,11 +85,14 @@ public final class AutoCombat {
 
     public static void enabled(boolean on) {
         Utils.setprefb(PREF, on);
-        if(!on)
+        if(!on) {
+            sword.reset();
             release();
+        }
     }
 
     public static void ended() {
+        sword.reset();
         bowSession = null;
         held = -1;
         dropped = -1;
@@ -96,9 +100,12 @@ public final class AutoCombat {
         sess = null;
     }
 
+    static void engagementConfirmed(Fightview.Relation relation) { sword.resume(relation); }
+
     public static void tick(Fightsess fight, Fightview fv) {
         sess = fight;
         if(BowCombat.handles(fight)){
+            sword.pause();
             if(bowSession!=fight){
                 bowSession=fight;
                 ++swing; // Invalidate an outstanding automatic attack's render-fence callback.
@@ -110,7 +117,9 @@ public final class AutoCombat {
             return;
         }
         bowSession=null;
-        if(KnockoutState.unconscious(fight.getparent(GameUI.class))){release();return;}
+        GameUI gui = fight.getparent(GameUI.class);
+        if(KnockoutState.unconscious(gui)){sword.pause();release();return;}
+        if(WildAttack.engaging(gui))return;
         target = (fv != null && fv.current != null) ? fv.current.gobid : -1;
         if(!enabled()) {
             int use = fight.use;
@@ -120,6 +129,7 @@ public final class AutoCombat {
             }
             return;
         }
+        if(sword.handle(fight, fv))return;
         dropped = -1;
         if(fv == null || fv.current == null || fv.current.gst != 0)
             return;
@@ -193,7 +203,7 @@ public final class AutoCombat {
         return "Click to turn combat assistance with the current animal on or off.";
     }
 
-    private static void tap(Fightsess fight, int idx, Gob gob) {
+    static void tap(Fightsess fight, int idx, Gob gob) {
         int id = ++swing;
         held = idx;
         fight.wdgmsg("use", idx, 1, 0, gob.rc.floor(OCache.posres));

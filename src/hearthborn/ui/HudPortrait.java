@@ -26,7 +26,9 @@ public final class HudPortrait extends Frame {
     public HudPortrait(long player,Runnable equipment,Runnable characterSheet){
         super(StatusScale.size(Avaview.dasz).add(Window.wbox.bisz()),false);
         this.equipment=equipment;this.characterSheet=characterSheet;
-        add(new Avaview(inner(),player,"avacam"),Coord.z);
+        add(new Avaview(inner(),player,"avacam"){
+            protected FColor clearcolor(){return HudFrames.hidden()?FColor.BLACK_T:super.clearcolor();}
+        },Coord.z);
     }
     private Coord avatar(){return StatusScale.size(Avaview.dasz);}
     private Coord outer(){return avatar().add(box.bisz()).add(0,strip);}
@@ -129,7 +131,7 @@ public final class HudPortrait extends Frame {
     public Coord xlate(Coord point,boolean in){return in?point.add(box.btloff()):point.sub(box.btloff());}
     /** Behind the movement strip, so no sliver of the world shows between the divider bar and the selector's own plate. */
     public void draw(GOut g){
-        if(strip>0){
+        if(strip>0&&!HudFrames.hidden()){
             // From the top of the divider bar, so no sliver of the world shows between the bar and the strip whatever the rounding.
             Coord from=xlate(Coord.of(0,inner().y),true),to=sz.sub(box.bbroff());
             if(to.y>from.y){g.chcolor(0,0,0,235);g.frect(Coord.of(from.x,from.y),Coord.of(Math.max(0,to.x-from.x),to.y-from.y));g.chcolor();}
@@ -137,6 +139,7 @@ public final class HudPortrait extends Frame {
         super.draw(g);
     }
     public void drawframe(GOut g){
+        if(HudFrames.hidden())return;
         if(FrameSkin.flat()){flatFrame(g,sz);return;}
         box.draw(g,Coord.z,sz);
         if(strip>0&&box instanceof IBox.Images)divider(g,(IBox.Images)box,sz);

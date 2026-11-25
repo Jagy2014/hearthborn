@@ -15,6 +15,7 @@ package hearthborn.map;
 import haven.*;
 import haven.iosys.tk.FilePicker;
 import hearthborn.L10n;
+import hearthborn.journal.GameJournal;
 import hearthborn.ui.IconCategories;
 import hearthborn.ui.IconCategoryPanel;
 import java.awt.Color;
@@ -35,7 +36,9 @@ public final class MapSettingsWindow extends Window {
     private final GroupList groups;
     private final EntryList list;
     private final Widget details;
-    private final ACheckBox selectAll,discoveries,markers,markerNames;
+    private final Button journalButton;
+    private GameJournal.Lookup journal;
+    private final ACheckBox selectAll,discoveries,markers,markerNames,hideNamesZoomedOut;
     private final Label count;
     private final Map<String,String> categories=MapFilterModel.categories();
     private java.util.List<MapFilterModel.Entry> shown=Collections.emptyList();
@@ -61,8 +64,13 @@ public final class MapSettingsWindow extends Window {
         groups=add(new GroupList(),Coord.z);groups.sel="all";
         list=add(new EntryList(),Coord.z);
         details=add(new Widget(Coord.z),Coord.z);
+        journalButton=add(new Button(UI.scale(162),"Open in Game Journal",this::openJournal));
+        journalButton.hide();
         markers=add(new CheckBox("Show markers").state(()->{MapWnd map=map();return map==null||map.markersShown();}).set(on->{MapWnd map=map();if(map!=null)map.markersShown(on);}),Coord.z);
         markerNames=add(new CheckBox("Show marker names").state(()->MapDisplay.enabled("marker-names")).set(on->MapDisplay.enabled("marker-names",on)),Coord.z);
+        hideNamesZoomedOut=add(new CheckBox("Hide names when zoomed out").state(()->MapDisplay.enabled(MapDisplay.HIDE_NAMES_ZOOMED_OUT))
+            .set(on->MapDisplay.enabled(MapDisplay.HIDE_NAMES_ZOOMED_OUT,on)),Coord.z);
+        hideNamesZoomedOut.settip("When the map is zoomed far out, hide marker names but keep their icons visible.");
         discoveries=add(new CheckBox("Notification on newly seen icons").state(()->settings.notify).set(on->{settings.notify=on;settings.dsave();}),Coord.z);
         discoveries.settip(L10n.format("Reports previously unknown icon types in System chat and writes their discovery time, name and resource to:\n%s\nKnown icons appearing nearby are not logged. Use the Notify checkbox beside an icon for nearby alerts.",hearthborn.io.IconDiscoveryLog.path()),true);
         discoveries.show(hearthborn.io.IconDiscoveryLog.enabled());
@@ -79,7 +87,7 @@ public final class MapSettingsWindow extends Window {
     }
     private int footerHeight(){
         int gap=UI.scale(8);
-        return markers.sz.y+markerNames.sz.y+gap*2+(discoveries.visible?discoveries.sz.y+gap:0);
+        return markers.sz.y+markerNames.sz.y+hideNamesZoomedOut.sz.y+gap*3+(discoveries.visible?discoveries.sz.y+gap:0);
     }
     public void resize(Coord size){
         super.resize(size.max(UI.scale(560,380)));
@@ -90,6 +98,7 @@ public final class MapSettingsWindow extends Window {
         int foot=area.y-discoveries.sz.y;
         discoveries.move(Coord.of(0,foot));
         if(!discoveries.visible)foot=area.y+gap;
+        foot-=gap+hideNamesZoomedOut.sz.y;hideNamesZoomedOut.move(Coord.of(0,foot));
         foot-=gap+markerNames.sz.y;markerNames.move(Coord.of(0,foot));
         foot-=gap+markers.sz.y;markers.move(Coord.of(0,foot));
         details.resize(Coord.of(area.x-GROUP_WIDTH-gap,0));
@@ -101,7 +110,12 @@ public final class MapSettingsWindow extends Window {
         search.move(Coord.of(x,0));
         int y=search.sz.y+gap+selectAll.sz.y+UI.scale(2);
         int detailHeight=details.contentsz().y;
-        int detailTop=csz().y-detailHeight;
+        int foot=csz().y;
+        if(journalButton.visible()) {
+            journalButton.move(Coord.of(csz().x-journalButton.sz.x,foot-journalButton.sz.y));
+            foot=journalButton.c.y-gap;
+        }
+        int detailTop=foot-detailHeight;
         int bottom=detailHeight>0?detailTop-gap:detailTop;
         list.move(Coord.of(x,y));list.resize(Coord.of(width,Math.max(1,bottom-y)));
         details.move(Coord.of(x,detailTop));details.resize(Coord.of(width,detailHeight));
@@ -183,10 +197,27 @@ public final class MapSettingsWindow extends Window {
             details.add(new Label(entry.name,details.sz.x),Coord.z);
             details.add(new Label("A checked tile is highlighted on the map.",details.sz.x),UI.scale(0,24));
         }
+        refreshJournalButton();
         layoutResults();
+    }
+    private boolean refreshJournalButton(){
+        MapFilterModel.Entry entry=list.sel;
+        boolean available=false;
+        if(hearthborn.io.DeveloperMode.gameJournal() && entry!=null && entry.playerKind==null && getparent(GameUI.class)!=null) {
+            if(journal==null)journal=new GameJournal.Lookup();
+            available=journal.entryId(entry.resource)!=null;
+        }
+        if(journalButton.visible()==available) return false;
+        journalButton.show(available);
+        return true;
+    }
+    private void openJournal(){
+        if(journal!=null && list.sel!=null)
+            journal.openResource(getparent(GameUI.class),list.sel.resource);
     }
     public void tick(double dt){
         if(model.refresh())refill(false);
+        if(refreshJournalButton())layoutResults();
         super.tick(dt);
     }
 
@@ -249,7 +280,7 @@ public final class MapSettingsWindow extends Window {
                 protected String text(){return entry.name;}
                 protected Text.Forge foundry(){return LIST_FONT;}
             },Coord.z);
-            settip(entry.name);
+            tooltip=entry.englishName;
         }
     }
 }

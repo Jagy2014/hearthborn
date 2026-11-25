@@ -25,6 +25,9 @@ public final class CombatPrefs {
 
     private static final String P = "hearthborn/combat/";
 
+    public static boolean keepHud() { return Utils.getprefb(P + "keep-hud", false); }
+    public static void keepHud(boolean on) { Utils.setprefb(P + "keep-hud", on); }
+
     private static volatile boolean cached_alt=Utils.getprefb(P+"alt-ui",true);
     public static boolean alt() { return cached_alt; }
     public static void alt(boolean on) { cached_alt=on; Utils.setprefb(P+"alt-ui",on); }

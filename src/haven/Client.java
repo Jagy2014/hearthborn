@@ -420,6 +420,7 @@ public class Client implements Console.Directory {
     public static void main(String[] args) {
         ThreadQos.install();
         hearthborn.io.Logs.install();
+        hearthborn.gamedata.GameDataEngine.start();
 	/* Set up the error handler as early as humanly possible. */
 	ThreadGroup g = new ThreadGroup("Haven main group");
 	String ed = Utils.getprop("haven.errorurl", "");

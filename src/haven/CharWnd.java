@@ -198,7 +198,8 @@ public class CharWnd extends Window {
 	}
 
 	public void drawbg(GOut g) {
-	    hearthborn.ui.UiTheme.panel(g, sz);
+	    if(!hearthborn.ui.UiTheme.characterGlass(this))
+		hearthborn.ui.UiTheme.panel(g, sz);
 	}
 
 	public Coord marg() {return(UI.scale(10, 10));}
@@ -340,6 +341,10 @@ public class CharWnd extends Window {
     public static <T extends Widget> T settip(T wdg, String resnm) {
 	wdg.tooltip = new Widget.PaginaTip(new Resource.Spec(Resource.local(), resnm));
 	return(wdg);
+    }
+
+    protected Deco makedeco() {
+	return new hearthborn.ui.SmallWindowDeco(large).translucentDark();
     }
 
     public CharWnd(Glob glob) {

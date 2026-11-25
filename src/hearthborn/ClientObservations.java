@@ -59,6 +59,7 @@ public final class ClientObservations {
                 }
                 ObjectNames.observe(window, gui);
                 ContainerContents.observe(window, gui);
+                ClaimTimers.claimWindow(window, gui);
             } catch(Loading ignored) {}
         }
         List<Gob> objects = gui.ui.sess.glob.oc.snapshot();

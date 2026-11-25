@@ -13,6 +13,7 @@
 package hearthborn.ui;
 
 import haven.*;
+import java.awt.Color;
 
 /**
  * A window without its frame: a dark panel with a thin strip on top that drags the window and holds the close cross.
@@ -38,9 +39,11 @@ public final class PlainDeco extends Window.DefaultDeco {
     }
     protected void drawbg(GOut g){
         double level=fade.getAsDouble();
-        if(level<1)g.chcolor(255,255,255,(int)Math.round(255*level));
-        UiTheme.darkBackground(g,sz);
-        if(level<1)g.chcolor();
+        Color back=UiTheme.light()?UiTheme.BACKGROUND:UiTheme.DARK_TOOLTIP_BACKGROUND;
+        g.chcolor(back.getRed(),back.getGreen(),back.getBlue(),(int)Math.round(back.getAlpha()*level));
+        int left=HudFrames.sideInset(this,false),right=HudFrames.sideInset(this,true);
+        g.frect(Coord.of(left,0),sz.sub(left+right,0));
+        g.chcolor();
     }
     protected void drawframe(GOut g){}
     public boolean checkhit(Coord at){return at.isect(Coord.z,sz);}

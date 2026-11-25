@@ -37,6 +37,7 @@ class FieldTask extends ScriptRunner.Task {
     final WheatFields book;final WheatFields.Field field;
     CropProfile profile;
     final boolean harvestOnly;
+    private final boolean plantOnly;
     Area land,seedArea,productArea;
     boolean paused,complete,ownsPlacement;
     private int plantedTiles;
@@ -74,8 +75,11 @@ class FieldTask extends ScriptRunner.Task {
         this(gui,book,field,field.harvestOnly);
     }
     FieldTask(GameUI gui,WheatFields book,WheatFields.Field field,boolean harvestOnly){
+        this(gui,book,field,harvestOnly,false);
+    }
+    FieldTask(GameUI gui,WheatFields book,WheatFields.Field field,boolean harvestOnly,boolean plantOnly){
         super(gui);this.book=book;this.field=field;
-        this.harvestOnly=harvestOnly;
+        this.harvestOnly=harvestOnly;this.plantOnly=plantOnly;
         cleanup=()->{
             if(qualityPrompt!=null){qualityPrompt.close();qualityPrompt=null;}
             if(gui.map!=null){
@@ -92,7 +96,13 @@ class FieldTask extends ScriptRunner.Task {
         launch(gui,book,field,false);
     }
     static void launch(GameUI gui,WheatFields book,WheatFields.Field field,boolean harvestOnly){
-        FieldTask task=new FieldTask(gui,book,field,harvestOnly);
+        start(new FieldTask(gui,book,field,harvestOnly));
+    }
+    static void launchPlanting(GameUI gui,WheatFields book,WheatFields.Field field){
+        start(new FieldTask(gui,book,field,false,true));
+    }
+    private static void start(FieldTask task){
+        GameUI gui=task.gui;
         try{
             if(BagTransfers.running(gui))throw new IllegalStateException("Finish the inventory transfer first.");
             ScriptRunner.start(task);task.add(task::prepare,()->true,30);
@@ -217,6 +227,8 @@ class FieldTask extends ScriptRunner.Task {
         waitingFor="Checking field plants";
         CropProfile.Detection detected=CropProfile.inspect(gui,land);
         boolean fresh=field.phase==WheatFields.Phase.READY||field.phase==WheatFields.Phase.DONE;
+        if(plantOnly&&!fresh&&field.phase!=WheatFields.Phase.PLANT)
+            throw new IllegalStateException("Finish the interrupted field cycle before sowing.");
         profile=CropProfile.get(field.cropId);
         if(!field.cropPinned){
             if(detected.mixed)throw new IllegalStateException("Choose the crop to plant in this mixed field before starting.");
@@ -240,12 +252,12 @@ class FieldTask extends ScriptRunner.Task {
         for(Gob gob:objects())if(inside(gob,seedArea)&&storage(gob))stores.add(gob);
         stores.sort(Comparator.comparingDouble(gob->gob.rc.dist(gui.map.player().rc)));
         if(stores.isEmpty())throw new IllegalStateException("No seed cupboards or chests in the selected storage area.");
-        boolean harvesting=fresh||field.phase==WheatFields.Phase.HARVEST
-            ||field.harvestOnly!=harvestOnly||harvestOnly&&field.phase==WheatFields.Phase.PLANT;
+        boolean harvesting=!plantOnly&&(fresh||field.phase==WheatFields.Phase.HARVEST
+            ||field.harvestOnly!=harvestOnly||harvestOnly&&field.phase==WheatFields.Phase.PLANT);
         Gob[] crops=fieldCrops();
         for(int index=0;index<field.tiles();index++){
             Gob crop=crops[index];
-            if(harvesting)continue; // Empty and young tiles are reconciled together after validation.
+            if(harvesting||fresh)continue; // Empty and young tiles are reconciled together after validation.
             // Resume from actual empty cells. A manually planted crop is simply occupied,
             // even if it was not present in the saved planting progress.
             field.planted.set(index,crop!=null);
@@ -262,10 +274,16 @@ class FieldTask extends ScriptRunner.Task {
             if(sameCrop&&minimum!=null&&maximum!=null&&minimum.length==field.tiles()&&maximum.length==field.tiles()){
                 for(int index=0;index<field.tiles();index++){
                     Gob crop=crops[index];
-                    if(crop==null||!profile.crop.equals(GameObjects.resourceName(crop))||!preserveExisting&&ScriptRunner.mature(crop))minimum[index]=maximum[index]=0;
+                    if(crop==null||!profile.crop.equals(GameObjects.resourceName(crop))||harvesting&&!preserveExisting&&ScriptRunner.mature(crop))minimum[index]=maximum[index]=0;
                 }
                 field.plantedMinQ=minimum;field.plantedMaxQ=maximum;
             }
+        }
+        if(plantOnly){
+            // Sowing skips the harvest phase; occupied tiles are already satisfied.
+            field.harvested.set(0,crops.length);
+            for(int index=0;index<crops.length;index++) field.planted.set(index,crops[index]!=null);
+            field.phase=WheatFields.Phase.PLANT;
         }
         field.harvestOnly=harvestOnly;
         if(harvesting)field.phase=WheatFields.Phase.HARVEST;
@@ -490,7 +508,10 @@ class FieldTask extends ScriptRunner.Task {
             if(current!=signature[0]){signature[0]=current;changed[0]=now();return false;}
             return now()-changed[0]>=.5; // Gob removals and seed packets arrive separately, including scythe neighbours.
         },45);
-        add(()->{flower=null;field.pending=-1;book.save(gui);harvest();});
+        add(()->{
+            if(target[0]!=null)field.lastHarvest=System.currentTimeMillis();
+            flower=null;field.pending=-1;book.save(gui);harvest();
+        });
     }
     /** Let the server walk and reap continuously; only pause for supplies or manual interruption. */
     private void harvestArea(int index){
@@ -513,7 +534,10 @@ class FieldTask extends ScriptRunner.Task {
             boolean received=profile.rootCrop||field.harvested.cardinality()==beforeCleared[0]||seedCount()>beforeSeeds[0];
             return (harvestInterrupted||field.harvested.cardinality()==field.tiles())&&received&&gui.prog==null&&now()-changed[0]>=.5;
         },600);
-        add(()->{nativeHarvesting=false;harvestInterrupted=false;field.pending=-1;book.save(gui);harvest();});
+        add(()->{
+            if(activated[0]&&field.harvested.cardinality()>beforeCleared[0])field.lastHarvest=System.currentTimeMillis();
+            nativeHarvesting=false;harvestInterrupted=false;field.pending=-1;book.save(gui);harvest();
+        });
     }
     /** Only seed packets move to this explicit zone; unrelated inventory items never move. */
     private void depositSeeds(int storeIndex,Runnable then){

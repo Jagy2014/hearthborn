@@ -66,7 +66,7 @@ public class QuestWnd extends Widget {
 	public String title() {
 	    if(title != null)
 		return(hearthborn.L10n.text("label", title));
-	    return(res.get().flayer(Resource.tooltip).t);
+	    return(hearthborn.L10n.quiet("label", res.get().flayer(Resource.tooltip).t));
 	}
 
 	public static class Condition {
@@ -177,8 +177,8 @@ public class QuestWnd extends Widget {
 		super.added();
 		StringBuilder buf = new StringBuilder();
 		Box box = getparent(Box.class);
-		String desc = hearthborn.ui.CredoQuests.objective(box == null ? null : box.title, cond.desc);
-		buf.append(String.format("%s{%c %s", RichText.Parser.col2a(stcol[cond.done]), stsym[cond.done], RichText.Parser.quote(hearthborn.L10n.text("label", desc))));
+		String desc = hearthborn.ui.CredoQuests.localizedObjective(box == null ? null : box.title, cond.desc);
+		buf.append(String.format("%s{%c %s", RichText.Parser.col2a(stcol[cond.done]), stsym[cond.done], RichText.Parser.quote(desc)));
 		if(cond.status != null) {
 		    buf.append(' ');
 		    buf.append(RichText.Parser.quote(hearthborn.L10n.text("label", cond.status)));
@@ -200,6 +200,11 @@ public class QuestWnd extends Widget {
 			g.image(image, Coord.of(iconAt, Math.max(0, (sz.y - UI.scale(22)) / 2)), UI.scale(22, 22));
 		}
 	    }
+
+            public Object tooltip(Coord at, Widget previous) {
+                Box box = getparent(Box.class);
+                return hearthborn.ui.CredoQuests.originalTooltip(box == null ? null : box.title, cond.desc);
+            }
 
             public boolean mousedown(MouseDownEvent event) {
                 Box box = getparent(Box.class);
@@ -245,7 +250,7 @@ public class QuestWnd extends Widget {
 	    public String title() {
 		if(title != null)
 		    return(hearthborn.L10n.text("label", title));
-		return(res.get().flayer(Resource.tooltip).t);
+		return(hearthborn.L10n.quiet("label", res.get().flayer(Resource.tooltip).t));
 	    }
 
 	    public Condition[] conds() {
@@ -442,7 +447,7 @@ public class QuestWnd extends Widget {
 	    private Text ct(Condition c) {
 		String prefix = " " + stsym[c.done] + " ";
 		String title = info instanceof Box ? ((Box)info).title : null;
-		String body = hearthborn.L10n.text("label", hearthborn.ui.CredoQuests.objective(title, c.desc));
+		String body = hearthborn.ui.CredoQuests.localizedObjective(title, c.desc);
 		if(c.status != null)
 		    body = body + " " + hearthborn.L10n.text("label", c.status);
 		Color color = stcol[c.done];
@@ -747,9 +752,11 @@ public class QuestWnd extends Widget {
 	prev = add(CharWnd.settip(hearthborn.ui.UiTheme.heading(hearthborn.L10n.text("label", "Quest Log")), "gfx/hud/chr/tips/quests"), new Coord(0, 0));
 	questbox = add(new Widget(new Coord(attrw + UI.scale(120), height + UI.scale(70))) {
 		public void draw(GOut g) {
-		    g.chcolor(0, 0, 0, 128);
-		    g.frect(Coord.z, sz);
-		    g.chcolor();
+		    if(!hearthborn.ui.UiTheme.characterGlass(this)) {
+			g.chcolor(0, 0, 0, 128);
+			g.frect(Coord.z, sz);
+			g.chcolor();
+		    }
 		    super.draw(g);
 		}
 

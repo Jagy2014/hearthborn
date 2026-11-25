@@ -146,14 +146,17 @@ public final class Inspect {
 
     public Inspect(GameUI gui) { this.gui = gui; }
 
-    private boolean active(Widget widget) {
+    public static Widget nativeInspector(Widget widget) {
         for(Class<?> type = widget.getClass(); type != null; type = type.getSuperclass())
-            if(type.getName().equals("haven.res.ui.inspect.LocalInspect")) return true;
+            if(type.getName().equals("haven.res.ui.inspect.LocalInspect")) return widget;
         if(widget instanceof Window || widget instanceof Inventory || widget instanceof GItem || widget instanceof MapView)
-            return false;
-        for(Widget child = widget.child; child != null; child = child.next)
-            if(child.visible() && active(child)) return true;
-        return false;
+            return null;
+        for(Widget child = widget.child; child != null; child = child.next) {
+            if(!child.visible()) continue;
+            Widget inspector = nativeInspector(child);
+            if(inspector != null) return inspector;
+        }
+        return null;
     }
 
     public void action(Object... args) {
@@ -171,7 +174,7 @@ public final class Inspect {
             if(name.endsWith("/inspect") || name.endsWith("/study")) return true;
             if(name.endsWith("/mine")) { mining = true; return true; }
         }
-        return active(gui);
+        return nativeInspector(gui) != null;
     }
 
     public void refillNotice(String message) {
@@ -193,7 +196,9 @@ public final class Inspect {
             else {
                 GAttrib info = attribute(resourceInspect.gob, "haven.res.ui.inspect.SavedInfo");
                 String fresh = savedTimerLine(resourceInspect.gob, info);
-                if(fresh != null && (info != priorRefillInfo || !fresh.equals(priorRefill))) refillNotice(fresh);
+                if(fresh != null && (!fresh.equals(priorRefill)
+                        || (ObjectTimers.tarKiln(resourceInspect.gob) && info != priorRefillInfo)))
+                    refillNotice(fresh);
             }
         }
         if(gui.ui == null || !active()) { clear(); return; }
@@ -250,9 +255,10 @@ public final class Inspect {
         return minutes + "m";
     }
     public static String withRefill(String shown, String source) {
+        if(shown == null || shown.endsWith(")")) return shown;
         String hours = refillHours(source);
         if(hours == null) hours = refillHours(shown);
-        if(hours == null || shown == null || shown.contains("(" + hours + ")")) return shown;
+        if(hours == null) return shown;
         return shown + " (" + hours + ")";
     }
     private static String savedRefill(Gob gob) {

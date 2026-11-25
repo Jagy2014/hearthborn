@@ -206,36 +206,41 @@ public final class QualityRoster extends Window {
         if(ownInspect) releaseInspect(gui);
         ownInspect=false;
     }
-    /** Drop Inspect without clicking the world. A click at the character's feet can hit a door. */
+    /** Drop Inspect without clicking the world or selecting an unrelated cancellable dialog. */
     public static void releaseInspect(GameUI gui) {
-        Widget target=cancellable(gui);
-        if(target==null && gui!=null && gui.ui!=null) target=cancellable(gui.ui.root);
-        if(target!=null) target.wdgmsg("cancel");
+        if(gui==null||gui.map==null)return;
+        gui.map.cancelPendingClicks();
+        Widget owner=inspectOwner(gui.map);
+        Widget inspector=hearthborn.ui.Inspect.nativeInspector(gui);
+        Widget target=inspector!=null&&inspector.cancancel?inspector
+            :owner!=null&&owner.cancancel?owner:cancellable(gui.map);
+        if(target==null)target=inspector!=null?inspector:owner!=null?owner:gui.map;
+        if(owner!=null)owner.cursor=null;
+        if(gui.ui!=null&&gui.ui.widgetid(target)>=0)target.wdgmsg("cancel");
     }
     /** Mine marking paints its own cursor over Inspect. Leaving it must still drop the loupe. */
     public static void releaseIfInspect(GameUI gui) {
         if(gui!=null && gui.map!=null && serverInspect(gui.map)) releaseInspect(gui);
     }
     public static boolean serverInspect(Widget widget) {
+        return inspectOwner(widget)!=null;
+    }
+    private static Widget inspectOwner(Widget widget) {
         try {
             for(Widget current=widget; current!=null; current=current.parent) {
                 if(current.cursor==null) continue;
                 Resource resource=current.cursor.get();
-                return resource!=null && inspectCursor(resource.name);
+                return resource!=null && inspectCursor(resource.name)?current:null;
             }
         } catch(Loading ignored) {}
-        return false;
+        return null;
     }
     static boolean inspectCursor(String name) {
         return name!=null && (name.endsWith("/inspect") || name.endsWith("/study"));
     }
     static Widget cancellable(Widget widget) {
-        if(widget==null) return null;
-        if(widget.cancancel) return widget;
-        for(Widget child=widget.child; child!=null; child=child.next) {
-            Widget found=cancellable(child);
-            if(found!=null) return found;
-        }
+        for(Widget current=widget;current!=null;current=current.parent)
+            if(current.cancancel)return current;
         return null;
     }
     public static boolean cancelAdd(GameUI gui) {

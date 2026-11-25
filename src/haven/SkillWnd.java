@@ -407,7 +407,7 @@ public class SkillWnd extends Widget {
 	prev = add(CharWnd.settip(hearthborn.ui.UiTheme.heading(hearthborn.L10n.text("label", "Lore & Skills")), "gfx/hud/chr/tips/skills"), Coord.z);
 	hearthborn.ui.SkillDescription info = add(new hearthborn.ui.SkillDescription(new Coord(attrw + UI.scale(120), height), ifnd.derive(java.awt.font.TextAttribute.SIZE, UI.scale(12f)).aa(true)), prev.pos("bl").adds(5, 0).add(wbox.btloff()));
 	info.bg = new Color(0, 0, 0, 128);
-	info.frame(Frame.around(this, Collections.singletonList(info)));
+	info.frame(descriptionFrame = Frame.around(this, Collections.singletonList(info)));
 
 	prev = add(hearthborn.ui.UiTheme.heading(hearthborn.L10n.text("label", "Entries")), width + UI.scale(120), 0);
 	Tabs lists = new Tabs(prev.pos("bl").adds(5, 0), new Coord(attrw + wbox.bisz().x, 0), this);
@@ -436,7 +436,7 @@ public class SkillWnd extends Widget {
 			if (skg.sel != null)
 			    skill.wdgmsg("buy", skg.sel.nm);
 	    }), bf.pos("ibr").subs(10, 0).y(bf.pos("mid").y), 1.0, 0.5);
-	    Label clbl = sktab.adda(new Label("Cost:"), bf.pos("iul").adds(10, 0).y(bf.pos("mid").y), 0, 0.5);
+	    costLabel = sktab.adda(new Label("Cost:"), bf.pos("iul").adds(10, 0).y(bf.pos("mid").y), 0, 0.5);
 	    priceLabel = sktab.adda(new RLabel<Pair<Integer, Integer>>(() -> new Pair<>(((skg.sel == null) || skg.sel.has) ? null : skg.sel.cost, this.chr.exp),
 							  n -> (n.a == null) ? "N/A" : String.format("%,d / %,d LP", n.a, n.b),
 							  n -> ((n.a != null) && (n.a > n.b)) ? debuff : Color.WHITE),
@@ -487,14 +487,17 @@ public class SkillWnd extends Widget {
 	      tabButtons[1] = lists.new TabButton(0, "Credos", credos),
 	      tabButtons[2] = lists.new TabButton(0, "Lore",   exps));
 	pack();
+	minimumHeight = sz.y;
     }
 
+    private final Frame descriptionFrame;
+    private final int minimumHeight;
     private Tabs lists;
     private final List<Frame> panes = new ArrayList<>();
     private final List<Widget> inners = new ArrayList<>();
     private Frame priceFrame;
     private Button buyButton;
-    private Widget priceLabel;
+    private Widget priceLabel, costLabel;
     private final Button[] tabButtons = new Button[3];
 
     /** Stretch the entry lists, price bar and tab buttons so the tab fills a wider character window. */
@@ -517,6 +520,36 @@ public class SkillWnd extends Widget {
 	    tabButtons[i].move(Coord.of(lists.c.x + i * (lists.sz.x - each) / 2, tabButtons[i].c.y));
 	}
 	resize(sz.add(grow));
+    }
+
+    /** Content height before the entry column is stretched by the character window. */
+    public int naturalHeight() {
+	return Math.max(minimumHeight, descriptionFrame.c.y + descriptionFrame.sz.y);
+    }
+
+    public void fitHeight(int height) {
+	int buttonsBottom = tabButtons[0].c.y + tabButtons[0].sz.y;
+	int extra = height - buttonsBottom;
+	if(extra == 0)
+	    return;
+	Coord grow = Coord.of(0, extra);
+	for(int i = 0; i < panes.size(); i++) {
+	    Frame pane = panes.get(i);
+	    pane.resize(pane.sz.add(grow));
+	    inners.get(i).resize(pane.inner());
+	}
+	credos.cont.update();
+	credos.bar.ch(0);
+	skg.sb.ch(0);
+	exps.sb.ch(0);
+	priceFrame.move(priceFrame.c.add(grow));
+	buyButton.move(buyButton.c.add(grow));
+	costLabel.move(costLabel.c.add(grow));
+	priceLabel.move(priceLabel.c.add(grow));
+	lists.resize(lists.sz.add(grow));
+	for(Button button : tabButtons)
+	    button.move(button.c.add(grow));
+	pack();
     }
 
     private List<Skill> decsklist(Object[] args, int a, boolean has) {

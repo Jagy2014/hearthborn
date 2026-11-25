@@ -12,6 +12,7 @@
 
 package hearthborn.ui;
 
+import hearthborn.L10n;
 import java.util.Locale;
 
 /**
@@ -46,6 +47,17 @@ public final class CredoQuests {
             if(!lower.contains(row[0])) continue;
             return row[1].isEmpty() ? desc : row[1];
         }
+        return desc;
+    }
+
+    public static String localizedObjective(String title, String desc) {
+        return L10n.questObjective(objective(title, desc));
+    }
+
+    /** The original server wording, for looking up a translated objective. */
+    public static String originalTooltip(String title, String desc) {
+        if(desc == null || L10n.language().equals("en") || desc.equals(localizedObjective(title, desc)))
+            return null;
         return desc;
     }
 

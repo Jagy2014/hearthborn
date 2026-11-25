@@ -5,11 +5,19 @@
 The setting is named **Combat assistance with animals**. It assists with the
 current fight; it does not choose or engage nearby animals.
 
-Stage 1 animal auto-combat is intended to help newer players with simpler encounters, such as ants and bats. During an **existing animal fight**, it automatically uses supported **attacks** against the target. **Combat moves are not yet used**; further development is planned.
+The ordinary animal auto-combat is intended to help newer players with simpler encounters, such as ants and bats. During an **existing animal fight**, it automatically uses supported **attacks** from the active deck.
 
 It does **not** engage targets, position your character, or fight other players for you.
 
 ![Animal combat interface](../images/combat-ui.jpg)
+
+## Sword auto-combat
+
+1. In **Character Sheet → Martial Arts & Combat Schools**, add **Chop** and at least one initiative move: **Take Aim** or **Low Blow**. Select a school slot and click **Save**, or **Load** an existing school with the required moves.
+2. Turn on **Auto** in combat or **Combat assistance with animals** in the settings. The same switch controls both ordinary attacks and sword combat.
+3. Start a fight with an animal and equip a sword. Switching from a bow to a sword during the fight also starts this mode when the active deck is ready. At zero initiative it uses the first ready initiative move in the deck, then uses Chop after the server confirms the initiative and the cooldown ends.
+
+If a required move is missing while you hold a sword, the client explains what to add once per fight. The mode does not select a school, equip a weapon, or pick a new opponent for you.
 
 ## Bow shooting
 
@@ -41,9 +49,8 @@ Weapon changes happen only on a button press. The helper waits for item receipts
 and returns the displaced weapon to available bag space. It never drops weapons
 on the ground. Make room before switching; if bag space disappears mid-switch,
 place the held item manually. Escape stops pending switch steps. Bow entry
-releases inherited combat actions and disables melee assistance; enable melee
-assistance explicitly if wanted after switching to a sword. Later manual combat
-cards and weapon shortcuts retain their usual behavior.
+releases inherited combat actions and pauses melee assistance without changing
+the Auto setting. Manual combat cards and weapon shortcuts retain their usual behavior.
 
 The bow icon in the equipment strip shows the total carried arrows. Its tooltip
 lists quantities and average quality by arrow type, including packets and quivers.

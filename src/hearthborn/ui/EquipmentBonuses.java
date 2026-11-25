@@ -28,6 +28,7 @@ import java.util.List;
 public final class EquipmentBonuses extends Widget {
     private final Equipory equipment;
     private final Scrollbar scroll;
+    private int rowHeight=UI.scale(16);
     private List<Row> rows=Collections.emptyList();
     private final Map<String,Tex> icons=new HashMap<>();
     private double elapsed;
@@ -93,8 +94,20 @@ public final class EquipmentBonuses extends Widget {
             }
             List<Row> next=new ArrayList<>(combined.values());next.sort(Comparator.comparingInt(EquipmentBonuses::priority).thenComparing(r->r.path));String current=next.stream().map(r->r.path+"="+r.value).collect(java.util.stream.Collectors.joining(";"));
             if(!current.equals(signature)){for(Tex text:texts.values())text.dispose();texts.clear();signature=current;}rows=next;
-            scroll.max=Math.max(0,rows.size()*UI.scale(16)-(sz.y-UI.scale(24)));scroll.ch(0);
+            fitRows(rows.size());
         }catch(Loading ignored){}
+    }
+    void fitRows(int count) {
+        int contentHeight=Math.max(UI.scale(14),Text.std.height());
+        rowHeight=Math.max(UI.scale(16),contentHeight);
+        if(count>1) {
+            int fitted=(scroll.sz.y-contentHeight)/(count-1);
+            if(fitted>=contentHeight)
+                rowHeight=Math.min(rowHeight,fitted);
+        }
+        int used=count==0?0:(count-1)*rowHeight+contentHeight;
+        scroll.max=Math.max(0,used-scroll.sz.y);
+        scroll.ch(0);
     }
     private boolean isMe(){return ui.root.getchild(GameUI.class)!=null && ui.root.getchild(GameUI.class).equipment()==equipment;}
     private Tex icon(Row row) {
@@ -130,11 +143,11 @@ public final class EquipmentBonuses extends Widget {
         return (row.value>=0?"$col[128,255,128]{+":"$col[255,128,128]{")+Utils.odformat2(row.value,1)+"}";
     }
     public void draw(GOut g) {
-        UiTheme.panel(g,sz);
-        GOut list=g.reclip(UI.scale(0,24),Coord.of(sz.x-scroll.sz.x,sz.y-UI.scale(24)));
+        if(UiTheme.light())UiTheme.panel(g,sz);
+        GOut list=g.reclip(UI.scale(0,24),Coord.of(sz.x-scroll.sz.x,scroll.sz.y));
         int y=-scroll.val;
         for(Row row:rows) {
-            if(y+UI.scale(16)>=0 && y<list.sz().y)try {
+            if(y+rowHeight>0 && y<list.sz().y)try {
                 Tex icon=icon(row);if(icon!=null)list.image(icon,Coord.of(0,y));
                 String english=row.resource==null?customName(row.path):row.resource.flayer(Resource.tooltip).original;
                 String name=hearthborn.L10n.resource("tooltip",row.path,english);
@@ -142,10 +155,13 @@ public final class EquipmentBonuses extends Widget {
                 Tex label=texts.computeIfAbsent("name:"+light+name,k->new TexI((light?Text.std.render(name,Parchment.TEXT2):Text.render(name)).img));list.image(label,Coord.of(UI.scale(17),y));
                 String formatted=themed(format(row));Tex value=texts.computeIfAbsent("value:"+light+formatted,k->new TexI(RichText.render(formatted,0).img));list.aimage(value,Coord.of(list.sz().x,y),1,0);
             }catch(Loading ignored){}
-            y+=UI.scale(16);
+            y+=rowHeight;
         }
         super.draw(g);
     }
-    public boolean mousewheel(MouseWheelEvent ev){scroll.ch(UI.scale(16)*ev.step());return true;}
+    public boolean mousewheel(MouseWheelEvent ev){
+        if(!scroll.vis())return false;
+        scroll.ch(rowHeight*ev.step());return true;
+    }
     public void dispose(){for(Tex icon:icons.values())icon.dispose();for(Tex text:texts.values())text.dispose();super.dispose();}
 }

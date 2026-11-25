@@ -12,11 +12,11 @@
 
 package hearthborn.map;
 import hearthborn.planner.ClaimBorders;
-import hearthborn.ui.Parchment;
-import hearthborn.ui.UiTheme;
+import hearthborn.ui.SystemButtonSkin;
 
 import haven.*;
 import java.awt.*;
+import java.awt.geom.Ellipse2D;
 import java.awt.geom.Path2D;
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
@@ -55,20 +55,6 @@ public final class MapToolbar extends Widget {
             keep(control("extlist", () -> "Open map in a separate window", () -> DetachedMap.toggle(map), null, () -> false), 13);
             close = keep(control("close", () -> "Close", map::reqclose, null, () -> false), 1000);
         }
-    }
-
-    public void draw(GOut g) {
-        List<Widget> row = ordered();
-        boolean light = UiTheme.light();
-        int height = stripHeight(row);
-        g.chcolor(light ? Parchment.PANEL : Color.BLACK);
-        g.frect(Coord.z, Coord.of(sz.x, height));
-        if(light) {
-            g.chcolor(Parchment.LINE);
-            g.frect(Coord.of(0, height - 1), Coord.of(sz.x, 1));
-        }
-        g.chcolor();
-        super.draw(g);
     }
 
     public void mousemove(MouseMoveEvent ev) {focus = indexAt(ev.c);}
@@ -142,7 +128,7 @@ public final class MapToolbar extends Widget {
     /** Native art is scaled into the shared map-button frame. The original control stays for its action and shortcut. */
     private Widget uniform(Widget widget) {
         BufferedImage art = artwork(widget);
-        Tex icon = art == null ? null : fitted(art);
+        Tex icon = art == null ? null : glyphTexture(art);
         Coord hit = hitPoint(widget);
         Widget slot = new Button() {
             private boolean indoors() {return widget.kb_gkey == MapWnd.kb_mark && map.indoors();}
@@ -150,15 +136,13 @@ public final class MapToolbar extends Widget {
                 boolean blocked = indoors();
                 boolean on = !blocked && widget.kb_gkey != MapWnd.kb_compact && widget instanceof ACheckBox && ((ACheckBox)widget).state();
                 if(blocked) g.chcolor(150, 150, 150, 255);
-                g.image(plate(on, hot && !blocked), Coord.z, size);
-                Tex face = icon;
-                if(art != null && UiTheme.light()) face = tinted(art, on);
-                if(face != null) {
-                    int inset = Math.max(0, size.x * UI.scale(4) / SIZE);
-                    Coord box = Coord.of(Math.max(1, size.x - inset * 2), Math.max(1, size.y - inset * 2));
-                    g.aimage(face, size.div(2), .5, .5, box);
-                }
+                g.image(image(null, on, hot && !blocked), Coord.z, size);
+                if(icon != null) g.image(icon, Coord.z, size);
                 g.chcolor();
+            }
+            public void dispose() {
+                if(icon != null) icon.dispose();
+                super.dispose();
             }
             public boolean mousedown(MouseDownEvent ev) {
                 if(indoors()) return true;
@@ -181,12 +165,12 @@ public final class MapToolbar extends Widget {
         return image == null ? null : trimIcon(image);
     }
 
-    private static Tex fitted(BufferedImage image) {
-        int inner = Math.max(1, SIZE - UI.scale(8));
-        double scale = Math.min(inner / (double)image.getWidth(), inner / (double)image.getHeight());
-        int w = Math.max(1, (int)Math.round(image.getWidth() * scale));
-        int h = Math.max(1, (int)Math.round(image.getHeight() * scale));
-        return new TexI(PUtils.uiscale(image, Coord.of(w, h)));
+    private static Tex glyphTexture(BufferedImage art) {
+        BufferedImage glyph = new BufferedImage(SIZE, SIZE, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D graphics = glyph.createGraphics();
+        paintRoundGlyph(graphics, art);
+        graphics.dispose();
+        return new TexI(glyph);
     }
 
     private static Coord hitPoint(Widget widget) {
@@ -221,7 +205,7 @@ public final class MapToolbar extends Widget {
         if(close != null) close.show(map.deco == null);
         List<Widget> row = ordered();
         int pad = UI.scale(2), gap = UI.scale(2), count = row.size();
-        int cell = SIZE;
+        int cell = SIZE, remainder = 0;
         if(count > 0) {
             int room = Math.max(count, width - pad * 2);
             int gaps = count - 1;
@@ -231,6 +215,7 @@ public final class MapToolbar extends Widget {
                     gap = 0;
                     cell = Math.max(1, room / count);
                 }
+                remainder = room - count * cell - gaps * gap;
             }
         }
         int x = pad;
@@ -238,11 +223,18 @@ public final class MapToolbar extends Widget {
             child.resize(Coord.of(cell, cell));
             child.move(Coord.of(x, pad));
             x += cell + gap;
+            // When the cells shrink, spread rounding pixels between them rather than in front of Close.
+            if(remainder > 0) {
+                x++;
+                remainder--;
+            }
         }
         int cellHeight = count == 0 ? SIZE : cell;
         int height = pad + cellHeight + pad;
         int used = count == 0 ? pad : x - gap + pad;
         resize(Math.max(width, used), height);
+        if(close != null && close.visible)
+            close.move(Coord.of(sz.x - pad - cell, pad));
     }
 
     private List<Widget> ordered() {
@@ -326,79 +318,36 @@ public final class MapToolbar extends Widget {
     }
 
     private static synchronized Tex image(String name, boolean on, boolean hover) {
-        String key = (UiTheme.light() ? "L/" : "D/") + name + "/" + on + "/" + hover;
-        Tex texture = ART.get(key);
-        if(texture != null) return texture;
-        BufferedImage source=iconSource(name);
-        if(UiTheme.light()) source = tint(source, on ? Parchment.ACCENT_TEXT : Parchment.TEXT2);
-        BufferedImage image=new BufferedImage(SIZE,SIZE,BufferedImage.TYPE_INT_ARGB);
-        Graphics2D graphics=image.createGraphics();
-        graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
-        graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION,RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-        paintFrame(graphics,on,hover);
-        int margin=UI.scale(4);graphics.drawImage(source,margin,margin,SIZE-margin*2,SIZE-margin*2,null);graphics.dispose();
-        ART.put(key,texture=new TexI(image));return texture;
-    }
-    private static synchronized Tex plate(boolean on, boolean hover) {
-        String key = (UiTheme.light() ? "L/" : "D/") + "plate/" + on + "/" + hover;
+        String key = name + "/" + on + "/" + hover;
         Tex texture = ART.get(key);
         if(texture != null) return texture;
         BufferedImage image=new BufferedImage(SIZE,SIZE,BufferedImage.TYPE_INT_ARGB);
         Graphics2D graphics=image.createGraphics();
         graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
-        paintFrame(graphics,on,hover);graphics.dispose();
+        SystemButtonSkin.paintDisk(graphics,SIZE,on,hover);
+        if("close".equals(name)) {
+            int lo=SIZE/4,hi=SIZE-1-lo;
+            graphics.setColor(new Color(240,224,183));
+            graphics.setStroke(new BasicStroke(Math.max(1f,UI.scale(2f)),BasicStroke.CAP_ROUND,BasicStroke.JOIN_ROUND));
+            graphics.drawLine(lo,lo,hi,hi);
+            graphics.drawLine(lo,hi,hi,lo);
+        } else if(name != null) {
+            paintRoundGlyph(graphics,trimIcon(iconSource(name)));
+        }
+        graphics.dispose();
         ART.put(key,texture=new TexI(image));return texture;
     }
-    /** An icon in two inks for the light sheet: its dark outline stays dark and its lit parts take the lighter ink, so the glyph stays readable. */
-    private static BufferedImage tint(BufferedImage source, Color color) {
-        // The scaler wants the raster layout of the client's own pictures, not a plain ARGB image.
-        BufferedImage image = PUtils.rasterimg(PUtils.imgraster(Coord.of(source.getWidth(), source.getHeight())));
-        Color dark = mix(color, Parchment.TEXT, .55), light = mix(color, Parchment.PANEL, .35);
-        for(int y = 0; y < image.getHeight(); y++) for(int x = 0; x < image.getWidth(); x++) {
-            int argb = source.getRGB(x, y);
-            double lum = (0.299 * ((argb >> 16) & 0xFF) + 0.587 * ((argb >> 8) & 0xFF) + 0.114 * (argb & 0xFF)) / 255.0;
-            double t = Math.min(1, Math.max(0, (lum - 0.12) / 0.7));
-            image.setRGB(x, y, (argb & 0xFF000000) | (mix(dark, light, t).getRGB() & 0xFFFFFF));
-        }
-        return image;
-    }
-    private static Color mix(Color from, Color to, double part) {
-        return new Color((int)Math.round(from.getRed() + (to.getRed() - from.getRed()) * part),
-            (int)Math.round(from.getGreen() + (to.getGreen() - from.getGreen()) * part),
-            (int)Math.round(from.getBlue() + (to.getBlue() - from.getBlue()) * part));
-    }
-    public static BufferedImage tintedForTest(BufferedImage source, Color color) {return tint(source, color);}
-    private static synchronized Tex tinted(BufferedImage art, boolean on) {
-        String key = "L/tint/" + System.identityHashCode(art) + "/" + on;
-        Tex texture = ART.get(key);
-        if(texture == null) ART.put(key, texture = fitted(tint(art, on ? Parchment.ACCENT_TEXT : Parchment.TEXT2)));
-        return texture;
-    }
-    /** On the light sheet a button has no frame: the pointer washes it, and the one that is on has a bar of the accent under it. */
-    private static void paintFlat(Graphics2D graphics, boolean on, boolean hover) {
-        if(hover) {
-            graphics.setColor(Parchment.SELECTED);
-            graphics.fillRoundRect(0,0,SIZE-1,SIZE-1,UI.scale(3),UI.scale(3));
-        }
-        if(on) {
-            int bar = Math.max(2, UI.scale(2)), inset = UI.scale(4);
-            graphics.setColor(Parchment.ACCENT);
-            graphics.fillRect(inset, SIZE - bar - UI.scale(1), SIZE - inset * 2, bar);
-        }
-    }
-    private static void paintFrame(Graphics2D graphics, boolean on, boolean hover) {
-        if(UiTheme.light()) {paintFlat(graphics, on, hover); return;}
-        graphics.setColor(on?new Color(62,48,26):hover?new Color(34,40,36,215):Color.BLACK);
-        graphics.fillRoundRect(0,0,SIZE-1,SIZE-1,UI.scale(3),UI.scale(3));
-        if(on){
-            graphics.setColor(new Color(214,184,104));
-            graphics.setStroke(new BasicStroke(Math.max(2f,UI.scale(2))));
-            int inset=Math.max(1,UI.scale(1));
-            graphics.drawRoundRect(inset,inset,SIZE-1-inset*2,SIZE-1-inset*2,UI.scale(3),UI.scale(3));
-        }else{
-            graphics.setColor(hover?new Color(211,184,118):new Color(126,111,76));
-            graphics.drawRoundRect(0,0,SIZE-1,SIZE-1,UI.scale(3),UI.scale(3));
-        }
+    /** Fill the medallion's interior without stretching the artwork or covering its rim. */
+    private static void paintRoundGlyph(Graphics2D g,BufferedImage source) {
+        int rim=Math.max(1,UI.scale(3)),extent=Math.max(1,SIZE-rim*2);
+        double scale=extent/(double)Math.max(source.getWidth(),source.getHeight());
+        int w=Math.max(1,(int)Math.round(source.getWidth()*scale));
+        int h=Math.max(1,(int)Math.round(source.getHeight()*scale));
+        Shape previous=g.getClip();
+        g.clip(new Ellipse2D.Double(rim,rim,extent,extent));
+        g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+        g.drawImage(source,(SIZE-w)/2,(SIZE-h)/2,w,h,null);
+        g.setClip(previous);
     }
     private static final Map<String,BufferedImage> STANDARD=new HashMap<>();
     private static BufferedImage standard(String resource){
@@ -410,7 +359,6 @@ public final class MapToolbar extends Widget {
         if(name.equals("options"))return standard("gfx/hud/rbtn-opt");
         if(name.equals("claim"))return standard("gfx/hud/lbtn-claim");
         if(name.equals("village"))return standard("gfx/hud/lbtn-vil");
-        if(name.equals("close"))return png("/hearthborn/assets/icons/small/close.png");
         return png("/hearthborn/assets/icons/map/" + name + ".png");
     }
     private static BufferedImage trimIcon(BufferedImage image){

@@ -317,6 +317,7 @@ public class MapFile {
 	public UID oid;
 	public Resource.Saved res;
 	public byte[] data;
+	public boolean customName;
 
 	public SMarker(MapFile file, long seg, Coord tc, String nm, UID oid, Resource.Saved res, byte[] data) {
 	    super(file, seg, tc, nm);
@@ -365,7 +366,9 @@ public class MapFile {
 		UID oid = UNIQID.of(enc.get("oid"));
 		Resource.Named res = (Resource.Named)enc.get("res");
 		byte[] data = BYTES.of(enc.getOrDefault("dat", new byte[0]));
-		return(new SMarker(this, seg, tc, nm, oid, new Resource.Saved(Resource.remote(), res.name, res.ver), data));
+		SMarker mark = new SMarker(this, seg, tc, nm, oid, new Resource.Saved(Resource.remote(), res.name, res.ver), data);
+		mark.customName = BOOL.of(enc.getOrDefault("custom-name", 0));
+		return(mark);
 	    } else {
 		throw(new Message.FormatError("Unknown marker type: " + enc));
 	    }
@@ -388,6 +391,8 @@ public class MapFile {
 	    SMarker sm = (SMarker)mark;
 	    enc.put("oid", sm.oid);
 	    enc.put("res", sm.res);
+	    if(sm.customName)
+		enc.put("custom-name", 1);
 	    if(sm.data.length > 0)
 		enc.put("dat", sm.data);
 	} else {
@@ -763,7 +768,10 @@ public class MapFile {
 		Tileset tile = Loading.waitfor(() -> map.tileset(tn));
 		Resource res = tile.getres();
 		infos[i] = new TileInfo(new Resource.Saved(res.pool, res.name, res.ver), prios[i]);
-		norepl[i] = (Utils.index(tile.tags, "norepl") >= 0);
+		// An interior update can mask the other rooms in the same grid with void.
+		// Keep their already mapped floors, but still replace tiles explicitly received.
+		norepl[i] = (Utils.index(tile.tags, "norepl") >= 0) ||
+		    res.name.equals("gfx/tiles/nil") || res.name.equals("gfx/tiles/notile");
 	    }
 	    for(int i = 0, tn = 0; i < tmap.length; i++) {
 		if(tmap[i] != -1)

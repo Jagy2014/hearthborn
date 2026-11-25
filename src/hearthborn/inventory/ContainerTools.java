@@ -13,10 +13,10 @@
 package hearthborn.inventory;
 
 import haven.*;
+import hearthborn.assets.Assets;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.*;
-import javax.imageio.ImageIO;
 
 /**
  * Per-container controls; no alternate inventory widget or window decoration is required.
@@ -26,7 +26,7 @@ import javax.imageio.ImageIO;
 public final class ContainerTools {
     private static final int PANEL_WIDTH = 200;
     private static final Set<String> FOOD_TABLES = new HashSet<>(Arrays.asList(
-        "Table", "Cottage Table", "Rustic Table", "Stone Table"));
+        "Table", "Cottage Table", "Rustic Table", "Stone Table", "Elegant Table"));
     private static final Set<String> EXCLUDED = new HashSet<>(Arrays.asList(
         "Belt", "Пояс", "Character Sheet", "Study", "Birdhouse", "Chicken Coop", "Rabbit Hutch", "Cauldron", "Finery Forge", "Fireplace",
         "Frame", "Herbalist Table", "Kiln", "Ore Smelter", "Smith's Smelter", "Oven", "Pelican's Pouch",
@@ -50,7 +50,7 @@ public final class ContainerTools {
     /** Storage windows use the same slightly larger grid as a furnace. Food tables stay ordinary. */
     public static boolean container(Window window) {
         if(window == null || window instanceof GItem.ContentsWindow || window.cap == null) return false;
-        return !food(window.cap) && !excluded(window.cap);
+        return !foodTable(window) && !excluded(window.cap);
     }
     /** Stack, sort and overview buttons belong to the backpack, the cupboard and the metal cabinet only; elsewhere the header has no room for them. */
     public static boolean toolbarWindow(Window window) {
@@ -63,8 +63,9 @@ public final class ContainerTools {
         for(String name : EXCLUDED) if(named(caption, name)) return true;
         return false;
     }
-    private static boolean food(String caption) {
-        for(String name : FOOD_TABLES) if(named(caption, name)) return true;
+    public static boolean foodTable(Window window) {
+        if(window.cap == null || window instanceof GItem.ContentsWindow) return false;
+        for(String name : FOOD_TABLES) if(named(window.cap, name)) return true;
         return false;
     }
     private static boolean named(String caption, String name) {
@@ -80,9 +81,8 @@ public final class ContainerTools {
 
     private static BufferedImage icon(String name) {
         return ICONS.computeIfAbsent(name, key -> {
-            try(java.io.InputStream in = ContainerTools.class.getResourceAsStream("/hearthborn/assets/icons/" + key + ".png")) {
-                if(in == null) throw new IllegalStateException("Missing container icon: " + key);
-                BufferedImage image = ImageIO.read(in);
+            try {
+                BufferedImage image = Assets.image("buttons/container/" + key + ".png");
                 // Source artwork has four pixels per logical UI pixel.
                 return PUtils.convolve(image, UI.scale(hearthborn.ui.SmallWindowDeco.HEADER_BUTTON, hearthborn.ui.SmallWindowDeco.HEADER_BUTTON), CharWnd.iconfilter);
             } catch(IOException e) {throw new RuntimeException(e);}

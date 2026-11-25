@@ -155,9 +155,6 @@ public final class Toolbars {
         return value;
     }
     public static void enabled(String id, boolean value) { shownBars.put(id,value); Utils.setprefb("hearthborn/toolbar/" + id, value); }
-    private static volatile Boolean plain;
-    public static boolean clean(){if(plain==null)plain=Utils.getprefb("hearthborn/toolbar/clean",true);return plain;}
-    public static void clean(boolean value){plain=value;Utils.setprefb("hearthborn/toolbar/clean",value);}
     public static boolean vertical(String id){
         Boolean value=upright.get(id);
         if(value==null)upright.put(id,value=Utils.getprefb("hearthborn/toolbar/"+id+"/vertical",false));
@@ -177,7 +174,7 @@ public final class Toolbars {
     }
     public static Coord defaultPosition(String id){
         int row=id.equals("function")?0:id.equals("extra")?1:2;
-        return UI.scale(50,200).add(0,row*(ToolbarScale.size(ToolbarFrame.size(10,false)).y+UI.scale(12)));
+        return UI.scale(50,200).add(0,row*(ToolbarScale.size(ToolbarFrame.packedSize(10,false)).y+UI.scale(12)));
     }
     public static void install(GameUI gui) {
         gui.add(new EquipmentStrip(), Utils.getprefc("hearthborn/toolbar/equipment/position", UI.scale(420,5)));
@@ -228,7 +225,7 @@ public final class Toolbars {
                 resize(Coord.of(width,(int)Math.ceil(layoutSize.y*scale)));
                 move(Coord.of(chatLeft(gui),Math.max(0,gui.sz.y-sz.y)));wasAttached=true;gui.layoutChat();
             }else{
-                scale=ToolbarScale.scale();layoutSize=ToolbarFrame.size(slots.length,vertical,function?8:0);resize(ToolbarScale.size(layoutSize));
+                scale=ToolbarScale.scale();layoutSize=ToolbarFrame.packedSize(slots.length,vertical);resize(ToolbarScale.size(layoutSize));
                 if(wasAttached){move(Utils.getprefc(key("position"),defaultPosition(id)));wasAttached=false;}
                 fit();
             }
@@ -247,7 +244,7 @@ public final class Toolbars {
         public void presize(){layout();}
         private Coord cell(int i){return isDocked()?dockCell(i,Math.max(1,columns)):floatingCell(i);}
         private Coord floatingCell(int i) {
-            return ToolbarFrame.cell(i,vertical,function?8:0);
+            return ToolbarFrame.cell(i,vertical);
         }
         private int slot(int index){return index<slots.length?slots[index]:144+index-slots.length;}
         public int beltslot(Coord c) {
@@ -264,7 +261,6 @@ public final class Toolbars {
         }
         public void draw(GOut g) {
             GOut content=ToolbarScale.graphics(g,logicalSize(),scale);
-            panel(content,logicalSize());
             for(int i=0;i<slotCount;i++) {
                 Coord c=cell(i);ToolbarFrame.hotbarSlot(content,c,Inventory.invsq.sz());
                 try { if(gui.belt[slot(i)]!=null) gui.belt[slot(i)].draw(content.reclip(c.add(UI.scale(1,1)),Inventory.invsq.sz().sub(UI.scale(2,2)))); }
@@ -427,7 +423,6 @@ public final class Toolbars {
         }
         public void draw(GOut g){
             GOut content=ToolbarScale.graphics(g,logicalSize);
-            panel(content,logicalSize);
             Coord slot=Inventory.invsq.sz();
             for(int i=0;i<slots.length;i++){
                 ToolbarFrame.hotbarSlot(content,at[i],slot);
@@ -456,6 +451,5 @@ public final class Toolbars {
         public void dispose(){if(drag!=null)drag.remove();for(Tex label:labels)if(label!=null)label.dispose();for(Tex label:keyLabels)if(label!=null)label.dispose();super.dispose();}
     }
     /** The backing plate of a separate strip; clean strips let the world show between their cells. */
-    static void panel(GOut g,Coord size){if(!clean())ToolbarFrame.background(g,size);}
     private Toolbars() {}
 }

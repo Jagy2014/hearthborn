@@ -223,6 +223,10 @@ public class Window extends Widget {
             hearthborn.ui.UiTheme.background(g,ca.ul,ca.sz());
 	}
 
+	protected void drawpanels(GOut g) {
+	    hearthborn.ui.UiTheme.panels(g, (Window)parent);
+	}
+
 	protected void drawframe(GOut g) {
 	    Window wnd = (Window)parent;
 	    if((cap == null) || (cap.text != wnd.cap) || (cfocus != wnd.hasfocus)) {
@@ -258,7 +262,7 @@ public class Window extends Widget {
 
 	public void draw(GOut g) {
 	    drawbg(g);
-	    hearthborn.ui.UiTheme.panels(g.reclip(aa.ul, aa.sz()), (Window)parent);
+	    drawpanels(g.reclip(aa.ul, aa.sz()));
 	    cdraw(g.reclip(aa.ul, aa.sz()));
 	    drawframe(g);
 	    super.draw(g);
@@ -503,6 +507,7 @@ public class Window extends Widget {
     public void tick(double dt) {
 	super.tick(dt);
 	hearthborn.ui.ShutdownNotice.tick(this);
+	hearthborn.scripts.TableSalting.update(this);
 	if(anim != null) {
 	    if(anim.tick(dt)) {
 		if(animst == "show") {

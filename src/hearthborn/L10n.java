@@ -57,8 +57,8 @@ public final class L10n {
                 System.err.println("Could not load Hearthborn translations: " + e.getMessage());
             }
             if(!language.equals("en")) {
-                for(String context : new String[] {"button", "pagina", "action", "tooltip", "ingredient", "window", "label", "flower", "biome", "msg", "note"}) {
-                    boolean patterns = context.equals("label") || context.equals("window") || context.equals("flower") || context.equals("msg");
+                for(String context : new String[] {"button", "pagina", "action", "tooltip", "ingredient", "window", "label", "flower", "biome", "msg", "note", "quest"}) {
+                    boolean patterns = context.equals("quest") || context.equals("label") || context.equals("window") || context.equals("flower") || context.equals("msg");
                     catalogs.put(context, new Catalog(Catalog.load("/hearthborn/l10n/" + language + "/" + context + ".properties"), patterns));
                 }
             }
@@ -90,6 +90,12 @@ public final class L10n {
         String value = resolve(context, english);
         if(value == null && !language.equals("en")) hearthborn.l10n.Missing.record(context, english);
         return value == null ? english : value;
+    }
+
+    public static String questObjective(String english) {
+        String translated = find("label", english);
+        if(translated == null) translated = find("quest", english);
+        return translated != null ? translated : text("label", english);
     }
 
     /** The translation when there is one, otherwise the text itself; a miss is not reported. */
@@ -187,6 +193,14 @@ public final class L10n {
     public static String objectName(Resource res, String fallback) {
         Resource.Tooltip tooltip = res.layer(Resource.tooltip);
         String english = names.getProperty(res.name, tooltip == null ? fallback : tooltip.original);
+        String boulders = "gfx/terobjs/bumlings/";
+        if(res.name.startsWith(boulders)) {
+            String exact = lookup("tooltip", res.name);
+            if(exact != null) return exact;
+            String material = res.name.substring(boulders.length()).replaceFirst("[0-9]+$", "");
+            String translated = lookup("tooltip", "gfx/invobjs/" + material);
+            if(translated != null) return translated;
+        }
         if(res.name.startsWith("gfx/tiles/")) {
             String biome = lookup("biome", english);
             if(biome != null) return biome;

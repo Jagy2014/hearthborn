@@ -10,7 +10,7 @@
 
 </div>
 
-![Hearthborn Client](docs/images/Hearthborn2.png)
+![Hearthborn character selection screen](docs/images/buymeacoffee-bottom.png)
 
 Hearthborn builds on the original Haven & Hearth client to make everyday gameplay more convenient, with a customizable interface and practical tools for production, storage, exploration, planning, and automation.
 

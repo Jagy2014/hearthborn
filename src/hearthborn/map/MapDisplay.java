@@ -31,6 +31,7 @@ import java.util.Locale;
  * @author Jagy2014
  */
 public final class MapDisplay implements Disposable {
+    static final String HIDE_NAMES_ZOOMED_OUT = "hide-marker-names-zoomed-out";
     private static final Coord SERVER_GRID=Coord.of(100,100);
     private static final Map<String,Boolean> features=new HashMap<>();
     private static volatile Boolean hideTitle;
@@ -39,8 +40,8 @@ public final class MapDisplay implements Disposable {
     public static boolean enabled(String feature){
         if(feature.equals("terrain-name"))return !hideTerrainName();
         Boolean value=features.get(feature);
-        // Sample markers default on so scout results show without hunting for a toggle.
-        if(value==null)features.put(feature,value=Utils.getprefb("hearthborn/map/"+feature,feature.equals("samples")));
+        if(value==null)features.put(feature,value=Utils.getprefb("hearthborn/map/"+feature,
+            feature.equals("samples")||feature.equals(HIDE_NAMES_ZOOMED_OUT)));
         return value;
     }
     public static void enabled(String feature,boolean value){
@@ -550,7 +551,7 @@ public final class MapDisplay implements Disposable {
         return false;
     }
     public void marker(GOut g,MiniMap.DisplayMarker marker) {
-        if(enabled("marker-names")&&marker.sc!=null) {
+        if(marker.sc!=null&&markerNamesVisible(map.displayZoom(),marker.m)) {
             String text=MarkerQuality.caption(marker.m);
             Tex name=label(text);Coord at=marker.sc.add(0,UI.scale(10));
             java.awt.Rectangle area=new java.awt.Rectangle(at.x-name.sz().x/2,at.y,name.sz().x,name.sz().y);
@@ -560,7 +561,14 @@ public final class MapDisplay implements Disposable {
                 g.aimage(name,at,.5,0);
             }
         }
-        CaveLevels.badge(g, marker);
+    }
+    static boolean markerNamesVisible(int zoom) {
+        // Zoom level 3 and farther show at least eight tiles per base pixel.
+        return enabled("marker-names") && (zoom < 3 || !enabled(HIDE_NAMES_ZOOMED_OUT));
+    }
+    static boolean markerNamesVisible(int zoom,MapFile.Marker marker) {
+        return markerNamesVisible(zoom) && (!(marker instanceof MapFile.SMarker)
+            || RadarIcons.roadSignEnglishName(((MapFile.SMarker)marker).res.name)==null);
     }
     public void dispose(){meteor.dispose();if(pointerTip!=null)pointerTip.dispose();if(caption!=null)caption.dispose();for(Tex tex:labels.values())tex.dispose();for(Mask mask:masks.values())mask.tex.dispose();}
 }

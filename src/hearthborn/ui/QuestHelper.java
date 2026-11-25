@@ -72,7 +72,7 @@ public final class QuestHelper extends Window {
     public static boolean framed(){return Utils.getprefb(PREF+"frame",true);}
     public static void framed(boolean value){Utils.setprefb(PREF+"frame",value);}
     private boolean shownFrame=framed();
-    protected Deco makedeco(){return framed()?super.makedeco():new PlainDeco();}
+    protected Deco makedeco(){return framed()?new SmallWindowDeco(large).translucentDark().hudFrame().compactWhenJoined(UI.scale(11)):new PlainDeco();}
     public static boolean enabled(){return Utils.getprefb(PREF+"screen",true);}
     public static void enabled(boolean value){Utils.setprefb(PREF+"screen",value);}
     protected boolean escapeCloses(){return false;}
@@ -107,7 +107,7 @@ public final class QuestHelper extends Window {
         if(previous!=null)for(QuestWnd.Quest.Condition condition:box.conds()){
             if(condition.done!=QuestWnd.Quest.QST_DONE)continue;
             boolean completed=previous.conditions.stream().anyMatch(old->old.desc.equals(condition.desc)&&old.done==QuestWnd.Quest.QST_PEND);
-            if(completed)gui.msg(new UI.SimpleMessage(L10n.format("Quest completed: %s",L10n.text("label",CredoQuests.objective(box.title,condition.desc))),QuestWnd.Quest.stcol[QuestWnd.Quest.QST_DONE],null));
+            if(completed)gui.msg(new UI.SimpleMessage(L10n.format("Quest completed: %s",CredoQuests.localizedObjective(box.title,condition.desc)),QuestWnd.Quest.stcol[QuestWnd.Quest.QST_DONE],null));
         }
         if(!selectionKnown)manualSelection(box.id);
     }
@@ -127,7 +127,7 @@ public final class QuestHelper extends Window {
     }
     private String progress(QuestWnd.Quest quest){return L10n.format("Objectives: %d / %d",quest.ndcond,quest.ncond);}
     private String objective(QuestWnd.Quest quest,QuestWnd.Quest.Condition condition){
-        String line=(condition.done==QuestWnd.Quest.QST_DONE?"✓ ":"• ")+L10n.text("label",CredoQuests.objective(quest.title,condition.desc));
+        String line=(condition.done==QuestWnd.Quest.QST_DONE?"✓ ":"• ")+CredoQuests.localizedObjective(quest.title,condition.desc);
         if(condition.status!=null&&!condition.status.isEmpty())line+=" "+L10n.text("label",condition.status);
         return line;
     }
@@ -187,7 +187,11 @@ public final class QuestHelper extends Window {
     }
     private void applySize(int width,int height){
         super.resize(Coord.of(width,height+FOOTER));
-        if(tasks!=null)tasks.resize(Coord.of(width,height));
+        if(tasks!=null)tasks.resize(Coord.of(cardsWidth(),height));
+    }
+    private int cardsWidth(){
+        int inset=deco instanceof SmallWindowDeco?((SmallWindowDeco)deco).inlineCloseInset():0;
+        return Math.max(1,csz().x-inset);
     }
     public void resize(Coord size){
         wantedWidth=Math.max(MIN_WIDTH,size.x);wantedHeight=Math.max(MIN_HEIGHT,size.y-FOOTER);
@@ -241,6 +245,7 @@ public final class QuestHelper extends Window {
 
     private final class Cards extends Scrollport {
         Cards(Coord size){super(size);}
+        public void presize(){if(sz.x!=cardsWidth())resize(Coord.of(cardsWidth(),sz.y));}
         protected Scrollbar makebar(int height){return new JournalScrollport.Grip(height){public void changed(){cont.sy=val;}};}
         void rebuild(){
             for(Widget child:new ArrayList<>(cont.children()))child.destroy();
@@ -337,7 +342,16 @@ public final class QuestHelper extends Window {
             }else if(event.b==3)details(quest.id);
             return true;
         }
-        public Object tooltip(Coord at,Widget previous){return QuestHelper.this.tooltip(quest);}
+        public Object tooltip(Coord at, Widget previous) {
+            for(Piece piece : pieces) {
+                int height = Math.max(piece.tex.sz().y, piece.picture == null ? 0 : UI.scale(22));
+                if(at.y < piece.y || at.y >= piece.y + height) continue;
+                String original = CredoQuests.originalTooltip(quest.title, piece.objective);
+                if(original != null) return original;
+                break;
+            }
+            return QuestHelper.this.tooltip(quest);
+        }
         public void dispose(){for(Piece piece:pieces)piece.dispose();super.dispose();}
     }
     private static final class Piece {

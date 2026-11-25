@@ -187,9 +187,6 @@ public final class DockedToolbar implements Disposable {
     }
     /** The frame is the buttons themselves. */
     public Coord buttonFrame(){return logicalSize==null?Coord.z:logicalSize;}
-    public void background(GOut g,Coord size,Tex original){
-        Toolbars.panel(g,logicalSize!=null&&logicalSize.x>1?logicalSize:size);
-    }
     public void draw(GOut g,int selectedPage){
         Coord slot=Inventory.invsq.sz();
         for(Spot spot:spots){

@@ -29,7 +29,8 @@ import java.util.Properties;
  * new-icons=true
  * debug-logs=true
  * </pre>
- * {@code all=true} turns every one on. The file is read again when it changes.
+ * {@code all=true} turns every log on. The file is read again when it changes.
+ * The Game Journal preview requires its own {@code game-journal=true} and a client restart.
  *
  * @author Jagy2014
  */
@@ -70,6 +71,15 @@ public final class DeveloperMode {
         Properties properties = current();
         return "true".equalsIgnoreCase(properties.getProperty(key, "").trim())
             || "true".equalsIgnoreCase(properties.getProperty("all", "").trim());
+    }
+
+    /** Keep the preview disabled unless explicitly requested for this client process. */
+    public static boolean gameJournal() {
+        return JournalPreview.ENABLED;
+    }
+
+    private static class JournalPreview {
+        private static final boolean ENABLED = "true".equalsIgnoreCase(current().getProperty("game-journal", "").trim());
     }
 
     /** True when the file turns on anything at all. */

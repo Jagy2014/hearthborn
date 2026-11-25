@@ -146,6 +146,8 @@ public final class MilkScripts {
         final List<Gob> cisterns=new ArrayList<>();int cisternIndex;
         boolean complete,received;double settled,nextMarkRefresh;VesselInfo milk;volatile Area pen;Runnable selectionCancel;
         List<Target> herd;Target current;int collected,skipped;double nextStuckNotice;
+        private String penName;
+        private double liters, weightedQuality;
         final String run=UUID.randomUUID().toString();final List<Gob> marked=new ArrayList<>();
         Task(GameUI gui){super(gui);cleanup=()->{
             if(selectionCancel!=null){selectionCancel.run();selectionCancel=null;}
@@ -231,8 +233,20 @@ public final class MilkScripts {
             });
         }
         void liftBarrel(){
+            boolean[] routing={false},arrived={false};
+            waitFor(()->{
+                closeWindow();
+                routing[0]=routeToBarrel(()->arrived[0]=true);
+            },()->{
+                if(!routing[0])return true;
+                Walking.tickScript(gui.map);
+                if(Walking.scriptRunning(gui.map))return false;
+                if(!arrived[0])throw new IllegalStateException("Could not reach the barrel. Check that the path to it is open.");
+                return true;
+            },45,"Could not reach the barrel. Check that the path to it is open.");
             waitFor(()->{closeWindow();gui.act("carry");interact(source,1);},()->carriedBy(source,player()),30,"Could not lift the barrel. Milk collection stopped.");
         }
+        boolean routeToBarrel(Runnable arrived){return Walking.startScriptApproach(gui.map,source,arrived);}
         void stopMovement(){
             Walking.cancel(gui.map);
             gui.map.wdgmsg("click",Coord.z,player().rc.floor(OCache.posres),1,0);
@@ -278,7 +292,8 @@ public final class MilkScripts {
         }
         void start(){
             preflight();
-            SavedArea saved=MilkPens.load(gui).current(gui);
+            MilkPens pens=MilkPens.load(gui);
+            SavedArea saved=pens.current(gui);
             if(saved==null){
                 selectionCancel=gui.map.selectLocalArea(area->{pen=area;selectionCancel=null;},()->{
                     selectionCancel=null;if(ScriptRunner.current(gui)==this)ScriptRunner.cancel(gui);
@@ -288,8 +303,12 @@ public final class MilkScripts {
                 add(()->{
                     targets(objects(),pen); // Do not persist an empty or mixed-species selection.
                     MilkPens.save(gui,pen,null);
+                    MilkPens updated=MilkPens.load(gui);
+                    SavedArea created=updated.current(gui);
+                    if(created!=null)penName=updated.name(created);
                 },()->true,10);
             }else{
+                penName=pens.name(saved);
                 waitFor(()->{},()->{
                     pen=saved.resolve(gui.ui.sess.glob.map);
                     if(pen!=null&&!pen.contains(player().rc.floor(MCache.tilesz)))throw new IllegalStateException("Stand inside the collection area you are selecting.");
@@ -327,7 +346,13 @@ public final class MilkScripts {
             }
             if(current==null){
                 putDown();add(()->{
-                    complete=true;status("Milk collection completed.");
+                    complete=true;
+                    String name=penName==null?L10n.tr("Collection area"):penName;
+                    String summary=liters>0
+                        ?L10n.format("%s: collected %s L of milk in total, average quality %s.",name,number(liters,2),number(weightedQuality/liters,1))
+                        :L10n.format("%s: no milk collected.",name);
+                    gui.showNotice(summary,java.awt.Color.WHITE);
+                    gui.ui.msg(summary,new java.awt.Color(140,255,140),null);
                 });return;
             }
             current.visited=true;livestock=current.gob;received=false;settled=0;mark(current,hearthborn.world.MilkMark.Status.CURRENT);
@@ -373,7 +398,12 @@ public final class MilkScripts {
                 if(settled==0)settled=now()+.6;
                 return now()>=settled;
             },30,"Could not confirm that all milk was poured into the cistern. Milk collection stopped.");
-            add(()->{collected++;mark(current,hearthborn.world.MilkMark.Status.DONE);});queueNext();
+            add(()->{
+                collected++;
+                liters+=milk.liters();
+                weightedQuality+=milk.liters()*milk.quality();
+                mark(current,hearthborn.world.MilkMark.Status.DONE);
+            });queueNext();
         }
     }
     private MilkScripts(){}

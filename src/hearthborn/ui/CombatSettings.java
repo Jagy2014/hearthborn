@@ -36,6 +36,11 @@ public final class CombatSettings {
         int col = UI.scale(340);
         int y = y0;
 
+        CheckBox keepHud = new CheckBox("Keep interface visible in combat");
+        keepHud.state(CombatPrefs::keepHud).set(CombatPrefs::keepHud);
+        keepHud.settip(L10n.text("tooltip", "Do not switch to compact mode when combat starts. Alt+Space still toggles it manually."));
+        panel.add(keepHud, 0, y);
+        y += step;
         y = box(panel, 0, y, step, "Use new combat UI", CombatPrefs.alt(), CombatPrefs::alt,
             "Keeps the cooldown, openings and moves in the fixed layout. Off, they follow your character.");
         y = box(panel, 0, y, step, "Allow dragging combat UI", CombatPrefs.drag(), CombatPrefs::drag,
@@ -45,9 +50,9 @@ public final class CombatSettings {
         y = box(panel, 0, y, step, "Auto peace on combat start", CombatPrefs.peace(), CombatPrefs::peace,
             "Offers peace when a fight starts and the opponent is aggressive. Useful for taming.");
         y = box(panel, 0, y, step, "Re-aggro animals", CombatPrefs.reaggro(), CombatPrefs::reaggro,
-            "If an animal leaves the fight on its own, attack it again within bow range and keep the compact combat UI up.");
-        y = box(panel, 0, y, step, "Auto-pick attacks by openings", AutoCombat.enabled(), AutoCombat::enabled,
-            "Picks the deck attack that matches the animal's largest opening. Never attacks players.");
+            "If an animal leaves the fight on its own, attack it again within bow range.");
+        y = box(panel, 0, y, step, "Combat assistance with animals", AutoCombat.enabled(), AutoCombat::enabled,
+            "Uses the active combat school. With a sword, builds initiative and uses Chop. Bow shots stay manual.");
         y = box(panel, 0, y, step, "Always mark current target", CombatPrefs.mark(), CombatPrefs::mark,
             "Marks the target even when it is the only one.");
         y = box(panel, 0, y, step, "Show chase vectors", ChaseVector.enabled(), ChaseVector::enabled,

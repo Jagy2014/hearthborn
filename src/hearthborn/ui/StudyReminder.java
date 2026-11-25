@@ -43,6 +43,8 @@ public final class StudyReminder extends Buff {
     }
     public static boolean enabled(){return Utils.getprefb("hearthborn/study/free-slots-buff",false);}
     public static void enabled(boolean value){Utils.setprefb("hearthborn/study/free-slots-buff",value);}
+    public static boolean always(){return Utils.getprefb("hearthborn/study/always-show-buff",false);}
+    public static void always(boolean value){Utils.setprefb("hearthborn/study/always-show-buff",value);}
     public static int freeSlots(Inventory inventory){
         boolean[] occupied=new boolean[inventory.isz.x*inventory.isz.y];
         if(inventory.sqmask!=null)System.arraycopy(inventory.sqmask,0,occupied,0,Math.min(occupied.length,inventory.sqmask.length));
@@ -55,15 +57,26 @@ public final class StudyReminder extends Buff {
     }
     public static void tick(GameUI gui){
         if(gui.buffs==null)return;
-        int free=0;
-        if(enabled())for(Widget widget:StudyProgress.registered(gui))if(widget instanceof Inventory)free+=freeSlots((Inventory)widget);
+        boolean alwaysShow = always();
+        int free = -1;
+        if(alwaysShow || enabled()) {
+            for(Widget widget : StudyProgress.registered(gui)) {
+                if(widget instanceof Inventory)
+                    free = Math.max(0, free) + freeSlots((Inventory)widget);
+            }
+        }
         StudyReminder reminder=shown.get(gui);
-        if(free==0){if(reminder!=null){shown.remove(gui);reminder.destroy();}return;}
+        if(!alwaysShow && free <= 0) {
+            dispose(gui);
+            return;
+        }
         if(reminder==null||reminder.parent==null){reminder=new StudyReminder(gui,free);gui.buffs.addchild(reminder);shown.put(gui,reminder);}
         reminder.free=free;
     }
     public static void dispose(GameUI gui){StudyReminder reminder=shown.remove(gui);if(reminder!=null&&reminder.parent!=null)reminder.destroy();}
     public Object tooltip(Coord c,Widget previous){
+        if(free < 0 || gui.ui == null || gui.ui.sess == null)
+            return L10n.tr("Study information is still loading.")+"\n"+L10n.tr("Left-click to open the study window.");
         int used=0;boolean loading=false;
         for(Widget study:StudyProgress.registered(gui))if(study instanceof Inventory)
             for(GItem item:study.children(GItem.class))try{

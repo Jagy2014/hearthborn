@@ -27,7 +27,7 @@ import hearthborn.assets.Assets;
 public final class CupboardIconButton extends IButton {
     private static final Map<String,BufferedImage> images=new HashMap<>();
     private static BufferedImage image(boolean automatic,int state){
-        String path="icons/container/"+(automatic?"automatic":"choose")+(state==1?"-d":state==2?"-h":"")+".png";
+        String path="buttons/container/"+(automatic?"automatic":"choose")+(state==1?"-d":state==2?"-h":"")+".png";
         return images.computeIfAbsent(path,key->{
             try {
                 int size=UI.scale(hearthborn.ui.SmallWindowDeco.HEADER_BUTTON);

@@ -447,8 +447,9 @@ public class Steam {
 		this.id = api.ugc.startItemUpdate(appid(), UGItem.this.id);
 	    }
 
-	    public void title(String title) {api.ugc.setItemTitle(id, title);}
-	    public void description(String desc) {api.ugc.setItemDescription(id, desc);}
+	    public boolean language(String language) {return api.ugc.setItemUpdateLanguage(id, language);}
+	    public boolean title(String title) {return api.ugc.setItemTitle(id, title);}
+	    public boolean description(String desc) {return api.ugc.setItemDescription(id, desc);}
 	    public void metadata(String data) {api.ugc.setItemMetadata(id, data);}
 	    public void tags(String... tags) {api.ugc.setItemTags(id, tags);}
 	    public void contents(Path dir) {api.ugc.setItemContent(id, dir.toAbsolutePath().toString());}

@@ -24,7 +24,7 @@ public final class IconCategories {
     public enum Category {
         ALL("All","all"),ANIMALS("Animals","kritters"),DOMESTIC("Domestic animals","domestic"),HERBS("Herbs","herbs"),
         ORES("Ores","ores"),ROCKS("Rocks","rocks"),TREES("Trees","trees"),
-        BUSHES("Bushes","bushes"),FORAGEABLES("Forageables","forageables"),SIEGE("Siege machines","siege"),VEHICLES("Vehicles and movables","vehicles"),RESOURCES("Natural resources","resources"),OTHER("Other","other");
+        BUSHES("Bushes","bushes"),FORAGEABLES("Forageables","forageables"),SIEGE("Siege machines","siege"),VEHICLES("Vehicles and movables","vehicles"),RESOURCES("Natural resources","resources"),DUNGEONS("Dungeons","dungeons"),OTHER("Other","other");
         public final String title,id;
         Category(String title,String id){this.title=title;this.id=id;}
         public boolean enabled(){return Utils.getprefb("hearthborn/icons/category/"+id,true);}
@@ -169,6 +169,7 @@ private static final String[] ANIMAL_PATHS = {
         return false;
     }
     public static Category classify(String name) {
+        if(hearthborn.map.RadarIcons.dungeonIcon(name))return Category.DUNGEONS;
         if(leaf(name,"catapult","bram","batteringram","wball","wreckingball","wreckingball-fold","archerytower","warflag"))return Category.SIEGE;
         if(name.startsWith("gfx/terobjs/vehicle/")||leaf(name,"rowboat","dugout","coracle","knarr","snekkja","wagon","cart","wheelbarrow","raft","raft-seg","spark","primsled","finesled","sleigh","sled","wskisitem","skis-wilderness","skis"))return Category.VEHICLES;
         if(leaf(name,"tarpit","wellspring","claypit","clay-cave","saltbasin","geyser","headwaters","amberwash","flintwash","meteorite","guanopile","clamreef","coralreef","driftkelp","driftkelpisland","spawningbed","tidepool","looserock","abyssalchasm","windthrow","fairystone","caveorgan","woodheart","icespire","jotunmussel","jotunclam","lilypadlotus","rockcrystal","crystalpatch"))return Category.RESOURCES;

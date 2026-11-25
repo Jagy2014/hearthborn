@@ -1743,6 +1743,11 @@ public class MapView extends PView implements DTarget, Console.Directory, Widget
 	return(clipxf(mc, false).toview(Area.sized(this.sz)));
     }
 
+    public Coord targetScreenPoint(Gob gob, int lift) {
+        HomoCoord4f projected = clipxf(gob.getc().add(0, 0, lift), false);
+        return projected.clipped() ? null : projected.toview(Area.sized(sz)).round2();
+    }
+
     public Coord3f screenxf(Coord2d mc) {
 	Coord3f cc;
 	try {
@@ -2204,6 +2209,15 @@ public class MapView extends PView implements DTarget, Console.Directory, Widget
 
     private long clickSequence;
 
+    /** Resolve the object under the pointer without dispatching a movement or attack click. */
+    public void pickTargetPreview(Coord at, java.util.function.Consumer<Gob> result) {
+        if(!at.isect(Coord.z, sz)) return;
+        new Hittest(at) {
+            protected void hit(Coord pc, Coord2d mc, ClickData info) { result.accept(clicked(info)); }
+            protected void nohit(Coord pc) { result.accept(null); }
+        }.run();
+    }
+
     /** A pending GPU pick must not revive movement after a newer command. */
     public void cancelPendingClicks() {clickSequence++;}
 
@@ -2281,6 +2295,7 @@ public class MapView extends PView implements DTarget, Console.Directory, Widget
 
     public boolean mousedown(MouseDownEvent ev) {
         GameUI bowGui=getparent(GameUI.class);
+        if(ev.b==1||ev.b==3)hearthborn.combat.WildAttack.manual(bowGui);
         if(hearthborn.combat.BowCombat.picking(bowGui)&&(ev.b==1||ev.b==3)){
             hearthborn.navigation.Walking.cancel(this);
             if(ev.b==3)hearthborn.combat.BowCombat.manual(bowGui);

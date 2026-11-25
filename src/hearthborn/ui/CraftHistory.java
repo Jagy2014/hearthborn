@@ -27,6 +27,8 @@ import java.util.List;
  */
 public final class CraftHistory extends Widget {
     private static final Map<GameUI,List<MenuGrid.Pagina>> histories=new WeakHashMap<>();
+    private final Toggle favorite;
+    private final int historyWidth;
     public static void remember(GameUI gui,MenuGrid.Pagina page){
         List<MenuGrid.Pagina> history=histories.computeIfAbsent(gui,key->new ArrayList<>());
         history.removeIf(old->old.res().name.equals(page.res().name));history.add(0,page);
@@ -53,7 +55,10 @@ public final class CraftHistory extends Widget {
         return image;
     }
     private static final Color GOLD=new Color(240,195,70),GOLD_EDGE=new Color(255,235,150);
-    /** The star at the end of the row: the recipe that is open now joins the favorites, or leaves them. */
+    public static BufferedImage favoriteStar(int size, boolean saved) {
+        return saved ? star(size, GOLD, GOLD_EDGE) : star(size, null, new Color(170,150,100));
+    }
+    /** The star toggles the recipe that is open now. */
     private static final class Toggle extends Widget {
         private final MenuGrid menu;private final MenuGrid.Pagina page;private Tex filled,hollow;
         Toggle(MenuGrid menu,MenuGrid.Pagina page){super(UI.scale(32,32));this.menu=menu;this.page=page;}
@@ -61,8 +66,8 @@ public final class CraftHistory extends Widget {
         public void draw(GOut g){
             g.chcolor(28,18,8,255);g.frect(Coord.z,sz);g.chcolor(190,155,75,255);g.rect(Coord.z,sz);g.chcolor();
             Tex star;
-            if(favorite()){if(filled==null)filled=new TexI(star(UI.scale(22),GOLD,GOLD_EDGE));star=filled;}
-            else{if(hollow==null)hollow=new TexI(star(UI.scale(22),null,new Color(170,150,100)));star=hollow;}
+            if(favorite()){if(filled==null)filled=new TexI(favoriteStar(UI.scale(22),true));star=filled;}
+            else{if(hollow==null)hollow=new TexI(favoriteStar(UI.scale(22),false));star=hollow;}
             g.aimage(star,sz.div(2),.5,.5);
         }
         public Object tooltip(Coord at,Widget prev){return L10n.tr(favorite()?"Remove from Favorites":"Add to Favorites");}
@@ -99,7 +104,15 @@ public final class CraftHistory extends Widget {
                 public void dispose(){if(icon!=null)icon.dispose();if(mark!=null)mark.dispose();super.dispose();}
             },Coord.of(x,0));x+=UI.scale(34);
         }
-        if(menu!=null&&!recent.isEmpty())add(new Toggle(menu,recent.get(0)),Coord.of(x+UI.scale(6),0));x+=x==0?0:UI.scale(40);
-        resize(Coord.of(Math.max(1,x),x==0?0:UI.scale(36)));
+        historyWidth=x;
+        favorite=menu!=null&&!recent.isEmpty()?add(new Toggle(menu,recent.get(0))):null;
+        align(Makewindow.WIDTH);
+    }
+
+    public void align(int contentWidth) {
+        int minimum = favorite == null ? historyWidth : historyWidth + UI.scale(6) + favorite.sz.x;
+        int width = Math.max(contentWidth, minimum);
+        if(favorite != null) favorite.move(Coord.of(width - favorite.sz.x, 0));
+        resize(Coord.of(width, historyWidth == 0 ? 0 : UI.scale(36)));
     }
 }

@@ -94,6 +94,7 @@ public class WItem extends Widget implements DTarget {
 	public LongTip(List<ItemInfo> info) {super(info, hearthborn.l10n.TooltipText.render(() -> ItemInfo.longtip(info)));}
     }
 
+    private static final double FULL_TOOLTIP_DELAY = 1.0;
     private double hoverstart;
     private Coord pendingHandCoord;
     private UI.Grab handGrab;
@@ -103,29 +104,29 @@ public class WItem extends Widget implements DTarget {
     private List<ItemInfo> ttinfo = null;
     public Object tooltip(Coord c, Widget prev) {
 	double now = Utils.rtime();
-	if(prev == this) {
-	} else if(prev instanceof WItem) {
-	    double ps = ((WItem)prev).hoverstart;
-	    if(now - ps < 1.0)
-		hoverstart = now;
-	    else
-		hoverstart = ps;
-	} else {
+	if(prev != this)
 	    hoverstart = now;
-	}
 	/* Shift opens the stack/container preview - hide the tip so it does not cover the contents. */
 	if(item.contents != null && ui != null && ui.modshift)
 	    return(null);
 	List<ItemInfo> info = item.info();
 	if(info.size() < 1)
 	    return(null);
-        if(hearthborn.ui.StudyProgress.isStudy(item)) {
-            long second = (long)Utils.rtime();
-            if(second != studyTooltipSecond) { longtip = null; studyTooltipSecond = second; }
-        }
 	if(info != ttinfo) {
 	    shorttip = longtip = null;
 	    ttinfo = info;
+	}
+	if(!(parent instanceof Equipory) && now - hoverstart < FULL_TOOLTIP_DELAY) {
+	    if(shorttip == null)
+		shorttip = new ShortTip(info);
+	    return shorttip;
+	}
+	if(hearthborn.ui.StudyProgress.isStudy(item)) {
+	    long second = (long)now;
+	    if(second != studyTooltipSecond) {
+		longtip = null;
+		studyTooltipSecond = second;
+	    }
 	}
         if(longtip == null)longtip=new LongTip(info);
         return longtip;

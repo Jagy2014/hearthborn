@@ -63,12 +63,18 @@ public final class SmallWindowDeco extends Window.DefaultDeco {
     private int capTheme=-1;
     private int headerHeight;
     private boolean joinedHeader;
+    private int inlineCloseCenter=-1;
     /** A stacked caption belongs entirely to its own window, below the shared edge. */
     public void joinedHeader(boolean joined){
         if(joinedHeader==joined)return;
         joinedHeader=joined;
         if(parent instanceof Window)((Window)parent).refreshDecoration();
     }
+    /** On a shared seam, put the close button in the window's first content row. */
+    public SmallWindowDeco compactWhenJoined(int closeCenter){inlineCloseCenter=closeCenter;return this;}
+    private boolean inlineClose(){return joinedHeader&&inlineCloseCenter>=0&&!untitled;}
+    public int inlineCloseInset(){return inlineClose()?closeButton.sz.x+UI.scale(4):0;}
+    boolean captionVisible(){return !untitled&&!inlineClose();}
     /** Top of the rectangular frame, excluding the protruding caption. */
     public int frameTop(){return cptl.y;}
     /** Vertical center of the caption and the close button, on the top border. */
@@ -179,7 +185,7 @@ public final class SmallWindowDeco extends Window.DefaultDeco {
     }
 
     private static BufferedImage closeIcon(String name) {
-        try(java.io.InputStream in = SmallWindowDeco.class.getResourceAsStream("/hearthborn/assets/icons/small/" + name + ".png")) {
+        try(java.io.InputStream in = SmallWindowDeco.class.getResourceAsStream("/hearthborn/assets/buttons/" + name + ".png")) {
             if(in == null) throw new IllegalStateException("Missing window image: " + name);
             BufferedImage image = ImageIO.read(in);
             return PUtils.convolve(image, UI.scale(HEADER_BUTTON, HEADER_BUTTON), new PUtils.Lanczos(3));
@@ -187,7 +193,7 @@ public final class SmallWindowDeco extends Window.DefaultDeco {
     }
 
     private static BufferedImage image(String name, int pixelsPerUnit) {
-        try(java.io.InputStream in = SmallWindowDeco.class.getResourceAsStream("/hearthborn/assets/icons/small/" + name + ".png")) {
+        try(java.io.InputStream in = SmallWindowDeco.class.getResourceAsStream("/hearthborn/assets/buttons/" + name + ".png")) {
             if(in == null) throw new IllegalStateException("Missing window image: " + name);
             BufferedImage image = ImageIO.read(in);
             Coord size = UI.scale(Coord.of(image.getWidth() / pixelsPerUnit, image.getHeight() / pixelsPerUnit));
@@ -202,8 +208,9 @@ public final class SmallWindowDeco extends Window.DefaultDeco {
             Math.max(MIDDLE.sz().y, closeButton.sz.y + UI.scale(4)));
         captionCenter = headerHeight / 2;
         if(joinedHeader&&!untitled){
-            captionCenter=FRAME.btloff().y+UI.scale(1)+captionPlate()/2;
-            headerHeight=captionCenter+(captionPlate()+1)/2+UI.scale(1);
+            int top=FRAME.btloff().y+UI.scale(1), row=captionPlate();
+            captionCenter=top+row/2;
+            headerHeight=inlineClose()?FRAME.btloff().y:top+row+UI.scale(1);
         }
         Coord body = contents.add(margin.mul(2));
         Coord origin=FRAME.btloff().add(0,headerHeight);
@@ -211,34 +218,54 @@ public final class SmallWindowDeco extends Window.DefaultDeco {
         ca = Area.sized(origin, body);
         aa = Area.sized(ca.ul.add(margin), contents);
         resize(ca.br.add(FRAME.bbroff()));
-        closeButton.c = Coord.of(sz.x - FRAME.bbroff().x - closeButton.sz.x,
-            captionCenter-closeButton.sz.y/2);
+        if(inlineClose())
+            closeButton.c=Coord.of(aa.br.x-closeButton.sz.x,aa.ul.y+Math.max(0,inlineCloseCenter-closeButton.sz.y/2));
+        else
+            closeButton.c=Coord.of(sz.x-FRAME.bbroff().x-closeButton.sz.x,captionCenter-closeButton.sz.y/2);
         cptl = Coord.of(0, joinedHeader?0:headerHeight / 2);
     }
 
     private java.util.function.DoubleSupplier fade;
     /** A window that dims when left alone: its backing turns translucent by this level (1 is opaque). */
     public void fade(java.util.function.DoubleSupplier level){fade=level;}
+    private Color backing;
+    public SmallWindowDeco backing(Color color){backing=color;return this;}
+    private boolean translucentDark;
+    public SmallWindowDeco translucentDark(){translucentDark=true;return this;}
+    private boolean translucent(){return translucentDark&&!UiTheme.light();}
+    private boolean hudFrame;
+    public SmallWindowDeco hudFrame(){hudFrame=true;return this;}
+    boolean hidesHudFrame(){return hudFrame&&HudFrames.hidden();}
 
     @Override
     protected void drawbg(GOut g) {
         double level=fade==null?1:Math.max(0,Math.min(1,fade.getAsDouble()));
-        if(level<1){
-            Color back=UiTheme.BACKGROUND;
+        Color back=backing;
+        if(back==null&&translucent())back=UiTheme.DARK_TOOLTIP_BACKGROUND;
+        Coord at=cptl.add(HudFrames.sideInset(this,false),0);
+        Coord size=sz.sub(at).sub(HudFrames.sideInset(this,true),0);
+        if(back!=null||level<1){
+            if(back==null)back=UiTheme.BACKGROUND;
             g.chcolor(back.getRed(),back.getGreen(),back.getBlue(),(int)Math.round(back.getAlpha()*level));
-            g.frect(cptl,sz.sub(cptl));g.chcolor();
+            g.frect(at,size);g.chcolor();
         }else
-        UiTheme.background(g,cptl,sz.sub(cptl));
-        if(joinedHeader&&!untitled)UiTheme.panel(g,Coord.z,Coord.of(sz.x,ca.ul.y));
+        UiTheme.background(g,at,size);
+        if(joinedHeader&&captionVisible())UiTheme.panel(g,Coord.of(at.x,0),Coord.of(size.x,ca.ul.y));
+    }
+
+    @Override
+    protected void drawpanels(GOut g) {
+        if(!translucent())
+            super.drawpanels(g);
     }
 
     private void updateCaption(){
         if(!(parent instanceof Window))return;
         Window window=(Window)parent;
         String title=hearthborn.world.ObjectNames.title(window);
-        boolean editable=hearthborn.world.ObjectNames.editable(window);
+        boolean editable=captionVisible()&&hearthborn.world.ObjectNames.editable(window);
         renameButton.show(editable);
-        String shown=title;
+        String shown=captionVisible()?title:null;
         if(shown!=null){
             int space=closeButton.c.x-UI.scale(5)-end()*2-captionInset();
             if(editable)space-=renameButton.sz.x+UI.scale(4);
@@ -269,10 +296,16 @@ public final class SmallWindowDeco extends Window.DefaultDeco {
         if(!untitled)updateCaption();
         Window window=(Window)parent;
         boolean above=MagneticWindows.joinedAbove(window);
-        JoinedWindowFrame.draw(g,(IBox.Images)FRAME,cptl,sz.sub(cptl),above,MagneticWindows.joinedBelow(window));
-        if(above)joint(g);
-        if(!untitled && cap != null) {
-            caption(g,cap.tex(),Coord.of(captionInset(),captionCenter),window.hasfocus);
+        boolean hideFrame=hidesHudFrame();
+        if(!hideFrame){
+            JoinedWindowFrame.draw(g,(IBox.Images)FRAME,cptl,sz.sub(cptl),above,MagneticWindows.joinedBelow(window));
+            if(above)joint(g);
+        }
+        if(captionVisible() && cap != null) {
+            if(hideFrame)
+                g.aimage(cap.tex(),Coord.of(captionInset()+end(),captionCenter),0,.5);
+            else
+                caption(g,cap.tex(),Coord.of(captionInset(),captionCenter),window.hasfocus);
         }
         if(dragsize) ResizeMarks.draw(g, sz, false);
     }

@@ -129,7 +129,26 @@ public class SteamWorkshop {
 	default:
 	    err("upload: visibility is not one of `private', `friends' or `public': %s", prop);
 	}
-	update.submit(opt.rest.length > 1 ? opt.rest[1] : null);
+	submit(update, opt.rest.length > 1 ? opt.rest[1] : null, quiet);
+    }
+
+    private static void cmd_page_text(String[] args) throws IOException {
+	if(args.length != 4)
+	    err("usage: haven.SteamWorkshop page-text WORKSHOP-ID LANGUAGE TITLE DESCRIPTION-FILE");
+	String description = Files.readString(Utils.path(args[3]), Utils.utf8);
+	Steam api = Steam.get();
+	if(api == null)
+	    err("page-text: could not initialize Steam");
+	UGItem item = api.ugitem(Long.parseLong(args[0]));
+	UGItem.Update update = item.new Update();
+	if(!update.language(args[1]) || !update.title(args[2]) || !update.description(description))
+	    err("page-text: Steam rejected the %s title or description", args[1]);
+	submit(update, null, true);
+	System.out.printf("Updated Workshop page text: %s (%s)%n", args[0], args[1]);
+    }
+
+    private static void submit(UGItem.Update update, String message, boolean quiet) {
+	update.submit(message);
 	ItemUpdateStatus state = null;
 	while(update.done == null) {
 	    update.getprogress();
@@ -154,10 +173,12 @@ public class SteamWorkshop {
 	    System.err.println("upload: note: you need to agree to the Steam Workshop Legal Agreement to make your item public");
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws IOException {
 	String cmd = args[0].intern();
 	if(cmd == "upload") {
 	    cmd_upload(Utils.splice(args, 1));
+	} else if(cmd == "page-text") {
+	    cmd_page_text(Utils.splice(args, 1));
 	} else {
 	    System.err.println("invalid workshop command: " + cmd);
 	    System.exit(1);

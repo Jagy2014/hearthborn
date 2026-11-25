@@ -67,17 +67,90 @@ public final class MarkerQuality {
     }
 
     public static synchronized String numberedCaption(String key, String name) {
+        return captionWithDetails(key, baseCaption(key, name));
+    }
+
+    private static synchronized String captionWithDetails(String key, String name) {
         if(key == null) return name;
         loadNumbers();
-        if(("Абиссальная бездна".equals(name) && key.startsWith("gfx/terobjs/mm/abyssalchasm|"))
-           || ("Flint Wash".equals(name) && key.startsWith("gfx/terobjs/mm/flintwash|"))
-           || ("Spawning Bed".equals(name) && key.startsWith("gfx/terobjs/mm/spawningbed|")))
-            name = hearthborn.L10n.resource("tooltip", key.substring(0, key.indexOf('|')), name);
         Integer number = numbers.get(key);
         if(number != null) name += " " + number;
         load();
         Double quality = notes.get(key);
         return quality == null ? name : caption(name, quality);
+    }
+
+    public static String baseCaption(MapFile.Marker marker) {
+        if(marker instanceof MapFile.SMarker && ((MapFile.SMarker)marker).customName)
+            return marker.nm;
+        return baseCaption(key(marker), marker.nm);
+    }
+
+    private static String baseCaption(String key, String name) {
+        if(key == null) return name;
+        // Saved automatic names may still be in English. Keep custom names intact.
+        String icon;
+        switch(name) {
+            case "Abyssal Chasm":
+            case "Абиссальная бездна": icon = "abyssalchasm"; break;
+            case "Amber Wash": icon = "amberwash"; break;
+            case "Ancient Windthrow": icon = "windthrow"; break;
+            case "Anthill": icon = "anthill"; break;
+            case "Badger Sett": icon = "badgerden"; break;
+            case "Bat Cave": icon = "batcave"; break;
+            case "Beaver Lodge": icon = "beaverdam"; break;
+            case "Bee Dungeon": icon = "beehive"; break;
+            case "Bird's Nest": icon = "birdsnest"; break;
+            case "Cave Organ": icon = "caveorgan"; break;
+            case "Coral Reef": icon = "coralreef"; break;
+            case "Cave Clay": icon = "clay-cave"; break;
+            case "Driftkelp": icon = "driftkelp"; break;
+            case "Driftkelp Island": icon = "driftkelpisland"; break;
+            case "Fallen Star":
+            case "Meteorite": icon = "meteorite"; break;
+            case "Foxhole": icon = "foxhole"; break;
+            case "Geyser": icon = "geyser"; break;
+            case "Guano Pile": icon = "guanopile"; break;
+            case "Hidden Hollow": icon = "hiddenhollow"; break;
+            case "Ice Spire": icon = "icespire"; break;
+            case "Irminsul": icon = "irminsul"; break;
+            case "Jotun Clam": icon = "jotunclam"; break;
+            case "Jotun Mussel": icon = "jotunmussel"; break;
+            case "Lilypad Lotus": icon = "lilypadlotus"; break;
+            case "Loose Rock": icon = "looserock"; break;
+            case "Monolith": icon = "monolith"; break;
+            case "Rock Crystal":
+            case "Горный хрусталь":
+            case "Горный кристалл":
+                if(key.startsWith("gfx/terobjs/mm/rockcrystal|"))
+                    return hearthborn.L10n.resource("tooltip", "gfx/terobjs/mm/rockcrystal", "Rock Crystal");
+                if(key.startsWith("gfx/terobjs/mm/crystalpatch|"))
+                    return hearthborn.L10n.resource("tooltip", "gfx/terobjs/mm/crystalpatch", "Rock Crystal");
+                return name;
+            case "Seated Toad": icon = "gianttoad"; break;
+            case "Stone Kist": icon = "stonekist"; break;
+            case "Tidepool":
+            case "Tide Pool": icon = "tidepool"; break;
+            case "Wellspring": icon = "wellspring"; break;
+            case "Flint Wash": icon = "flintwash"; break;
+            case "Spawning Bed": icon = "spawningbed"; break;
+            case "Burrow": icon = "burrow"; break;
+            case "Clam Reef": icon = "clamreef"; break;
+            case "Tarpit":
+            case "Tar Pit": icon = "tarpit"; break;
+            case "Heartwood Tree":
+            case "Heartwood tree": icon = "woodheart"; break;
+            case "Headwaters": icon = "headwaters"; break;
+            case "Salt Basin": icon = "saltbasin"; break;
+            case "Fairy Stone": icon = "fairystone"; break;
+            case "Clay Pit": icon = "claypit"; break;
+            case "Swirling Vortex": icon = "watervortex"; break;
+            default: return name;
+        }
+        String resource = "gfx/terobjs/mm/" + icon;
+        if(key.startsWith(resource + "|"))
+            return hearthborn.L10n.resource("tooltip", resource, name);
+        return name;
     }
 
     /** What identifies a marker: its resource and its place in the map segment. Null for markers that are not resources (flags). */
@@ -274,7 +347,7 @@ public final class MarkerQuality {
 
     /** The text drawn under the marker. */
     public static String caption(MapFile.Marker marker) {
-        return numberedCaption(key(marker), marker.nm);
+        return captionWithDetails(key(marker), baseCaption(marker));
     }
 
     static String caption(String name, double quality) {

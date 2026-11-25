@@ -59,7 +59,7 @@ public final class BowCombat {
         bow(gui,null);return loading?Weapon.LOADING:Weapon.NONE;
     }
     private static long combatTarget(GameUI gui){return gui.fv==null||gui.fv.current==null?-1:gui.fv.current.gobid;}
-    private static Gob currentAnimal(GameUI gui){
+    static Gob currentAnimal(GameUI gui){
         return gui.fv==null||gui.fv.current==null||gui.fv.current.invalid?null:animal(gui,gui.fv.current.gobid);
     }
     private static Gob animal(GameUI gui,long id){
@@ -101,7 +101,6 @@ public final class BowCombat {
     }
     private Gob refresh(GameUI gui){
         Weapon now=weapon(gui);if(now!=weapon){cancelAim(gui);weapon=now;}
-        if(now==Weapon.BOW&&AutoCombat.enabled())AutoCombat.enabled(false);
         long selected=combatTarget(gui);Gob gob=animal(gui,target);
         if(phase!=Phase.IDLE){
             if(gob==null||(selected!=lastCombatTarget&&selected!=target)
@@ -188,7 +187,14 @@ public final class BowCombat {
         if(own.phase!=Phase.IDLE||own.picking||ShortcutRunner.switchingWeapon(gui))return;
         if(own.weapon!=Weapon.BOW||gui.map==null){gui.ui.error(L10n.tr("Equip a bow before shooting."));return;}
         if(gui.prog!=null||gui.vhand!=null){gui.ui.msg(L10n.tr("Finish the current action and empty the cursor before shooting."));return;}
-        Gob gob=currentAnimal(gui);
+        boolean preview=TargetPreview.marked(gui);
+        Gob gob=preview?TargetPreview.forAction(gui):currentAnimal(gui);
+        if(preview&&gob==null)return;
+        if(preview&&gui.fv!=null&&Utils.rtime()<gui.fv.atkct){
+            gui.ui.msg(L10n.tr("Wait for recovery before shooting."));
+            return;
+        }
+        if(preview)TargetPreview.clear(gui);
         if(gob!=null)own.shoot(gui,gob);
         else{
             hearthborn.scripts.ScriptRunner.manualFieldInput(gui);ShortcutRunner.cancel(gui);
@@ -197,13 +203,18 @@ public final class BowCombat {
             gui.ui.msg(L10n.tr("Select an animal to shoot once. Right-click or Escape cancels."));
         }
     }
-    /** Overrides the numeric belt only during a fight with a held bow. */
+    public static void shootMarked(GameUI gui){
+        if(gui==null)return;
+        if(TargetPreview.marked(gui))request(gui);
+        else TargetPreview.forAction(gui);
+    }
+    /** Overrides the numeric belt only with a bow and a fight or an explicit preview. */
     public static boolean key(GameUI gui,Widget.GlobKeyEvent event){
-        Fightsess fight=gui.getchild(Fightsess.class);if(fight==null)return false;
+        Fightsess fight=gui.getchild(Fightsess.class);if(fight==null&&!TargetPreview.marked(gui))return false;
         BowCombat own=state(gui);own.refresh(gui);if(own.weapon!=Weapon.BOW)return false;
         if(own.keyHeld>=0)return true;
         own.keyHeld=event.code;
-        own.keyGrab=gui.ui.grab(fight,Widget.KbdEvent.class,key->{
+        own.keyGrab=gui.ui.grab(fight==null?gui:fight,Widget.KbdEvent.class,key->{
             if(key.code!=own.keyHeld)return false;
             if(key instanceof Widget.KeyUpEvent){own.releaseKey();return true;}
             return key instanceof Widget.KeyDownEvent;

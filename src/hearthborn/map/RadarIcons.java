@@ -33,11 +33,14 @@ public final class RadarIcons {
         picture("radar/squirrel-cache","icons/mapicons/squirrel-cache.png",256);
         picture("radar/midgeswarm","icons/mapicons/midgeswarm.png",256);
         picture("radar/gem","icons/mapicons/gem.png",256);
+        picture("radar/milestone-wood-m","icons/mapicons/milestone-wood-m.png",256);
         alias("radar/tame/horse","gfx/kritter/horse/icon-wildhorse");
         alias("radar/tame/cattle","gfx/kritter/cattle/icon-aurochs");
         alias("radar/tame/sheep","gfx/kritter/sheep/icon-mouflon");
         alias("radar/tame/goat","gfx/kritter/goat/icon");
         alias("radar/tame/pig","gfx/kritter/boar/icon");
+        alias("radar/dungeon/ant","gfx/kritter/ants/icon");
+        alias("radar/dungeon/rat","gfx/kritter/rat/icon");
         Resource.local().add(new PngSource());
     }
     private static void picture(String name,String file,int version){pictures.put(name,file);versions.put(name,version);}
@@ -84,6 +87,58 @@ public final class RadarIcons {
         return blank;
     }
     private static final java.util.Properties configured=hearthborn.l10n.Catalog.load("/hearthborn/map/radar-icons.properties");
+    // Only entrance objects (not interior scenery) belong to this part of the radar catalog.
+    private static final java.util.Map<String,String> dungeonEntrances = dungeonEntrances();
+    private static final java.util.Set<String> dungeonIcons = java.util.Set.copyOf(dungeonEntrances.values());
+    private static final java.util.Map<String,String> persistentIcons = persistentIcons();
+    private static final java.util.Set<String> persistentIconNames = java.util.Set.copyOf(persistentIcons.values());
+
+    private static java.util.Map<String,String> dungeonEntrances() {
+        java.util.Map<String,String> entrances = new java.util.HashMap<>();
+        for(String object : configured.stringPropertyNames()) {
+            if(object.startsWith("gfx/terobjs/dng/") || object.equals("gfx/terobjs/beaverdam"))
+                entrances.put(object, configured.getProperty(object).split("\\|", 2)[0]);
+        }
+        return entrances;
+    }
+
+    private static java.util.Map<String,String> persistentIcons() {
+        java.util.Map<String,String> icons = new java.util.HashMap<>(dungeonEntrances);
+        for(String object : configured.stringPropertyNames()) {
+            if(object.startsWith("gfx/terobjs/road/milestone-"))
+                icons.put(object, configured.getProperty(object).split("\\|", 2)[0]);
+        }
+        return icons;
+    }
+
+    public static String persistentIcon(Gob gob) {
+        return persistentIcons.get(GameObjects.resourceName(gob));
+    }
+
+    public static boolean persistentIcon(String resource) {
+        return resource != null && persistentIconNames.contains(resource);
+    }
+
+    public static boolean dungeonIcon(String resource) {
+        return resource != null && dungeonIcons.contains(resource);
+    }
+
+    /** Move icons still using their old default to the new one without resetting explicit overrides. */
+    public static boolean applyVisibilityDefault(GobIcon.Setting setting) {
+        String path=setting.res.name;
+        boolean visible;
+        if(path.equals("radar/hearthfire")||path.equals("radar/milestone-stone-m")||path.equals("radar/milestone-wood-m")) visible=false;
+        else if(path.equals("paginae/bld/stoneendstone")) visible=true;
+        else {
+            hearthborn.ui.IconCategories.Category category=hearthborn.ui.IconCategories.classify(path);
+            if(category!=hearthborn.ui.IconCategories.Category.RESOURCES&&category!=hearthborn.ui.IconCategories.Category.DUNGEONS)return false;
+            visible=true;
+        }
+        if(setting.defshow==visible)return false;
+        if(setting.show==setting.defshow)setting.show=visible;
+        setting.defshow=visible;
+        return true;
+    }
     private static final java.util.Map<String,String> learned=new java.util.HashMap<>();
     private static boolean loaded,dirty;
     private static double nextSave;
@@ -116,19 +171,23 @@ public final class RadarIcons {
     public static synchronized void learn(Gob gob,GobIcon icon){load();String id=identity(gob);if(id==null)return;String path=icon.res.get().name;if(!path.equals(learned.put(id,path))){dirty=true;paths.clear();}}
     /** The icons of tame livestock (the mare, the cow, the tame reindeer): they are off until the player turns them on. */
     public static boolean tameIcon(String icon){return icon!=null&&(icon.startsWith("radar/tame/")||icon.contains("teimdeer"));}
-    private static final String SNAPDRAGON = "gfx/invobjs/herbs/snapdragon";
-    private static final String SNAPDRAGON_SMALL = "gfx/invobjs/small/snapdragon";
+    private static final java.util.Set<String> SMALL_HERB_ALIASES = java.util.Set.of(
+        "bladderwrack", "snapdragon", "tangledbramble", "thornythistle", "yulelights");
+    private static final String SMALL_ITEM = "gfx/invobjs/small/";
 
-    /** The small inventory image is an alternate resource for the same plant, not a second radar option. */
+    /** Alternate images of the same herb share the normal radar setting. */
     public static GobIcon.Setting.ID canonical(GobIcon.Setting.ID id) {
-        return id.res.equals(SNAPDRAGON_SMALL) ? new GobIcon.Setting.ID(SNAPDRAGON, id.sub) : id;
+        if(!id.res.startsWith(SMALL_ITEM)) return id;
+        String leaf = id.res.substring(SMALL_ITEM.length());
+        return SMALL_HERB_ALIASES.contains(leaf) ? new GobIcon.Setting.ID("gfx/invobjs/herbs/" + leaf, id.sub) : id;
     }
 
-    public static boolean mergeSnapdragon(java.util.Map<GobIcon.Setting.ID,GobIcon.Setting> settings) {
+    public static boolean mergeIconAliases(java.util.Map<GobIcon.Setting.ID,GobIcon.Setting> settings) {
         boolean changed = false;
         for(GobIcon.Setting.ID id : new java.util.ArrayList<>(settings.keySet())) {
-            if(!id.res.equals(SNAPDRAGON_SMALL)) continue;
-            GobIcon.Setting preferred = settings.get(canonical(id));
+            GobIcon.Setting.ID canonical = canonical(id);
+            if(canonical == id) continue;
+            GobIcon.Setting preferred = settings.get(canonical);
             if(preferred == null) continue;
             GobIcon.Setting alternate = settings.remove(id);
             preferred.show |= alternate.show;
@@ -160,7 +219,12 @@ public final class RadarIcons {
         for(String path:aliases.keySet())icons.put(path,true);
         icons.replaceAll((path,show)->tameIcon(path)?false:show);
         for(java.util.Map.Entry<String,Boolean> entry:icons.entrySet()){
-            Resource.Saved resource=new Resource.Saved(Resource.remote(),entry.getKey(),-1);GobIcon.Settings.ResID id=new GobIcon.Settings.ResID(resource,new byte[0]);GobIcon.Setting setting=new GobIcon.Setting(resource,GobIcon.Icon.nilid);setting.show=setting.defshow=entry.getValue();loader.load.add(id);loader.defaults.put(id,setting);
+            Resource.Saved resource=new Resource.Saved(Resource.remote(),entry.getKey(),-1);
+            GobIcon.Settings.ResID id=new GobIcon.Settings.ResID(resource,new byte[0]);
+            GobIcon.Setting setting=new GobIcon.Setting(resource,GobIcon.Icon.nilid);
+            setting.show=setting.defshow=entry.getValue();
+            applyVisibilityDefault(setting);
+            loader.load.add(id);loader.defaults.put(id,setting);
         }
     }
 
@@ -212,6 +276,7 @@ public final class RadarIcons {
     }
     private static String pathRaw(String resource){
         String tame=domestic(resource);if(tame!=null)return tame;
+        String entrance=dungeonEntrances.get(resource);if(entrance!=null)return entrance;
         if(transition(resource)){if(resource.contains("/cavein")||resource.contains("/caveout"))return "gfx/hud/mmap/cave";String value=configured.getProperty(resource);if(value!=null)return value.split("\\|",2)[0];}
         String remembered=learned.get(resource);if(remembered!=null)return remembered;
         String custom=configured.getProperty(resource);if(custom!=null)return custom.split("\\|",2)[0];
@@ -246,7 +311,11 @@ public final class RadarIcons {
         if(setting==null){
             Resource.Saved resource=new Resource.Saved(Resource.remote(),image.res.name,image.res.ver);
             setting=new GobIcon.Setting(image,new GobIcon.Settings.ResID(resource,new byte[0]));
-            setting.show=setting.defshow=!tameIcon(image.res.name);settings.settings.put(setting.id,setting);settings.dsave();
+            setting.show=setting.defshow=!tameIcon(image.res.name);
+            applyVisibilityDefault(setting);
+            settings.settings.put(setting.id,setting);
+            if(mergeIconAliases(settings.settings)) setting=settings.get(image);
+            settings.dsave();
         }
         return setting;}
     }
@@ -284,18 +353,44 @@ public final class RadarIcons {
         catch(Resource.NoSuchResourceException missing){absent(missing.name);return null;}
     }
     public static String name(Resource res) {
+        String english=englishName(res.name);
         switch(res.name) {
-        case "gfx/hud/mmap/cave":return hearthborn.L10n.tr("Cave Passage");
-        case "radar/mine-hole":return hearthborn.L10n.tr("Mine descent");
-        case "radar/mine-ladder":return hearthborn.L10n.tr("Mine ascent");
-        case "radar/cave-in":return hearthborn.L10n.tr("Cave entrance");
-        case "radar/cave-out":return hearthborn.L10n.tr("Cave exit");
-        case "radar/tame/horse":return hearthborn.L10n.tr("Domestic horse");
-        case "radar/tame/cattle":return hearthborn.L10n.tr("Domestic cattle");
-        case "radar/tame/sheep":return hearthborn.L10n.tr("Domestic sheep");
-        case "radar/tame/goat":return hearthborn.L10n.tr("Domestic goat");
-        case "radar/tame/pig":return hearthborn.L10n.tr("Domestic pig");
-        default:return res.name.substring(res.name.lastIndexOf('/')+1);
+        case "radar/hearthfire":case "radar/milestone-stone-m":case "radar/milestone-wood-m":
+            return hearthborn.L10n.resource("tooltip",res.name,english);
+        case "radar/squirrel-cache":case "radar/midgeswarm":case "radar/gem":
+            return res.name.substring(res.name.lastIndexOf('/')+1);
+        default:
+            return english==null?res.name.substring(res.name.lastIndexOf('/')+1):hearthborn.L10n.tr(english);
+        }
+    }
+    static String englishName(String resource) {
+        switch(resource) {
+        case "gfx/hud/mmap/cave":return "Cave Passage";
+        case "radar/mine-hole":return "Mine descent";
+        case "radar/mine-ladder":return "Mine ascent";
+        case "radar/cave-in":return "Cave entrance";
+        case "radar/cave-out":return "Cave exit";
+        case "radar/tame/horse":return "Domestic horse";
+        case "radar/tame/cattle":return "Domestic cattle";
+        case "radar/tame/sheep":return "Domestic sheep";
+        case "radar/tame/goat":return "Domestic goat";
+        case "radar/tame/pig":return "Domestic pig";
+        case "radar/dungeon/ant":return "Ant Hill Dungeon";
+        case "radar/dungeon/rat":return "Rat Dungeon";
+        case "radar/hearthfire":return "Hearth Fire";
+        case "radar/squirrel-cache":return "Squirrel Cache";
+        case "radar/midgeswarm":return "Midge Swarm";
+        case "radar/gem":return "Gem";
+        default:return roadSignEnglishName(resource);
+        }
+    }
+    static String roadSignEnglishName(String resource) {
+        switch(resource) {
+        case "paginae/bld/stoneendstone":return "Milestone";
+        case "paginae/bld/woodendstone":return "Wooden Roadsign";
+        case "radar/milestone-stone-m":return "Milestone Post";
+        case "radar/milestone-wood-m":return "Wooden Roadsign Post";
+        default:return null;
         }
     }
     private RadarIcons(){}

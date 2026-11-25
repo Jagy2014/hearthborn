@@ -68,6 +68,7 @@ public class RemoteUI implements UI.Receiver, UI.Runner {
 
     public void ret(Session sess) {
         hearthborn.ui.WorldIdentity.transfer(this.sess,sess);
+        hearthborn.ui.NearbySiegeCheck.transfer(this.sess, sess);
 	this.sess.postuimsg(new Return(sess));
     }
 

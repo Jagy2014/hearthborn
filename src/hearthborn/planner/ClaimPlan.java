@@ -208,6 +208,7 @@ public final class ClaimPlan extends Window {
             plan.name=ClaimSurvey.defaultPlanName(tag,plans.size()+1);plans.add(plan);
         }else replace(plans,plan);
         plan.tag=tag;plan.grid=grid.id;plan.x=anchor.x-grid.x;plan.y=anchor.y-grid.y;
+        ClaimSurvey.adoptVillageName(plan,ClaimSurvey.records(canvas.region),canvas.territory);
         ClaimSurvey.savePlans(plans);selectedPlan=plan;
         gui.ui.msg(L10n.format("Plan saved: %s",plan.name));
     }
@@ -220,7 +221,10 @@ public final class ClaimPlan extends Window {
         dialog.add(new Button(UI.scale(130),L10n.tr(delete?"Delete":"Save"),false,()->{
             java.util.List<ClaimSurvey.Plan> plans=ClaimSurvey.plans();
             if(delete)plans.removeIf(plan->plan.id.equals(chosen.id));
-            else for(ClaimSurvey.Plan plan:plans)if(plan.id.equals(chosen.id)){plan.name=name.text().trim().isEmpty()?chosen.name:name.text().trim();}
+            else for(ClaimSurvey.Plan plan:plans)if(plan.id.equals(chosen.id)&&!name.text().trim().isEmpty()){
+                plan.name=name.text().trim();
+                plan.manualName=true;
+            }
             ClaimSurvey.savePlans(plans);dialog.reqdestroy();openPlan(delete?"":chosen.id);
         }),UI.scale(8,55));
         dialog.add(new Button(UI.scale(130),L10n.tr("Cancel"),false,dialog::reqdestroy),UI.scale(152,55));showDialog(dialog);
@@ -528,7 +532,7 @@ public final class ClaimPlan extends Window {
         String leaf=resource.substring(resource.lastIndexOf('/')+1);
         if(leaf.equals("minehole")||leaf.equals("minedoor")||leaf.equals("ladder"))return "Mine entrance";
         if(leaf.equals("pclaim"))return "Personal claim";
-        if(leaf.equals("villageidol"))return "Village claim";
+        if(ClaimSurvey.villageIdol(resource))return "Village idol";
         if(resource.startsWith("gfx/terobjs/arch/"))return "Building";
         if(leaf.equals("dframe"))return "Drying Frame";if(leaf.equals("ttub"))return "Tanning Tub";
         if(leaf.equals("primsmelter"))return "Stack Furnace";if(leaf.equals("fineryforge"))return "Finery Forge";
@@ -549,7 +553,7 @@ public final class ClaimPlan extends Window {
         ClaimSurvey.NamedArea area;
         final Gob gob;final String type,resource,ownerKey,region;final long gridId;final boolean ready;final Coord2d at;final ClaimSurvey.ObjectRecord saved;final double[] footprint;Coord screen;haven.Area screenBounds;
         Entry(Gob gob,String type){this.gob=gob;this.type=type;gridId=gui.ui.sess.glob.map.getgridt(gob.rc.floor(MCache.tilesz)).id;region=ClaimSurvey.recordRegion(gui,gridId);resource=GameObjects.resourceName(gob);Coord local=gob.rc.sub(new Coord2d(gui.ui.sess.glob.map.getgridt(gob.rc.floor(MCache.tilesz)).ul).mul(MCache.tilesz)).floor(OCache.posres);ownerKey=resource+":"+gridId+":"+local.x+":"+local.y;at=gob.rc;saved=null;footprint=(type.equals("Tree")||type.equals("Bush"))?tileFootprint(gob.rc):ClaimPlan.footprint(gob);ready=CheeseAging.ready(gob)||ObjectTimers.ready(gob);}
-        Entry(ClaimSurvey.GridRecord grid,ClaimSurvey.ObjectRecord record){gob=null;gridId=grid.id;region=grid.region;type=record.type;resource=record.resource;Coord local=new Coord2d(record.x,record.y).floor(OCache.posres);ownerKey=record.resource+":"+grid.id+":"+local.x+":"+local.y;saved=record;ready=record.ready;at=new Coord2d(grid.x*MCache.tilesz.x+record.x,grid.y*MCache.tilesz.y+record.y);footprint=type.equals("Tree")||type.equals("Bush")||record.footprint==null?tileFootprint(at):record.footprint;}
+        Entry(ClaimSurvey.GridRecord grid,ClaimSurvey.ObjectRecord record){gob=null;gridId=grid.id;region=grid.region;resource=record.resource;type=ClaimSurvey.villageIdol(resource)?"Village idol":record.type;Coord local=new Coord2d(record.x,record.y).floor(OCache.posres);ownerKey=record.resource+":"+grid.id+":"+local.x+":"+local.y;saved=record;ready=record.ready;at=new Coord2d(grid.x*MCache.tilesz.x+record.x,grid.y*MCache.tilesz.y+record.y);footprint=type.equals("Tree")||type.equals("Bush")||record.footprint==null?tileFootprint(at):record.footprint;}
         Entry(ClaimSurvey.NamedArea area,ClaimSurvey.GridRecord grid){
             this.area=area;gob=null;type="Area";resource="area:"+area.id;ownerKey=null;region=grid.region;gridId=grid.id;ready=false;saved=null;
             at=new Coord2d((grid.x+area.x)*MCache.tilesz.x,(grid.y+area.y)*MCache.tilesz.y);footprint=new double[]{0,0,area.w*MCache.tilesz.x,area.h*MCache.tilesz.y};
@@ -572,6 +576,7 @@ public final class ClaimPlan extends Window {
         String displayName(){return name()+(quality()>0?" · Q "+hearthborn.quality.RosterStore.fmtQ(quality()):"");}
         String name(){if(area!=null)return area.name;if(type.equals("Fence")||type.equals("Gate"))return L10n.tr(type);
             String name=gob==null?ObjectNames.knownName(ownerKey,saved.name):ObjectNames.name(gob);if(name!=null)return name;
+            if(ClaimSurvey.villageIdol(resource))return L10n.tr("Village idol");
             if(type.equals("Tree")||type.equals("Bush"))return GameObjects.name(resource.replace("gfx/terobjs/","gfx/terobjs/mm/"));
             String fallback=L10n.text("window",type);return resource==null?fallback:L10n.resource("tooltip",resource,fallback);
         }

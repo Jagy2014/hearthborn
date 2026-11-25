@@ -20,7 +20,6 @@ import haven.*;
  * @author Jagy2014
  */
 public final class ToolbarFrame {
-    private static final java.awt.Color GOLD_SLOT=new java.awt.Color(114,95,57,145),BLUE_SLOT=new java.awt.Color(70,112,160,145);
     /** A clean cell is a faint tint and a thin olive line, so the world stays visible through it. */
     private static final java.awt.Color GOLD_CLEAN=new java.awt.Color(150,138,88,120),BLUE_CLEAN=new java.awt.Color(104,152,205,120);
     private static final int CLEAN_ALPHA=48;
@@ -28,14 +27,9 @@ public final class ToolbarFrame {
     /** Strips have no moulding of their own, so nothing is left between the cells and the edge. */
     public static Coord inset(){return Coord.z;}
     public static Coord cell(int index,boolean vertical){
-        return cell(index,vertical,8);
+        Coord slot=Inventory.invsq.sz();
+        return vertical?Coord.of(0,index*(slot.y+gap())):Coord.of(index*(slot.x+gap()),0);
     }
-    public static Coord cell(int index,boolean vertical,int groupGap){
-        int pos=index*(Inventory.invsq.sz().x+gap())+(Toolbars.clean()?0:UI.scale(groupGap)*(index/4));
-        return inset().add(vertical?Coord.of(0,pos):Coord.of(pos,0));
-    }
-    public static Coord size(int count,boolean vertical){return size(count,vertical,8);}
-    public static Coord size(int count,boolean vertical,int groupGap){return cell(count-1,vertical,groupGap).add(Inventory.invsq.sz()).add(inset());}
     /** Hotbar cells a gap apart, with only the panel's outer frame allowance. */
     public static Coord packedSize(int count,boolean vertical){
         Coord slot=Inventory.invsq.sz();
@@ -46,13 +40,12 @@ public final class ToolbarFrame {
         return button==1&&point.isect(Coord.z,size)&&(ui.modmeta||!overIcon);
     }
     public static String moveTip(){return hearthborn.L10n.tr("Drag the background, or hold Alt/Option and drag any icon to move the toolbar.");}
-    public static void background(GOut g,Coord size){UiTheme.background(g,size);}
     /** Shared empty/action cell appearance for the menu and all hotkey strips. */
     public static void slot(GOut g,Coord at,Coord size){
         java.awt.Color fill=UiTheme.light()?UiTheme.PANEL:SystemButtonSkin.DISK;
-        if(Toolbars.clean())fill=new java.awt.Color(fill.getRed(),fill.getGreen(),fill.getBlue(),CLEAN_ALPHA);
+        fill=new java.awt.Color(fill.getRed(),fill.getGreen(),fill.getBlue(),CLEAN_ALPHA);
         g.chcolor(fill);g.frect(at,size);
-        g.chcolor(UiTheme.light()?UiTheme.EDGE:Toolbars.clean()?(AccentTheme.blue()?BLUE_CLEAN:GOLD_CLEAN):(AccentTheme.blue()?BLUE_SLOT:GOLD_SLOT));g.rect(at,size);g.chcolor();
+        g.chcolor(UiTheme.light()?UiTheme.EDGE:AccentTheme.blue()?BLUE_CLEAN:GOLD_CLEAN);g.rect(at,size);g.chcolor();
     }
     private static volatile Tex tile;
     private static Tex tile(){
@@ -70,7 +63,7 @@ public final class ToolbarFrame {
         return t;
     }
     public static void hotbarSlot(GOut g,Coord at,Coord size){
-        if(Toolbars.clean()&&!UiTheme.light()){g.image(tile(),at);return;}
+        if(!UiTheme.light()){g.image(tile(),at);return;}
         slot(g,at,size);
     }
     public static Tex keyLabel(String text){
@@ -87,10 +80,6 @@ public final class ToolbarFrame {
         Coord at=ToolbarScale.size(logicalAt,scale);
         Coord end=ToolbarScale.size(logicalAt.add(logicalBox),scale);
         frame(physical,at,end.sub(at).max(Coord.of(1,1)));
-    }
-    public static void draw(GOut g,Coord size){background(g,size);frame(g,size);}
-    public static void draw(GOut g,Coord size,boolean framed){
-        background(g,size);if(framed)frame(g,size);
     }
     private ToolbarFrame(){}
 }

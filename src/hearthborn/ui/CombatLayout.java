@@ -13,6 +13,7 @@
 package hearthborn.ui;
 
 import haven.*;
+import hearthborn.combat.CombatPrefs;
 import hearthborn.map.DetachedMap;
 import java.awt.event.KeyEvent;
 
@@ -24,7 +25,7 @@ import java.awt.event.KeyEvent;
 public final class CombatLayout {
     public static final KeyBinding KEY=KeyBinding.get("compact-ui",KeyMatch.forcode(KeyEvent.VK_SPACE,KeyMatch.M));
     private final GameUI gui;
-    private boolean active,manual,battle,detached;
+    private boolean active,manual,battle,detached,keepHud;
     private Boolean override;
     private MapPlace mapPlace;
     /** Windows the player opened from the equipment strip during this compact session. */
@@ -41,8 +42,13 @@ public final class CombatLayout {
     }
     public void refresh(){
         boolean now=fighting();
-        if(now!=battle){battle=now;override=null;}
-        boolean next=battle?(override==null||override):manual;
+        boolean keepVisible=CombatPrefs.keepHud();
+        if(now!=battle || keepVisible!=keepHud){
+            battle=now;
+            keepHud=keepVisible;
+            override=null;
+        }
+        boolean next=battle&&override!=null ? override : manual || (battle&&!keepVisible);
         if(next!=active){
             active=next;
             if(active){

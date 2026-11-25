@@ -19,6 +19,8 @@ import haven.*;
  */
 public final class StudyWindow extends GameUI.Hidewnd {
     private final Widget study;
+    protected Deco makedeco(){return new SmallWindowDeco(large).translucentDark();}
+
     public StudyWindow(Widget study) {
         super(Coord.z, "Study");
         this.study = study;
@@ -46,6 +48,7 @@ public final class StudyWindow extends GameUI.Hidewnd {
     public boolean shows(Widget study) { return this.study == study; }
     public static class Proxy extends Widget implements DTarget {
         public final Widget target;
+        private WItem hovered;
         public Proxy(Widget target) {super(target.sz); this.target=target;}
         public void draw(GOut g) {target.draw(g);}
         public boolean mousedown(MouseDownEvent event) {return event.dispatch(target);}
@@ -53,8 +56,13 @@ public final class StudyWindow extends GameUI.Hidewnd {
         public boolean mousewheel(MouseWheelEvent event) {return event.dispatch(target);}
         public void mousemove(MouseMoveEvent event) {event.dispatch(target);}
         public Object tooltip(Coord c,Widget previous) {
-            for(WItem item:target.children(WItem.class))
-                if(c.isect(item.c,item.sz)) return item.tooltip(c.sub(item.c),previous==this?item:previous);
+            for(WItem item : target.children(WItem.class)) {
+                if(!c.isect(item.c, item.sz)) continue;
+                boolean sameItem = previous == this && hovered == item;
+                hovered = item;
+                return item.tooltip(c.sub(item.c), sameItem ? item : null);
+            }
+            hovered = null;
             return null;
         }
         public boolean drop(Coord c,Coord ul) {return target instanceof DTarget && ((DTarget)target).drop(c,ul);}

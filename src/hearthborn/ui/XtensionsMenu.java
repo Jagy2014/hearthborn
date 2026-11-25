@@ -23,6 +23,7 @@ import java.io.*;
  * @author Jagy2014
  */
 public final class XtensionsMenu {
+    public static final String GAME_JOURNAL = "hearthborn/game-journal";
     private static final java.util.List<String> CATEGORY_ORDER=java.util.List.of(
         "combat-tools","farming","animals","mining-building","production","journals");
     public enum ClassicLayout {
@@ -120,7 +121,7 @@ public final class XtensionsMenu {
         res.add(res.new AButton(new MessageBuf(action.fin())));
         res.add(res.new Tooltip(new MessageBuf(name.getBytes(java.nio.charset.StandardCharsets.UTF_8))));
         if(id.equals("cattle-roster")||id.equals("cattle-roster-journals")){finishedIcon(res,"menu-cattle-roster");return res;}
-        if(id.equals("auto-shoot")){finishedIcon(res,"menu-auto-shoot");return res;}
+        if(id.equals("auto-shoot")||id.equals("shoot-marked-wild")){finishedIcon(res,"menu-auto-shoot");return res;}
         boolean painted=true;
         boolean folder=id.equals("production")||id.equals("farming")||id.equals("animals")||id.equals("journals")||id.equals("mining-building")||id.equals("combat-tools");
         String iconId=id.equals("wheat-fields")?"fields":id.equals("cheese-animals")?"cheese":id;
@@ -173,6 +174,9 @@ public final class XtensionsMenu {
     }
 
     private static java.awt.image.BufferedImage actionImage(String id,String imageName)throws IOException{
+        if(id.equals("aggro-nearest-wild"))imageName="combat/attacks";
+        if(id.equals("mark-next-wild"))return SystemButtonSkin.glyph("csearch");
+        if(id.equals("attack-marked-wild"))imageName="combat/moves";
         String glyph=id.equals("action-search")?"csearch":id.equals("claim-personal")?"lbtn-claim":id.equals("claim-village")?"lbtn-vil":id.equals("claim-provinces")?"lbtn-rlm":null;
         if(glyph!=null)return SystemButtonSkin.glyph(glyph);
         if(id.equals("roster")||id.equals("record-quality"))return qualityIcon(id.equals("record-quality"));
@@ -226,9 +230,12 @@ public final class XtensionsMenu {
         return page(menu,id,name,key,()->parent,action,null);
     }
 
-    /** Action search, which the 4×4 system layout no longer shows as a button. The claim overlays sit in the system row above the grid. */
+    /** Top-level shortcuts shared by the classic grid and the sidebar. */
     private static void systemEntries(MenuGrid menu){
         menu.paginae.add(page(menu,"action-search","Search actions",'\0',()->null,()->{GameUI gui=menu.getparent(GameUI.class);if(gui!=null)gui.toggleActionSearch();},"\uffff2"));
+        if(hearthborn.io.DeveloperMode.gameJournal())
+            menu.paginae.add(page(menu,"game-journal","Game Journal",'\0',()->null,
+                ()->hearthborn.journal.GameJournal.open(menu.getparent(GameUI.class)),"\uffff3"));
     }
 
     static MenuGrid.Pagina page(MenuGrid menu, String id, String name, char key,
@@ -294,6 +301,16 @@ public final class XtensionsMenu {
         script(menu,farming,"trellisdestroy","Destroy plants in trellis area");
         script(menu,animals,"fish","Butcher fish");
         script(menu,combat,"dismount","Dismount rider");
+        MenuGrid.Pagina wild=page(menu,"aggro-nearest-wild","Attack nearest wild animal",'\0',combat,()->{
+            GameUI gui=menu.getparent(GameUI.class);
+            if(gui!=null)hearthborn.scripts.ShortcutRunner.run(gui,"AGGRO_NEAREST_WILD");
+        });
+        String wildTip=hearthborn.L10n.tr("Attacks one nearby wild animal, measured from your character. Skips players and livestock.");
+        ((Resource.Virtual)wild.res()).add(wild.res().new Pagina(new MessageBuf(wildTip.getBytes(java.nio.charset.StandardCharsets.UTF_8))));
+        menu.paginae.add(wild);
+        targetAction(menu,combat,"mark-next-wild","Mark next wild animal",gui->hearthborn.combat.TargetPreview.cycle(gui,false));
+        targetAction(menu,combat,"attack-marked-wild","Attack marked wild animal",hearthborn.combat.TargetPreview::attack);
+        targetAction(menu,combat,"shoot-marked-wild","Shoot marked wild animal",hearthborn.combat.BowCombat::shootMarked);
         for(int school=1;school<=5;school++){
             final int number=school;
             menu.paginae.add(page(menu,"combat-school-"+number,hearthborn.L10n.format("Combat school %d",number),'\0',combat,()->{
@@ -393,6 +410,9 @@ public final class XtensionsMenu {
         MenuGrid.Pagina category=page(menu,id,title,'\0',parent,null);menu.paginae.add(category);return category;
     }
 
+    private static void targetAction(MenuGrid menu,MenuGrid.Pagina parent,String id,String title,java.util.function.Consumer<GameUI> action){
+        menu.paginae.add(page(menu,id,title,'\0',parent,()->action.accept(menu.getparent(GameUI.class))));
+    }
     private static void script(MenuGrid menu,MenuGrid.Pagina parent,String id,String title){
         MenuGrid.Pagina script=page(menu,id,title,'\0',parent,()->{
             if(id.equals("milk")&&menu.ui.modshift){hearthborn.scripts.MilkSettings.open(menu.getparent(GameUI.class));return;}

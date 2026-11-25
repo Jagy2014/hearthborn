@@ -140,6 +140,76 @@ public final class MagneticWindows {
     public static boolean attached(Widget widget){return parent(widget)!=null||links.containsKey(widget);}
     /** Explicit resizing detaches persistently; automatic screen fitting must not forget docking. */
     public static void forget(Widget widget){detach(widget);restored.add(widget);saveDocking(widget);}
+
+    /** The bottom window's corners resize the whole stack, without changing its links. */
+    public static StackResize resizeStack(Window bottom,boolean left){
+        if(!enabled()||!usable(bottom)||!stackKind(bottom)||parent(bottom)==null)return null;
+        for(Widget child:above.keySet())if(parent(child)==bottom&&usable(child))return null;
+        List<Window> windows=new ArrayList<>();
+        for(Widget item=bottom;item!=null;item=parent(item)){
+            if(!(item instanceof Window)||!usable(item)||!stackKind(item)||windows.contains(item))return null;
+            windows.add((Window)item);
+        }
+        Collections.reverse(windows);
+        return new StackResize(windows,left);
+    }
+
+    public static final class StackResize {
+        private final List<Window> windows;
+        private final List<Coord> sizes=new ArrayList<>();
+        private final Coord origin;
+        private final int width,height,bodyHeight;
+        private final boolean left;
+
+        private StackResize(List<Window> windows,boolean left){
+            this.windows=windows;
+            this.left=left;
+            Window root=windows.get(0),bottom=windows.get(windows.size()-1);
+            origin=new Coord(edge(root));
+            width=span(root).x;
+            height=edge(bottom).y+span(bottom).y-origin.y;
+            int total=0;
+            for(Window window:windows){
+                Coord size=HudInterfaceScale.toParent(window,window.csz());
+                sizes.add(size);
+                total+=size.y;
+            }
+            bodyHeight=total;
+        }
+
+        public void resize(Coord delta){
+            Window root=windows.get(0);
+            int limit=left?origin.x+width:root.parent.sz.x-origin.x;
+            int targetWidth=Math.max(1,Math.min(limit,width+(left?-delta.x:delta.x)));
+            int dh=Math.min(delta.y,Math.max(0,root.parent.sz.y-origin.y-height));
+            int used=0, apportioned=0, actualWidth=targetWidth;
+            for(int index=0;index<windows.size();index++){
+                Window window=windows.get(index);
+                Coord before=sizes.get(index);
+                used+=before.y;
+                int share=(int)Math.round((double)dh*used/Math.max(1,bodyHeight));
+                resizeWindow(window,targetWidth,before.y+share-apportioned);
+                apportioned=share;
+                actualWidth=Math.max(actualWidth,span(window).x);
+            }
+            // If one window reached its minimum width, match it instead of breaking the seam.
+            for(Window window:windows)
+                if(span(window).x!=actualWidth)
+                    resizeWindow(window,actualWidth,HudInterfaceScale.toParent(window,window.csz()).y);
+            moveWidget(root,Coord.of(left?origin.x+width-span(root).x:origin.x,origin.y));
+            for(int index=1;index<windows.size();index++)
+                place(windows.get(index),windows.get(index-1));
+        }
+
+        private static void resizeWindow(Window window,int outerWidth,int contentHeight){
+            Coord size=HudInterfaceScale.fromParent(window,Coord.of(outerWidth,contentHeight));
+            int trim=window.sz.x-window.csz().x;
+            window.resize(Coord.of(Math.max(1,size.x-trim),Math.max(1,size.y)));
+        }
+
+        public void finish(){for(Window window:windows)remember(window);}
+    }
+
     /** Leave this window and the one stuck under it where they are. A chain below that stays together. */
     public static void release(Widget widget){
         detach(widget);
@@ -245,7 +315,12 @@ public final class MagneticWindows {
         if(!enabled())return;
         Drag drag=drags.get(widget);if(drag==null)return;
         if(!drag.moved&&widget.c.dist(drag.start)<UI.scale(4))return;
-        if(!drag.moved){drag.moved=true;above.remove(widget);links.remove(widget);}
+        if(!drag.moved){
+            drag.moved=true;
+            above.remove(widget);
+            links.remove(widget);
+            fittedWidths.remove(widget);
+        }
         drag.candidate=candidate(widget);
         if(drag.candidate!=null)place(widget,drag.candidate);
         else{joinedHeader(widget,false);drag.links=snap(widget);apply(widget,drag.links);}
@@ -392,9 +467,13 @@ public final class MagneticWindows {
         Coord a=edge(child),b=edge(top);
         return Math.abs(a.x-b.x)<=1&&Math.abs(a.y-b.y-span(top).y)<=1;
     }
-    public static boolean joinedAbove(Widget widget){
+    private static Widget previewOrParent(Widget widget){
         Widget top=parent(widget);
         if(top==null){Drag drag=drags.get(widget);if(drag!=null)top=drag.candidate;}
+        return top;
+    }
+    public static boolean joinedAbove(Widget widget){
+        Widget top=previewOrParent(widget);
         return top!=null&&joined(widget,top);
     }
     public static boolean joinedBelow(Widget widget){
@@ -404,7 +483,7 @@ public final class MagneticWindows {
     }
     private static void syncHeaders(GameUI gui){
         for(Widget widget:new ArrayList<>(kinds.keySet()))if(widget.parent==gui){
-            Widget top=parent(widget);
+            Widget top=previewOrParent(widget);
             joinedHeader(widget,top!=null&&usable(widget)&&usable(top)&&stackGap(widget,top)==0);
         }
     }

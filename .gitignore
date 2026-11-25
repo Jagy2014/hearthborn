@@ -23,3 +23,6 @@ __pycache__/
 
 # Owner's local speech generator
 /tools/generate_speech.py
+
+# Owner's local artwork, not included in client builds or public exports
+/assets/sources/local/

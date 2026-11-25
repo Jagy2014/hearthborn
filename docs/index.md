@@ -6,7 +6,7 @@
 
 [Features](#features) · [Documentation](#documentation) · [Privacy](#privacy) · [Support development](#support-development) · [Screenshots](#screenshots)
 
-![Hearthborn Client](images/buymeacoffee2.png)
+![Hearthborn character selection screen](images/buymeacoffee-bottom.png)
 
 Built on top of the original (vanilla) Haven & Hearth client, Hearthborn is an independent, unofficial custom client focused on improving everyday gameplay through a customizable interface and tools for village management, production, exploration, mining, and more.
 

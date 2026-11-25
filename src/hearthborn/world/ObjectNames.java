@@ -97,8 +97,28 @@ public final class ObjectNames {
         Type type=Type.of(key);if(type==null)return false;
         boolean changed=touched.put(key,"1")==null;
         if(numbers.containsKey(key))return changed;
-        int next=1;try{next=Integer.parseInt(counters.getOrDefault(type.name(),"0"))+1;}catch(NumberFormatException ignored){}
-        numbers.put(key,Integer.toString(next));counters.put(type.name(),Integer.toString(next));return true;
+        assignNumber(key, type.name());
+        return true;
+    }
+
+    private static String assignNumber(String key, String counter) {
+        int next = 1;
+        try { next = Integer.parseInt(counters.getOrDefault(counter, "0")) + 1; }
+        catch(NumberFormatException ignored) {}
+        String number = Integer.toString(next);
+        numbers.put(key, number);
+        counters.put(counter, number);
+        return number;
+    }
+
+    /** Number a process independently of the object that hosts it. */
+    public static synchronized String processNumber(String source, String counter) {
+        load();
+        String number = numbers.get(source);
+        if(number != null) return number;
+        number = assignNumber(source, counter);
+        save();
+        return number;
     }
     private static String automatic(String key){
         Type type=key==null?null:Type.of(key);String number=numbers.get(key);

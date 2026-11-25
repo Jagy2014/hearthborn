@@ -60,6 +60,10 @@ public final class GlobalCommands {
    case "TOGGLE_ORE_HIGHLIGHT":if(gui.map!=null){if(gui.map.visol("ore"))gui.map.disol("ore");else gui.map.enol("ore");}break;
    case "TOGGLE_TILE_CENTERING":Utils.setprefb("hearthborn/world/center-clicks",!Utils.getprefb("hearthborn/world/center-clicks",false));break;
    case "TOGGLE_PEACE":if(gui.fv!=null&&gui.fv.current!=null)gui.fv.wdgmsg("give",(int)gui.fv.current.gobid,gui.fv.current.gst==0?1:0);break;
+   case "TARGET_PREVIEW_NEXT":hearthborn.combat.TargetPreview.cycle(gui,false);break;
+   case "TARGET_PREVIEW_PREVIOUS":hearthborn.combat.TargetPreview.cycle(gui,true);break;
+   case "TARGET_PREVIEW_CURSOR":hearthborn.combat.TargetPreview.underCursor(gui);break;
+   case "TARGET_PREVIEW_ATTACK":hearthborn.combat.TargetPreview.attack(gui);break;
    default:
     if(action.startsWith("CAM_")){if(gui.map!=null)gui.map.globalCamera(action);}
     else ShortcutRunner.run(gui,action);

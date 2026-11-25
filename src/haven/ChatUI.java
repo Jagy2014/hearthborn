@@ -107,7 +107,7 @@ public class ChatUI extends Widget {
     private Coord least(){return Coord.of(Math.max(UI.scale(96),chansel.requiredWidth()),UI.scale(90));}
     private Window.Deco decoration(){
         if(!framed)return new hearthborn.ui.PlainDeco(this::fadeLevel);
-        return new hearthborn.ui.SmallWindowDeco(false);
+        return new hearthborn.ui.SmallWindowDeco(false).translucentDark().hudFrame().compactWhenJoined(marg.y+tabh/2);
     }
     public boolean detached(){return detachedWindow!=null;}
     public void detach(){
@@ -1045,7 +1045,16 @@ public class ChatUI extends Widget {
 	    setfocusctl(true);
 	    this.in = new TextEntry(0, "") {
                     protected void drawBackground(GOut g){
-                        if(plain)super.drawBackground(g);else hearthborn.ui.UiTheme.darkBackground(g,sz);
+                        if(plain) {
+                            super.drawBackground(g);
+                        } else if(hearthborn.ui.UiTheme.light()) {
+                            hearthborn.ui.UiTheme.darkBackground(g,sz);
+                        } else {
+                            // The chat already has a tinted backing; only shade the field on top of it.
+                            g.chcolor(0,0,0,80);
+                            g.frect(Coord.z,sz);
+                            g.chcolor();
+                        }
                     }
                     /** The accent while the line is in use, a quiet grey when it is only waiting. */
                     protected void drawFrame(GOut g){
@@ -1914,8 +1923,7 @@ public class ChatUI extends Widget {
 	if(detached())this.c=Coord.z;
         else if(visible)
 	    this.c = base.add(0, -this.sz.y);
-	chansel.move(marg);
-        chansel.resize(Coord.of(Math.max(1,sz.x-2*marg.x),tabh));
+        layoutTabs();
 
         if(sel != null) {
             sel.c=Coord.of(marg.x,marg.y+tabh);
@@ -1923,8 +1931,15 @@ public class ChatUI extends Widget {
         }
     }
 
+    private void layoutTabs(){
+        int inset=detachedWindow!=null&&detachedWindow.deco instanceof hearthborn.ui.SmallWindowDeco
+            ?((hearthborn.ui.SmallWindowDeco)detachedWindow.deco).inlineCloseInset():0;
+        chansel.move(marg);
+        chansel.resize(Coord.of(Math.max(1,sz.x-2*marg.x-inset),tabh));
+    }
+
     public void presize() {
-        if(detached())return;
+        if(detached()){layoutTabs();return;}
         GameUI gui=getparent(GameUI.class);
         int room=parent.sz.y-UI.scale(100)-(gui==null?0:gui.dockedStripHeight());
 	if(sz.y > room)

@@ -24,10 +24,10 @@ import hearthborn.meteor.StarFall;
  * @author Jagy2014
  */
 final class TimerWindow {
-    private static TimerWnd wnd;
     public static void toggle(GameUI gui) {
         TimerService.load();
-        if(wnd != null && wnd.parent != null) {
+        TimerWnd wnd = gui.getchild(TimerWnd.class);
+        if(wnd != null) {
             wnd.show(!wnd.visible());
             if(wnd.visible)
                 wnd.raise();
@@ -35,10 +35,6 @@ final class TimerWindow {
         }
         wnd = new TimerWnd();
         gui.addchild(wnd, "misc", new Coord2d(0.35, 0.35), new Object[] {"id", "timers"});
-    }
-
-    static void refresh(long now) {
-        if(wnd!=null && wnd.visible)wnd.refresh(now);
     }
 
     private static String clock(long ms) {
@@ -64,7 +60,7 @@ final class TimerWindow {
             return this==AUTOMATIC;
         }
     }
-    private static final class TimerWnd extends Window {
+    static final class TimerWnd extends Window {
         private final Scrollport scroll;
         private final Button addbtn;
         private final Label nameHeader,timeHeader;
@@ -113,7 +109,12 @@ final class TimerWindow {
             scroll.bar.val=0;scroll.cont.sy=0;
             built=TimerService.generation();rebuild();
         }
-        private void openAdd(){GameUI gui=getparent(GameUI.class);if(gui!=null){select(Category.MANUAL);AddWnd.open(gui);}}
+        private void openAdd(){GameUI gui=getparent(GameUI.class);if(gui!=null){select(Category.MANUAL);AddWnd.open(gui, this);}}
+        @Override public void tick(double dt) {
+            super.tick(dt);
+            if(visible())
+                refresh(System.currentTimeMillis());
+        }
         private void refresh(long now){
             if(built!=TimerService.generation()){built=TimerService.generation();rebuild();}
             for(Row row:rows)row.tick(now);
@@ -143,7 +144,13 @@ final class TimerWindow {
     }
 
     static String displayName(TimerEntry item) {
-        if(item.source!=null && item.source.startsWith(NaturalResourceTimers.PREFIX))
+        if(item.source != null && item.source.startsWith("village-idol:"))
+            return L10n.tr("Village idol readiness");
+        if(item.source != null && item.source.startsWith(ClaimTimers.EXPANSION_PREFIX))
+            return L10n.tr(ClaimTimers.EXPANSION_TITLE);
+        if(item.source != null && item.source.startsWith("grill:"))
+            return ObjectTimers.grillName(item.source);
+        if(NaturalResourceTimers.isRefill(item.source))
             return NaturalResourceTimers.name(item.source,item.name);
         if(StarFall.isTimer(item.source))return StarFall.timerName(item.source);
         if(item.source!=null && item.source.startsWith("siege:")) {
@@ -170,7 +177,16 @@ final class TimerWindow {
             resize(Coord.of(ROW_WIDTH,height));tick(System.currentTimeMillis());
             name.move(Coord.of(UI.scale(3),(height-name.sz.y)/2));clock.move(Coord.of(TIME_X,(height-clock.sz.y)/2));
         }
-        public Object tooltip(Coord at,Widget previous){return displayName(item)+(item.running()?"\n"+new Date(item.finish):"")+(StarFall.isTimer(item.source)?"\n"+L10n.tr("Real time. This is an upper estimate, not an exact impact time."):item.source==null?"":"\n"+L10n.tr("Click to highlight the object."));}
+        public Object tooltip(Coord at, Widget previous) {
+            String text = displayName(item) + (item.running() ? "\n" + new Date(item.finish) : "");
+            if(StarFall.isTimer(item.source))
+                return text + "\n" + L10n.tr("Real time. This is an upper estimate, not an exact impact time.");
+            if(NaturalResourceTimers.isRefill(item.source))
+                text += "\n" + L10n.tr("Estimated refill time. Inspect the resource to check.");
+            if(item.source != null)
+                return text + "\n" + L10n.tr("Click to highlight the object.");
+            return text;
+        }
         public void draw(GOut g){g.chcolor(alternate?new Color(8,8,8,128):new Color(0,0,0,128));g.frect(Coord.z,sz);g.chcolor();super.draw(g);}
         public boolean mousedown(MouseDownEvent event){
             if(event.propagate(this))return true;
@@ -231,9 +247,11 @@ final class TimerWindow {
 
     private static final class AddWnd extends Window {
         private final TextEntry name, hours, minutes, seconds;
+        private final TimerWnd owner;
 
-        private AddWnd() {
+        private AddWnd(TimerWnd owner) {
             super(Coord.z, "Add timer", true);
+            this.owner = owner;
             reqclose(() -> { if(ui != null) ui.destroy(this); });
             Widget title = add(new Label("Timer name"), Coord.z);
             name = add(new TextEntry(UI.scale(260), ""), title.pos("bl").adds(0, 4));
@@ -261,7 +279,7 @@ final class TimerWindow {
                     ui.error("Enter a duration.");
                 return;
             }
-            if(wnd!=null && wnd.parent!=null)wnd.select(Category.MANUAL);
+            owner.select(Category.MANUAL);
             if(ui != null)
                 ui.destroy(this);
         }
@@ -276,8 +294,8 @@ final class TimerWindow {
             return value;
         }
 
-        static void open(GameUI gui) {
-            AddWnd wnd = new AddWnd();
+        static void open(GameUI gui, TimerWnd owner) {
+            AddWnd wnd = new AddWnd(owner);
             gui.addchild(wnd, "misc", new Coord2d(0.5, 0.4));
         }
     }

@@ -1,0 +1,17 @@
+{
+  "id": "forageables/waybroad",
+  "category": "forageables",
+  "resourceIds": [
+    "gfx/invobjs/herbs/waybroad"
+  ],
+  "attributes": {},
+  "related": [],
+  "sources": [
+    {
+      "title": "Haven & Hearth in-game Waybroad item description"
+    }
+  ],
+  "status": "verified",
+  "updatedAt": "2026-11-24",
+  "subcategory": "forageables/herbs"
+}

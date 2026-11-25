@@ -81,6 +81,7 @@ public class GobIcon extends GAttrib {
 
     public static class Image {
 	private static final Map<Resource, Image> cache = new WeakHashMap<>();
+	private final BufferedImage source;
 	public final BufferedImage img;
 	public final Tex tex;
 	public Coord cc;
@@ -90,10 +91,20 @@ public class GobIcon extends GAttrib {
 
 	public Image(Resource res) {
 	    Resource.Image rimg = res.layer(Resource.imgc);
-	    boolean radar = res.name.startsWith("radar/");
-	    BufferedImage source = radar ? hearthborn.map.RadarIcons.image(res) : rimg.img;
-	    BufferedImage img = radar ? PUtils.uiscale(source, UI.scale(PUtils.imgsz(source))) : rimg.scaled();
-	    Tex tex = radar ? new TexI(img) : rimg.tex();
+	    boolean whiteMilestone = res.name.equals("paginae/bld/stoneendstone");
+	    BufferedImage custom;
+	    if(res.name.startsWith("radar/"))
+		custom = hearthborn.map.RadarIcons.image(res);
+	    else if(whiteMilestone)
+		custom = whiteStone(rimg.img);
+	    else if(res.name.equals("paginae/bld/minehole"))
+		custom = mineholeImage();
+	    else
+		custom = null;
+	    source = (custom == null) ? rimg.img : custom;
+	    BufferedImage img = (custom == null) ? rimg.scaled()
+		: PUtils.uiscale(source, whiteMilestone ? rimg.ssz : UI.scale(PUtils.imgsz(source)));
+	    Tex tex = (custom == null) ? rimg.tex() : new TexI(img);
 	    if(((tex.sz().x > size) || (tex.sz().y > size)) && !Utils.bv(rimg.info.getOrDefault("mm/noscale", 0))) {
 		BufferedImage buf = source;
 		buf = PUtils.rasterimg(PUtils.blurmask2(buf.getRaster(), 1, 1, Color.BLACK));
@@ -114,6 +125,29 @@ public class GobIcon extends GAttrib {
 		this.ao = Utils.fv(data) * (Math.PI / 180f);
 	    }
 	    this.z = Utils.iv(rimg.info.getOrDefault("mm/z", rimg.z));
+	}
+
+	private static BufferedImage mineholeImage() {
+	    try {
+		return hearthborn.assets.Assets.image("icons/mapicons/mine-hole.png");
+	    } catch(java.io.IOException unavailable) {
+		return null; // The native build image is still available as a fallback.
+	    }
+	}
+
+	private static BufferedImage whiteStone(BufferedImage original) {
+	    int width = original.getWidth(), height = original.getHeight();
+	    BufferedImage white = PUtils.rasterimg(PUtils.imgraster(Coord.of(width, height)));
+	    int[] pixels = original.getRGB(0, 0, width, height, null, 0, width);
+	    for(int i = 0; i < pixels.length; i++) {
+		int pixel = pixels[i];
+		int red = (pixel >>> 16) & 255, green = (pixel >>> 8) & 255, blue = pixel & 255;
+		// Lift the stone to white while retaining its dark outline and alpha.
+		int shade = Math.min(255, (3 * red + 6 * green + blue) * 3 / 10);
+		pixels[i] = (pixel & 0xff000000) | (shade * 0x010101);
+	    }
+	    white.setRGB(0, 0, width, height, pixels, 0, width);
+	    return white;
 	}
 
 	public static Image get(Resource res) {
@@ -145,7 +179,7 @@ public class GobIcon extends GAttrib {
 	}
 
 	public BufferedImage image() {
-	    return(res.name.startsWith("radar/") ? hearthborn.map.RadarIcons.image(res) : res.flayer(Resource.imgc).img);
+	    return(img.source);
 	}
 
 	public void draw(GOut g, Coord cc) {
@@ -331,13 +365,13 @@ public class GobIcon extends GAttrib {
 	}
 
 	public boolean getmarkablep() {
-	    return(icon.markable() != Icon.Markable.UNMARKABLE);
+	    return(hearthborn.map.RadarIcons.persistentIcon(res.name) || icon.markable() != Icon.Markable.UNMARKABLE);
 	}
 
 	public boolean getmarkp() {
 	    if(markset)
 		return(mark);
-	    return(icon.markable() == Icon.Markable.DEFAULT);
+	    return(hearthborn.map.RadarIcons.persistentIcon(res.name) || icon.markable() == Icon.Markable.DEFAULT);
 	}
     }
 
@@ -498,7 +532,9 @@ public class GobIcon extends GAttrib {
                 synchronized(Settings.this){
                     for(Map.Entry<Setting.ID,Setting> entry:settings.entrySet())
                         nset.putIfAbsent(entry.getKey(),entry.getValue());
-                    save |= hearthborn.map.RadarIcons.mergeSnapdragon(nset);
+                    save |= hearthborn.map.RadarIcons.mergeIconAliases(nset);
+                    for(Setting setting : nset.values())
+                        save |= hearthborn.map.RadarIcons.applyVisibilityDefault(setting);
                     settings=nset;
                 }
 		if(tag != null)

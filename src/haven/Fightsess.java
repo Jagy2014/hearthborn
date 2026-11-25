@@ -149,9 +149,10 @@ public class Fightsess extends Widget {
     }
 
     private static final Resource tgtfx = Resource.local().loadwait("gfx/hud/combat/trgtarw");
+    public static Sprite targetArrow(Sprite.Owner owner) { return Sprite.create(owner, tgtfx, Message.nil); }
     private final Collection<Effect> curfx = new ArrayList<>();
 
-    private Effect fxon(long gobid, Resource fx, Effect cur) {
+    private Effect fxon(long gobid, Effect cur) {
 	MapView map = getparent(GameUI.class).map;
 	Gob gob = ui.sess.glob.oc.getgob(gobid);
 	if((map == null) || (gob == null))
@@ -164,7 +165,7 @@ public class Fightsess extends Widget {
 	}
 	if((cur == null) || (cur.slot == null)) {
 	    try {
-		cur = new Effect(Sprite.create(new Sprite.UIOwner(this), fx, Message.nil));
+		cur = new Effect(targetArrow(new Sprite.UIOwner(this)));
 		cur.slot = map.basic.add(cur.spr, place);
 	    } catch(Loading l) {
 		return(null);
@@ -460,7 +461,7 @@ public class Fightsess extends Widget {
 	    } catch(Loading l) {
 	    }
 	    if(fv.lsrel.size() > (hearthborn.combat.CombatPrefs.mark() ? 0 : 1))
-		curtgtfx = fxon(fv.current.gobid, tgtfx, curtgtfx);
+		curtgtfx = fxon(fv.current.gobid, curtgtfx);
 	}
 
 	{
@@ -653,7 +654,27 @@ public class Fightsess extends Widget {
 	KeyBinding.get("fgt/8", KeyMatch.forcode(KeyEvent.VK_R, 0)),
 	KeyBinding.get("fgt/9", KeyMatch.forcode(KeyEvent.VK_T, 0)),
     };
-    public static final KeyBinding kb_relcycle =  KeyBinding.get("fgt-cycle", KeyMatch.forcode(KeyEvent.VK_TAB, KeyMatch.C), KeyMatch.S);
+    private static final KeyMatch cycleTab = KeyMatch.forcode(KeyEvent.VK_TAB, 0);
+    private static final KeyMatch legacyCycleTab = KeyMatch.forcode(KeyEvent.VK_TAB, KeyMatch.C);
+    public static final KeyBinding kb_relcycle = KeyBinding.get("fgt-cycle", cycleTab, KeyMatch.S);
+
+    /** Resolve this before normal Tab navigation or the inventory binding. */
+    static boolean cycleTarget(Fightview fight, Widget.KeyDownEvent ev) {
+	if(fight == null || fight.lsrel.size() < 2)
+	    return false;
+	KeyMatch binding = kb_relcycle.key();
+	boolean stockBinding = binding.equals((Object)cycleTab) || binding.equals((Object)legacyCycleTab);
+	if(!binding.match(ev, KeyMatch.S) &&
+	   !(stockBinding && (cycleTab.match(ev, KeyMatch.S) || legacyCycleTab.match(ev, KeyMatch.S))))
+	    return false;
+	if((ev.mods & KeyMatch.S) != 0) {
+	    fight.lsrel.addFirst(fight.lsrel.removeLast());
+	} else if(fight.current != null && fight.lsrel.remove(fight.current)) {
+	    fight.lsrel.addLast(fight.current);
+	}
+	fight.wdgmsg("bump", (int)fight.lsrel.getFirst().gobid);
+	return true;
+    }
 
     /* XXX: This is a bit ugly, but release message do need to be
      * properly sequenced with use messages in some way. */
@@ -710,23 +731,6 @@ public class Fightsess extends Widget {
 		held = n;
 		return(true);
 	    }
-	}
-	if(kb_relcycle.key().match(ev, KeyMatch.S)) {
-	    if((ev.mods & KeyMatch.S) == 0) {
-		Fightview.Relation cur = fv.current;
-		if(cur != null) {
-		    fv.lsrel.remove(cur);
-		    fv.lsrel.addLast(cur);
-		}
-	    } else {
-		Fightview.Relation last = fv.lsrel.getLast();
-		if(last != null) {
-		    fv.lsrel.remove(last);
-		    fv.lsrel.addFirst(last);
-		}
-	    }
-	    fv.wdgmsg("bump", (int)fv.lsrel.get(0).gobid);
-	    return(true);
 	}
 	return(super.globtype(ev));
     }

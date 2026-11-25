@@ -227,7 +227,7 @@ public abstract class UILoop implements Console.Directory {
 		Coord m = UI.scale(2, 2);
 		g.chcolor(244, 247, 21, 192);
 		g.rect2(pos.sub(m).sub(1, 1), br.add(m));
-		g.chcolor(35, 35, 35, 192);
+		g.chcolor(hearthborn.ui.UiTheme.DARK_TOOLTIP_BACKGROUND);
 		g.frect2(pos.sub(m), br.add(m));
 		g.chcolor();
 		g.image(tex, pos, tsz);

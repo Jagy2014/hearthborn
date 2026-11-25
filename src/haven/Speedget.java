@@ -99,9 +99,11 @@ public class Speedget extends Widget {
             (fit ? 1 : hearthborn.ui.ActionMenuFrame.SCALE)*hearthborn.ui.HudInterfaceScale.forUI(ui));
         if(!fit)
 	    g=hearthborn.ui.HudScale.graphics(g,tsz);
-	g.chcolor(0, 0, 0, 235);
-	g.frect(Coord.z, total);
-	g.chcolor();
+	if(!hearthborn.ui.HudFrames.hidden()) {
+	    g.chcolor(0, 0, 0, 235);
+	    g.frect(Coord.z, total);
+	    g.chcolor();
+	}
 	int x = 0;
 	for(int i = 0; i < 4; i++) {
 	    Tex t;

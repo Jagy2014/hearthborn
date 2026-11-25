@@ -93,14 +93,14 @@ public final class InventoryActions {
         if(!(source.parent instanceof Inventory))return false;
         try {
             List<WItem> ordered=transferOrder((Inventory)source.parent,source,ascending);
-            if(BagTransfers.transfer(source,ordered))return true;
+            if(BagTransfers.transfer(source,ordered,true))return true;
             for(WItem candidate:ordered)
                 transfer(candidate,Coord.z,1);
         } catch(Loading loading) {source.ui.error(hearthborn.L10n.tr("Items are still loading. Try again."));}
         return true;
     }
 
-    private static List<GItem> stackContents(GItem item) {
+    static List<GItem> stackContents(GItem item) {
         Widget contents=item.contents;
         if(contents==null)return Collections.emptyList();
         boolean stack=false;

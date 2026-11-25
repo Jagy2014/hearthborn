@@ -13,6 +13,7 @@
 package hearthborn.ui;
 
 import haven.*;
+import hearthborn.L10n;
 import java.util.*;
 import java.util.function.BooleanSupplier;
 
@@ -107,11 +108,17 @@ final class UISettingsControls {
 
     /** Adds every control to the host and returns the last one, below which a caller may add more. */
     Widget build(){
+        section("LANGUAGE",0);
+        languageRow();
+
         // The look: one choice, four cards. It replaced a drop-down and a box that said the same thing twice.
-        section("THEME",0);
+        section("THEME",UI.scale(14));
         ThemeCards cards=put(new ThemeCards(UI.scale(80),UI.scale(10)),0,0);
         cards.settip("The look of the interface: the colour of the active entry, the focus, the main button, the tick, the slider and the window frame, on a dark or a parchment background. Applies at once.");
         line(UI.scale(8),ALWAYS,cards);
+        Widget frames=put(new CheckBox("Hide gold HUD frames").state(HudFrames::hidden).set(HudFrames::hidden),0,0);
+        frames.settip("Hides the decorative borders around the portrait, movement speed, minimap, chat and quest tracker without moving or undocking them.");
+        line(frames);
 
         // The panels: a table, a row for each panel.
         section("PANELS",UI.scale(14));
@@ -119,10 +126,10 @@ final class UISettingsControls {
         Label showHeader=put(new Label("Show",SettingsSidebar.HEADING_FACE).tier(UiPalette.NOTE),showColumn,0);
         Label verticalHeader=put(new Label("Vertical",SettingsSidebar.HEADING_FACE).tier(UiPalette.NOTE),verticalColumn,0);
         line(UI.scale(6),ALWAYS,showHeader,verticalHeader);
-        panel("numeric","Numeric toolbar","Shows this row of the button strip.",showColumn,verticalColumn,true);
-        panel("function","F-key toolbar","Shows this row of the button strip.",showColumn,verticalColumn,true);
-        panel("extra","Additional toolbar 1","A separate toolbar with 10 slots.",showColumn,verticalColumn,true);
-        panel("extra2","Additional toolbar 2","A separate toolbar with 12 slots.",showColumn,verticalColumn,true);
+        panel("numeric","Numeric toolbar","Shows this row of the button strip.",showColumn,verticalColumn,slotsColumn);
+        panel("function","F-key toolbar","Shows this row of the button strip.",showColumn,verticalColumn,slotsColumn);
+        panel("extra","Additional toolbar 1","A separate toolbar with 10 slots.",showColumn,verticalColumn,slotsColumn);
+        panel("extra2","Additional toolbar 2","A separate toolbar with 12 slots.",showColumn,verticalColumn,slotsColumn);
         Label equipment=caption("Equipment strip");
         Widget equipmentShow=put(new CheckBox("").state(()->Toolbars.enabled("equipment")).set(value->Toolbars.enabled("equipment",value)),showColumn,0);
         equipmentShow.settip("Shows the equipment strip.");
@@ -131,10 +138,6 @@ final class UISettingsControls {
         Button equipmentSlots=put(new Button(UI.scale(22),"\u2026",()->EquipmentStripSettings.open(host.getparent(GameUI.class))),slotsColumn,0);
         equipmentSlots.settip("Equipment strip slots");
         line(equipment,equipmentShow,equipmentVertical,equipmentSlots);
-        Widget clean=put(new CheckBox("Clean toolbars").state(Toolbars::clean).set(Toolbars::clean),0,0);
-        clean.settip("Hotkey strips and the hands and belt strip are drawn small, without a backing plate, so only the cells remain. Turn it off for the larger strips with a backing plate.");
-        line(UI.scale(8),ALWAYS,clean);
-
         Label moving=put(new Label("To move a panel, drag its background, or hold Alt/Option and drag any icon. The equipment strip moves on its own.",UI.scale(340)).tier(UiPalette.NOTE),0,0);
         line(UI.scale(6),ALWAYS,moving);
 
@@ -203,6 +206,7 @@ final class UISettingsControls {
         previous.settip("Puts the portrait, status bars and effect widgets on the right. Combat moves to the top-left, and the icons open toward the left.");
         line(UI.scale(5),ALWAYS,previous);
         previous=put(new CheckBox("Study slot reminder").state(StudyReminder::enabled).set(StudyReminder::enabled),0,0);line(previous);
+        previous=put(new CheckBox("Always show the study widget").state(StudyReminder::always).set(StudyReminder::always),0,0);line(previous);
         previous=put(new CheckBox("Window magnets").state(MagneticWindows::enabled).set(MagneticWindows::enabled),0,0);
         previous.settip("Windows stick to each other and to the screen edges. Turn this off to move and resize them freely. Turning it on again sticks them back.");line(previous);
         previous=put(new CheckBox("Show system notices under the clock").state(NoticePlace::belowClock).set(NoticePlace::belowClock),0,0);
@@ -213,18 +217,53 @@ final class UISettingsControls {
 
     private SDropBox<SystemCross.Layout,Widget> systemMenu;
 
-    /** One row of the panel table: the name, a box that shows the panel and one that turns it upright. */
-    private void panel(String id,String title,String tip,int showColumn,int verticalColumn,boolean resize){
+    private void languageRow(){
+        int selectorWidth=UI.scale(110);
+        int selectorX=width()-selectorWidth;
+        Label caption=put(new Label("Choose language:",selectorX-UI.scale(8)).tier(UiPalette.CAPTION),0,UI.scale(4));
+        SDropBox<String,Widget> languages=new SDropBox<String,Widget>(selectorWidth,fieldHeight()*2,fieldHeight()){
+            {super.change(Utils.getpref("hearthborn/language",L10n.language()));}
+            protected boolean listautoscroll(){return false;}
+            protected List<? extends String> items(){return List.of("en","ru");}
+            protected Widget makeitem(String language,int index,Coord size){
+                Widget row=new Widget(size);
+                Label label=new Label(language.equals("ru")?"Russian":"English");
+                row.add(label,Coord.of(UI.scale(4),(size.y-label.sz.y)/2));
+                return row;
+            }
+            public void change(String language){
+                super.change(language);
+                L10n.setLanguage(language);
+                if(!language.equals(L10n.language())&&ui!=null)
+                    ui.msg(L10n.tr("The language applies after you close the client window completely and start it again (logging out to the character screen is not enough)."));
+            }
+        };
+        put(languages,selectorX,0);
+        line(caption,languages);
+    }
+
+    private void panel(String id,String title,String tip,int showColumn,int verticalColumn,int slotsColumn){
         Label name=caption(title);
         Widget show=put(new CheckBox("").state(()->Toolbars.enabled(id)).set(value->{
-            Toolbars.enabled(id,value);if(resize)relayoutHud();
+            Toolbars.enabled(id,value);relayoutHud();
         }),showColumn,0);
         show.settip(tip);
         Widget vertical=put(new CheckBox("").state(()->Toolbars.vertical(id)).set(value->{
-            Toolbars.vertical(id,value);if(resize)relayoutHud();
+            Toolbars.vertical(id,value);relayoutHud();
         }),verticalColumn,0);
         vertical.settip("Turns this button strip upright.");
-        line(name,show,vertical);
+        if(!Toolbars.extra(id)){
+            line(name,show,vertical);
+            return;
+        }
+        Button keys=put(new Button(UI.scale(22),"\u2026",()->{
+            if(host instanceof UISettings)
+                ((UISettings)host).openToolbarKeys(id);
+            else
+                host.getparent(OptWnd.class).openToolbarKeys(id);
+        }),slotsColumn,0);
+        keys.settip("Open toolbar keybindings");
+        line(name,show,vertical,keys);
     }
 
     private void chooseMenu(boolean sidebar){

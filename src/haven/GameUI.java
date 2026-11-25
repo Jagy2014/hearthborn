@@ -47,6 +47,7 @@ public class GameUI extends ConsoleHost implements Console.Directory, UI.Notice.
     private final hearthborn.ui.NearbySiegeCheck nearbySiegeCheck=new hearthborn.ui.NearbySiegeCheck();
     private final hearthborn.ui.LoginSiegeCheck loginSiegeCheck=new hearthborn.ui.LoginSiegeCheck();
     private final hearthborn.ui.IndoorCamera indoorCamera=new hearthborn.ui.IndoorCamera();
+    final MiniMap.EntranceHistory mapEntrance = new MiniMap.EntranceHistory();
     public MapView map;
     public boolean indoors(){return indoorCamera!=null&&indoorCamera.indoors(this);}
     public boolean prepareCamera(MapView view){return view!=map||indoorCamera==null||indoorCamera.prepareFrame(this);}
@@ -59,7 +60,8 @@ public class GameUI extends ConsoleHost implements Console.Directory, UI.Notice.
     private String noticeText;
     private boolean noticeError;
     private double msgtime;
-    private Window invwnd, equwnd, makewnd, srchwnd, iconwnd;
+    private Window invwnd, equwnd, srchwnd, iconwnd;
+    private CraftWindow makewnd;
     private Coord makewndc = Utils.getprefc("makewndc", new Coord(400, 200));
     public Inventory maininv;
     public CharWnd chrwdg;
@@ -273,8 +275,90 @@ public class GameUI extends ConsoleHost implements Console.Directory, UI.Notice.
     
     public Equipory equipment() { return equwnd == null ? null : equwnd.getchild(Equipory.class); }
     public void repeatCraft(MenuGrid.Pagina recipe) {
-        if(makewnd!=null){makewnd.show(!makewnd.visible());if(makewnd.visible()){makewnd.raise();setfocus(makewnd);}}
+        if(makewnd!=null && makewnd.recipe!=null){makewnd.show(!makewnd.visible());if(makewnd.visible()){makewnd.raise();setfocus(makewnd);}}
         else if(recipe!=null)recipe.button().use(new MenuGrid.Interaction(1,0));
+    }
+
+    private class CraftWindow extends Window {
+        private Widget recipe;
+        private hearthborn.ui.CraftHistory history;
+        private double closeDelay;
+        private boolean closeRequested;
+
+        CraftWindow() {
+            super(Coord.z, "Crafting", true);
+        }
+
+        void open(Widget next) {
+            if(recipe != null) {
+                if(recipe instanceof Makewindow) ((Makewindow)recipe).stopBatch();
+                recipe.hide(); // The server still owns the previous widget.
+            }
+            recipe = next;
+            closeDelay = 0;
+            closeRequested = false;
+            if(history != null) history.destroy();
+            history = add(new hearthborn.ui.CraftHistory(GameUI.this), Coord.z);
+            history.align(next.sz.x);
+            add(next, Coord.of(0, history.sz.y));
+            String title = next instanceof Makewindow ? ((Makewindow)next).rcpnm : "";
+            chcap((title == null || title.isEmpty()) ? "Crafting" : title);
+            pack();
+            if(parent != null && !visible()) {
+                show();
+                raise();
+                parent.setfocus(this);
+            }
+        }
+
+        public void cresize(Widget child) {
+            if(child != recipe || history == null) return;
+            history.align(recipe.sz.x);
+            pack();
+        }
+
+        public void wdgmsg(Widget sender, String msg, Object... args) {
+            if(sender == this && msg.equals("close")) {
+                closeRequested = true;
+                if(recipe != null) recipe.wdgmsg("close");
+                else hide();
+                return;
+            }
+            super.wdgmsg(sender, msg, args);
+        }
+
+        public void cdestroy(Widget child) {
+            super.cdestroy(child);
+            if(child != recipe) return;
+            recipe = null;
+            rememberPosition();
+            if(closeRequested) hide();
+            else if(visible()) closeDelay = .35;
+        }
+
+        public void tick(double dt) {
+            super.tick(dt);
+            if(closeDelay > 0) {
+                closeDelay = Math.max(0, closeDelay - dt);
+                if(closeDelay == 0) hide();
+            }
+        }
+
+        public void draw(GOut g) {
+            // A replace can destroy the old recipe before the new one arrives.
+            // Keep the previous frame intact during that gap and during closing.
+            if(recipe == null && gbuf != null) drawfin(g, gbuf);
+            else super.draw(g);
+        }
+
+        private void rememberPosition() {
+            Utils.setprefc("makewndc", makewndc = new Coord(c));
+        }
+
+        public void dispose() {
+            rememberPosition();
+            super.dispose();
+        }
     }
 
     // Preserve the quest journal lower boundary without retaining corner-map widgets.
@@ -396,6 +480,8 @@ public class GameUI extends ConsoleHost implements Console.Directory, UI.Notice.
 
     public void dispose() {
         hearthborn.combat.BowCombat.dispose(this);
+        hearthborn.combat.WildAttack.manual(this);
+        hearthborn.combat.TargetPreview.clear(this);
         if(map!=null)hearthborn.navigation.Walking.cancel(map);
         hearthborn.scripts.ShortcutRunner.cancel(this);
         hearthborn.ui.QuestForage.sessionEnded(this);
@@ -480,7 +566,7 @@ public class GameUI extends ConsoleHost implements Console.Directory, UI.Notice.
 		return;
 	    }
 	    sz = contentsz();
-	    if(this==brpanel&&parent!=null)move();
+	    if((this==brpanel||this==urpanel)&&parent!=null)move();
 	}
 
 	public boolean mshow(final boolean vis) {
@@ -694,7 +780,7 @@ public class GameUI extends ConsoleHost implements Console.Directory, UI.Notice.
 	Zergwnd() {
 	    super(Coord.z, "Kith & Kin", true);
 	    kin = add(new TButton("kin"));
-	    kin.tooltip = Text.render("Kin");
+	    kin.tooltip = Text.render(hearthborn.L10n.text("label", "Kin"));
 	}
 
 	private void repack() {
@@ -905,7 +991,7 @@ public class GameUI extends ConsoleHost implements Console.Directory, UI.Notice.
 		    throw(new RuntimeException("failed to load mapfile", e));
 		}
 		minesweeper = new hearthborn.mining.Minesweeper(file);
-                lastsavegrid = null; lastsaveseq = -1; lastsaveid = -1;
+                lastsavegrid = null; lastsaveseq = -1; lastsaveid = -1; lastcachemapseq = -1;
 		boolean mini=Utils.getprefb("compact-map", false);
 		mapfile = new MapWnd(file, map, hearthborn.map.MapPlaces.size(mini), "Map");
 		mapfile.reqclose(() -> hearthborn.map.MapPlaces.close(mapfile));
@@ -934,7 +1020,11 @@ public class GameUI extends ConsoleHost implements Console.Directory, UI.Notice.
 	    invwnd.hide();
 	    add(invwnd, Utils.getprefc("wndc-inv", new Coord(100, 100)));
 	} else if(place == "equ") {
-	    equwnd = new Hidewnd(Coord.z, "Equipment");
+	    equwnd = new Hidewnd(Coord.z, "Equipment") {
+		protected Deco makedeco() {
+		    return new hearthborn.ui.SmallWindowDeco(large).translucentDark();
+		}
+	    };
 	    equwnd.add(child, Coord.z);
 	    equwnd.pack();
 	    equwnd.hide();
@@ -953,36 +1043,13 @@ public class GameUI extends ConsoleHost implements Console.Directory, UI.Notice.
                     && ((hearthborn.ui.ActionBrowser)srchwnd).embed((Makewindow)child)) {
                 return;
             }
-            if(makewnd!=null && makewnd.parent==this){makewndc=new Coord(makewnd.c);makewnd.hide();}
-	    String cap = "";
-	    Widget mkwdg = child;
-	    if(mkwdg instanceof Makewindow)
-		cap = ((Makewindow)mkwdg).rcpnm;
-	    if(cap.equals(""))
-		cap = "Crafting";
-	    makewnd = new Window(Coord.z, cap, true) {
-		    public void wdgmsg(Widget sender, String msg, Object... args) {
-			if((sender == this) && msg.equals("close")) {
-			    mkwdg.wdgmsg("close");
-			    return;
-			}
-			super.wdgmsg(sender, msg, args);
-		    }
-		    public void cdestroy(Widget w) {
-			if(w == mkwdg) {
-			    ui.destroy(this);
-			    if(makewnd==this)makewnd = null;
-			}
-		    }
-		    public void destroy() {
-			Utils.setprefc("makewndc", makewndc = this.c);
-			super.destroy();
-		    }
-		};
-	    hearthborn.ui.CraftHistory history=makewnd.add(new hearthborn.ui.CraftHistory(this),Coord.z);
-            makewnd.add(mkwdg,Coord.of(0,history.sz.y));
-	    makewnd.pack();
-	    fitwdg(add(makewnd, makewndc));
+            if(makewnd == null) {
+                makewnd = new CraftWindow();
+                makewnd.open(child);
+                fitwdg(add(makewnd, makewndc));
+            } else {
+                makewnd.open(child);
+            }
 	} else if(place == "buddy") {
 	    zerg.ntab(buddies = (BuddyWnd)child, zerg.kin);
 	} else if(place == "pol") {
@@ -1137,6 +1204,8 @@ public class GameUI extends ConsoleHost implements Console.Directory, UI.Notice.
 	    }
 	} else if(w == chrwdg) {
 	    chrwdg = null;
+	} else if(w == makewnd) {
+	    makewnd = null;
 	}
 	meters.remove(w);
     }
@@ -1206,6 +1275,7 @@ public class GameUI extends ConsoleHost implements Console.Directory, UI.Notice.
     private Coord lastsavegrid = null;
     private int lastsaveseq = -1;
     private long lastsaveid = -1;
+    private int lastcachemapseq = -1;
     private void mapfiletick() {
 	MapView map = this.map;
 	MapFile file = mapfile == null ? null : mapfile.file;
@@ -1218,16 +1288,19 @@ public class GameUI extends ConsoleHost implements Console.Directory, UI.Notice.
 	else
 	    gc = pl.rc.floor(MCache.tilesz).div(MCache.cmaps);
 	try {
-	    MCache.Grid grid = ui.sess.glob.map.getgrid(gc);
+	    MCache live = ui.sess.glob.map;
+	    MCache.Grid grid = live.getgrid(gc);
 	    if(grid == null)
 		return;
-	    if(Utils.eq(gc, lastsavegrid) && (lastsaveseq == grid.seq) && (lastsaveid == grid.id))
+	    int mapseq = live.chseq;
+	    if(Utils.eq(gc, lastsavegrid) && (lastsaveseq == grid.seq) && (lastsaveid == grid.id) && (lastcachemapseq == mapseq))
 		return;
-	    if(!file.update(ui.sess.glob.map, gc))
+	    if(!file.update(live, gc))
 		return;
 	    lastsavegrid = gc;
 	    lastsaveseq = grid.seq;
 	    lastsaveid = grid.id;
+	    lastcachemapseq = mapseq;
 	} catch(Loading l) {
 	}
     }
@@ -1262,6 +1335,7 @@ public class GameUI extends ConsoleHost implements Console.Directory, UI.Notice.
         hearthborn.scripts.ShortcutRunner.tick(this);
         hearthborn.scripts.ScriptRunner.tick(this);
         hearthborn.combat.BowCombat.tick(this);
+        hearthborn.combat.WildAttack.tick(this);
         hearthborn.combat.ArcheryAim.tick(this);
         hearthborn.ui.AutoDrink.tick(this);
         hearthborn.ui.LoginToggles.tick(this);
@@ -1727,7 +1801,6 @@ public class GameUI extends ConsoleHost implements Console.Directory, UI.Notice.
     private int actionMenuSignature(boolean fold, hearthborn.ui.SystemCross cross) {
         int sig = (fold ? 1 : 0) + (hearthborn.ui.ActionMenuFrame.onLeft() ? 2 : 0) + (brpanel.tvis ? 4 : 0) + uimode * 8 + (hearthborn.ui.ActionStrip.onRight() ? 32 : 0) + (hearthborn.ui.ActionStrip.horizontal() ? 64 : 0);
         sig = sig * 31 + hearthborn.ui.SystemCross.arrangement().ordinal();
-        sig = sig * 31 + (hearthborn.ui.Toolbars.clean()?1:0);
         sig = sig * 31 + sz.x;
         sig = sig * 31 + sz.y;
         sig = sig * 31 + brpanel.sz.x;
@@ -2044,7 +2117,6 @@ public class GameUI extends ConsoleHost implements Console.Directory, UI.Notice.
 
 	public void draw(GOut g) {
             GOut original=g;g=extension.graphics(g);
-	    extension.background(g, extension.logicalSize(sz), nkeybg);
             extension.draw(g,curbelt);
 	    super.draw(original);
 	}

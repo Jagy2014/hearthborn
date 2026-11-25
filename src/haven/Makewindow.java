@@ -51,9 +51,9 @@ public class Makewindow extends Widget {
     public List<Indir<Resource>> qmod = Collections.emptyList();
     public List<Indir<Resource>> tools = new ArrayList<>();;
     private final int inputy=UI.scale(40);
-    /** The counts under the ingredients take a line, so everything below them stands lower; the line about what lacks and the buttons come last. */
-    private int xoff = UI.scale(45), qmy = UI.scale(92), outy = UI.scale(119);
-    private final int missy = UI.scale(158), acty = UI.scale(178);
+    private int xoff;
+    private final int qmy = UI.scale(92), outy = UI.scale(119);
+    private int missy;
     public static final int WIDTH = UI.scale(470);
 
     @RName("make")
@@ -192,7 +192,7 @@ public class Makewindow extends Widget {
     private int remaining;
     private boolean waiting, crafting;
     private double craftDeadline;
-    private Button craft, craftAll;
+    private final Button less, more, craft, craftAll;
     private Text missingText;
     private String missingValue = "";
     private final Map<String, Text> countTexts = new HashMap<>();
@@ -209,33 +209,54 @@ public class Makewindow extends Widget {
         int inputW=add(new Label("Input:",labelFont),Coord.of(0,inputy+UI.scale(8))).sz.x;
         int resultW=add(new Label("Result:",labelFont),Coord.of(0,outy+UI.scale(8))).sz.x;
         xoff=Math.max(inputW,resultW)+UI.scale(10);
-        Button less=new Button(UI.scale(24),"−",false);
-        add(less,Coord.of(0,acty)).action(()->step(-1));
+        less=add(new Button(UI.scale(24),"−",false)).action(()->step(-1));
         amount=add(new hearthborn.ui.ValueEntry(UI.scale(36),this::craftMultiple){
             protected String transform(int value){return Integer.toString(hearthborn.ui.RecipeStock.count(value));}
-        },less.pos("ur").adds(2,1));
+        });
         amount.value(Utils.getprefi("hearthborn/craft/count",1));amount.clearOnFocus=true;
         amount.update=()->Utils.setprefi("hearthborn/craft/count",hearthborn.ui.RecipeStock.count(amount.value()));
         amount.settip(hearthborn.L10n.tr("How many times to craft."));
-        Button more=new Button(UI.scale(24),"+",false);
-        add(more,amount.pos("ur").adds(2,-1)).action(()->step(1));
+        more=add(new Button(UI.scale(24),"+",false)).action(()->step(1));
         craft=new Button(UI.scale(85),"Craft",false) {
             /* Enter belongs to the craft only while the window is in sight and the craft is possible; otherwise it is the quick chat's. */
             public boolean gkeytype(GlobKeyEvent ev) {return(tvisible() && !disabled() && super.gkeytype(ev));}
         };
         craft.resize(Coord.of(Math.max(craft.sz.x,craft.text.sz().x+UI.scale(24)),craft.sz.y));
-        /* The window keeps the width it always had: the quality line with the soft cap and the names of the ingredients need the room. */
-        add(new Widget(Coord.of(WIDTH,1)),Coord.z);
-        add(craft,more.pos("ur").adds(8,0)).action(this::craftMultiple).setgkey(kb_make);
+        add(craft).action(this::craftMultiple).setgkey(kb_make);
         craftAll=new Button(UI.scale(60),"Everything",false) {
             public boolean gkeytype(GlobKeyEvent ev) {return(tvisible() && !disabled() && super.gkeytype(ev));}
         };
         craftAll.resize(Coord.of(Math.max(craftAll.sz.x,craftAll.text.sz().x+UI.scale(24)),craftAll.sz.y));
-        add(craftAll,Coord.of(WIDTH-craftAll.sz.x,acty)).action(this::craftEverything).setgkey(kb_makeall);
-        craft.move(Coord.of(craftAll.c.x-UI.scale(5)-craft.sz.x,acty));
+        add(craftAll).action(this::craftEverything).setgkey(kb_makeall);
         craftAll.settip(hearthborn.L10n.tr("Craft as many as the ingredients allow."));
-	pack();
+	layoutActions();
 	this.rcpnm = rcpnm;
+    }
+
+    private void layoutActions() {
+        int outputRight = xoff;
+        int resultHeight = invsq.sz().y;
+        for(SpecWidget output : outputs)
+            outputRight = Math.max(outputRight, output.c.x + output.sz.x);
+
+        int width = Math.max(WIDTH, outputRight);
+        int allX = width - craftAll.sz.x;
+        int craftX = allX - UI.scale(5) - craft.sz.x;
+        int moreX = craftX - UI.scale(8) - more.sz.x;
+        int amountX = moreX - UI.scale(2) - amount.sz.x;
+        int lessX = amountX - UI.scale(2) - less.sz.x;
+        int controlsHeight = Math.max(craft.sz.y, amount.sz.y);
+        boolean fits = outputRight + UI.scale(10) <= lessX;
+        if(fits) resultHeight = Math.max(resultHeight, controlsHeight);
+        missy = outy + resultHeight + UI.scale(4);
+        int missingBottom = missingValue.isEmpty() ? missy : missy + labelFont.height();
+        int controlsY = fits ? outy + (resultHeight - controlsHeight) / 2 : missingBottom + UI.scale(3);
+        less.move(Coord.of(lessX, controlsY + (controlsHeight - less.sz.y) / 2));
+        amount.move(Coord.of(amountX, controlsY + (controlsHeight - amount.sz.y) / 2));
+        more.move(Coord.of(moreX, less.c.y));
+        craft.move(Coord.of(craftX, controlsY + (controlsHeight - craft.sz.y) / 2));
+        craftAll.move(Coord.of(allX, craft.c.y));
+        resize(Coord.of(width, Math.max(missingBottom, controlsY + controlsHeight)));
     }
 
     private Spec parsespec(Object[] desc) {
@@ -315,6 +336,7 @@ public class Makewindow extends Widget {
 		    prev = wdg;
 		}
 		this.outputs = wdgs;
+		layoutActions();
 	    }
 	} else if(msg == "qmod") {
 	    List<Indir<Resource>> qmod = new ArrayList<Indir<Resource>>();
@@ -624,6 +646,7 @@ public class Makewindow extends Widget {
 	if(!line.equals(missingValue)) {
 	    missingValue = line;
 	    if(missingText != null) {missingText.tex().dispose(); missingText = null;}
+	    layoutActions();
 	}
 	if(craft != null && craft.disabled() != lacking) {
 	    craft.disable(lacking);
@@ -665,8 +688,13 @@ public class Makewindow extends Widget {
             else waiting=false;
         }
     }
+    void stopBatch() {
+        waiting = false;
+        remaining = 0;
+    }
+
     public void dispose() {
-        waiting=false;if(softcapText!=null)softcapText.tex().dispose();if(missingText!=null)missingText.tex().dispose();for(Text t:countTexts.values())t.tex().dispose();countTexts.clear();for(Tex tex:qualityIcons.values())tex.dispose();qualityIcons.clear();super.dispose();
+        stopBatch();if(softcapText!=null)softcapText.tex().dispose();if(missingText!=null)missingText.tex().dispose();for(Text t:countTexts.values())t.tex().dispose();countTexts.clear();for(Tex tex:qualityIcons.values())tex.dispose();qualityIcons.clear();super.dispose();
     }
     public Object tooltip(Coord mc, Widget prev) {
 	Spec tspec = null;

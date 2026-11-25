@@ -360,9 +360,11 @@ public class WoundWnd extends Widget {
 	woundsFrame = Frame.around(this, Collections.singletonList(this.wounds));
 	woundbox = add(new Widget(new Coord(attrw + UI.scale(120), this.wounds.sz.y)) {
 		public void draw(GOut g) {
-		    g.chcolor(0, 0, 0, 128);
-		    g.frect(Coord.z, sz);
-		    g.chcolor();
+		    if(!hearthborn.ui.UiTheme.characterGlass(this)) {
+			g.chcolor(0, 0, 0, 128);
+			g.frect(Coord.z, sz);
+			g.chcolor();
+		    }
 		    super.draw(g);
 		}
 

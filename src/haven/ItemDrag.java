@@ -48,7 +48,7 @@ public class ItemDrag extends WItem {
     
     public void draw(GOut g) {
         GameUI gui=getparent(GameUI.class);
-        if(gui!=null&&(hearthborn.scripts.ScriptRunner.hideFuelCursor(gui,item)))return;
+        if(gui!=null&&hearthborn.scripts.ScriptRunner.hideScriptCursor(gui,item))return;
         super.draw(g);
     }
 

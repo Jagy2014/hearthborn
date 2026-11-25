@@ -13,6 +13,7 @@
 package hearthborn.timers;
 import hearthborn.L10n;
 import hearthborn.util.GameObjects;
+import hearthborn.util.ObjectWindows;
 import haven.*;import hearthborn.timers.Timers;import java.util.*;import java.util.regex.*;
 /**
  * A placement intent must be followed by an actual claim pole before starting its activation timer.
@@ -21,8 +22,14 @@ import haven.*;import hearthborn.timers.Timers;import java.util.*;import java.ut
  */
 public final class ClaimTimers {
     public static final long WAIT=8*3600000L;
+    static final String EXPANSION_PREFIX = "claim-expansion:";
+    static final String EXPANSION_TITLE = "Personal claim expansion";
     private static final Map<GameUI,List<Pending>> pending=new WeakHashMap<>();
-    private static final Pattern REMAIN=Pattern.compile("Your claim to this land is too recent.*another (\\d+) hours?\\.",Pattern.CASE_INSENSITIVE);
+    private static final Pattern EXPANSION_REMAIN = Pattern.compile(
+        "^Your claim to this land is too recent to be expanded\\. It needs to remain for another ([0-9]+) (minutes?|hours?|days?)\\.?$",
+        Pattern.CASE_INSENSITIVE);
+    private static final Pattern IDOL_REMAIN = Pattern.compile(
+        "^The idol is not ready until in ([0-9]+) (minutes?|hours?|days?)\\.?$", Pattern.CASE_INSENSITIVE);
     private static Gob clicked;
     private static double clickTime;
     private static class Pending {
@@ -56,15 +63,74 @@ public final class ClaimTimers {
         if(entries.isEmpty())pending.remove(gui);
     }
     private static void start(Gob gob,long deadline) {
-        MCache.Grid grid=gob.glob.map.getgridt(gob.rc.floor(MCache.tilesz));
-        Coord local=gob.rc.sub(new Coord2d(grid.ul).mul(MCache.tilesz)).floor(OCache.posres);
-        String key="claim:"+grid.id+":"+local.x+":"+local.y;
+        String key=objectKey("claim:",gob);
         Timers.track(key,L10n.format("Personal claim #%s",Integer.toHexString(key.hashCode())),deadline);
     }
+    private static String objectKey(String prefix,Gob gob) {
+        MCache.Grid grid=gob.glob.map.getgridt(gob.rc.floor(MCache.tilesz));
+        Coord local=gob.rc.sub(new Coord2d(grid.ul).mul(MCache.tilesz)).floor(OCache.posres);
+        return prefix+grid.id+":"+local.x+":"+local.y;
+    }
+    public static long idolRemainingMillis(String message) {
+        return remainingMillis(IDOL_REMAIN, message);
+    }
+    public static long expansionRemainingMillis(String message) {
+        return remainingMillis(EXPANSION_REMAIN, message);
+    }
+    private static long remainingMillis(Pattern pattern,String message) {
+        Matcher match=pattern.matcher(message);
+        if(!match.matches()) return 0;
+        double minutes=Double.parseDouble(match.group(1));
+        String unit=match.group(2).toLowerCase(Locale.ROOT);
+        if(unit.startsWith("day")) minutes*=24*60;
+        else if(unit.startsWith("hour")) minutes*=60;
+        double duration=minutes*60000/hearthborn.ui.StudyProgress.GAME_SECONDS_PER_REAL_SECOND;
+        return duration>0 && duration<Long.MAX_VALUE ? (long)Math.ceil(duration) : 0;
+    }
+    static void observeIdol(Gob gob,String message) {
+        if(!TimerSettings.automatic() || gob.removed || gob.rc==null ||
+           !"gfx/terobjs/villageidol".equals(GameObjects.resourceName(gob))) return;
+        refresh("village-idol:", "Village idol readiness", gob, idolRemainingMillis(message));
+    }
+    private static void refresh(String prefix,String name,Gob gob,long duration) {
+        long now=System.currentTimeMillis();
+        if(duration<=0 || duration>=Long.MAX_VALUE-now) return;
+        long deadline=now+duration;
+        String key=objectKey(prefix,gob);
+        long previous=Timers.deadline(key);
+        // The server rounds its estimate; repeated clicks should not push the deadline back.
+        if(previous<=now || deadline<previous)
+            Timers.track(key,L10n.tr(name),deadline);
+    }
+
+    public static Gob claimWindow(Window window,GameUI gui) {
+        if(!"Claim Stake".equals(window.cap) && !"Land Management".equals(window.cap)) return null;
+        return ObjectWindows.target(window,gui,gob -> isClaim(GameObjects.resourceName(gob)));
+    }
+
     public static void notice(UI ui,String message) {
-        if(message==null||clicked==null||Utils.rtime()-clickTime>60||!hearthborn.timers.TimerSettings.automatic())return;
-        Matcher match=REMAIN.matcher(message);if(!match.matches())return;
-        try {if(isClaim(GameObjects.resourceName(clicked)))start(clicked,System.currentTimeMillis()+(long)Math.ceil(Double.parseDouble(match.group(1))*3600000d/3.29));}catch(Loading ignored){}
+        if(message==null || ui==null || ui.sess==null || !TimerSettings.automatic()) return;
+        Gob recent=clicked!=null && clicked.glob==ui.sess.glob && Utils.rtime()-clickTime<=60 ? clicked : null;
+        if(recent!=null) {
+            try {observeIdol(recent,message);} catch(Loading ignored) {}
+        }
+        long duration=expansionRemainingMillis(message);
+        if(duration<=0) return;
+        try {
+            Gob claim=null;
+            GameUI gui=ui.root==null ? null : ui.root.getchild(GameUI.class);
+            if(gui!=null) for(Window window:gui.children(Window.class)) {
+                if(!window.visible()) continue;
+                Gob target=claimWindow(window,gui);
+                if(target==null || target.removed || target.glob!=ui.sess.glob) continue;
+                if(claim!=null && claim!=target) return;
+                claim=target;
+            }
+            if(claim==null) claim=recent;
+            if(claim!=null && !claim.removed && claim.rc!=null && isClaim(GameObjects.resourceName(claim)))
+                refresh(EXPANSION_PREFIX, EXPANSION_TITLE, claim, duration);
+        } catch(Loading ignored) {
+        }
     }
     private ClaimTimers() {}
 }

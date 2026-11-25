@@ -183,6 +183,7 @@ public class MapWnd extends Window implements Console.Directory {
         public void draw(GOut g){fitMapView();super.draw(g);}
 
         public void drawframe(GOut g){
+            if(deco==null&&!frameBoosted&&hearthborn.ui.HudFrames.hidden())return;
             hearthborn.ui.JoinedWindowFrame.draw(g,(IBox.Images)box,Coord.z,sz,
                 hearthborn.ui.MagneticWindows.joinedAbove(MapWnd.this),
                 hearthborn.ui.MagneticWindows.joinedBelow(MapWnd.this));
@@ -342,7 +343,7 @@ public class MapWnd extends Window implements Console.Directory {
 	}
 
 	public boolean filter(DisplayMarker mark) {
-	    return(markcfg.filter(mark.m));
+	    return(markcfg.filter(mark.m) || super.filter(mark));
 	}
 
 	public boolean clickmarker(DisplayMarker mark, Location loc, int button, boolean press) {
@@ -563,6 +564,7 @@ public class MapWnd extends Window implements Console.Directory {
 	    if(mrefocus != null) {
 		for(ListMarker lm : markers) {
 		    if(lm.mark == mrefocus) {
+			tool.list.reveal(lm);
 			tool.list.change2(lm);
 			tool.list.display(lm);
 			mrefocus = null;
@@ -761,25 +763,92 @@ public class MapWnd extends Window implements Console.Directory {
 	}
 
 	private String query = "";
-	private List<ListMarker> filteredSource, filteredMarkers;
+	private List<ListMarker> filteredSource, visibleMarkers;
 	private int filteredRevision;
+	private final Set<String> expandedGroups = new HashSet<>();
+	private final Map<ListMarker, MarkerGroup> groupOf = new IdentityHashMap<>();
+
+	private final class MarkerGroup extends ListMarker {
+	    final String name;
+	    final List<ListMarker> members;
+
+	    MarkerGroup(String name, List<ListMarker> members) {
+		super(members.get(0).mark);
+		this.type = members.get(0).type;
+		this.name = name;
+		this.members = members;
+	    }
+	}
 
 	public List<ListMarker> allitems() {
-	    if(query.isEmpty()) return markers;
 	    int revision = MarkerQuality.captionRevision();
-	    if(filteredSource != markers || filteredRevision != revision) {
-		filteredMarkers = new ArrayList<>();
-		for(ListMarker marker : markers)
-		    if(searchmatch(marker, query)) filteredMarkers.add(marker);
+	    if(visibleMarkers == null || filteredSource != markers || filteredRevision != revision) {
+		Map<String, List<ListMarker>> byName = new LinkedHashMap<>();
+		for(ListMarker marker : markers) {
+		    if(query.isEmpty() || searchmatch(marker, query))
+			byName.computeIfAbsent(MarkerQuality.baseCaption(marker.mark), key -> new ArrayList<>()).add(marker);
+		}
+		List<ListMarker> rows = new ArrayList<>();
+		groupOf.clear();
+		for(Map.Entry<String, List<ListMarker>> entry : byName.entrySet()) {
+		    List<ListMarker> members = entry.getValue();
+		    if(members.size() == 1) {
+			rows.add(members.get(0));
+		    } else {
+			MarkerGroup group = new MarkerGroup(entry.getKey(), members);
+			rows.add(group);
+			for(ListMarker member : members) groupOf.put(member, group);
+			if(expandedGroups.contains(group.name)) rows.addAll(members);
+		    }
+		}
+		visibleMarkers = rows;
 		filteredSource = markers;
 		filteredRevision = revision;
 	    }
-	    return filteredMarkers;
+	    return visibleMarkers;
+	}
+
+	private void toggleGroup(MarkerGroup group) {
+	    int row = allitems().indexOf(group);
+	    if(!expandedGroups.add(group.name)) {
+		expandedGroups.remove(group.name);
+		if(group.members.contains(sel)) change2(null);
+	    }
+	    visibleMarkers = null;
+	    stopsearch();
+	    if(row >= 0) display(row);
+	}
+
+	public boolean keydown(KeyDownEvent ev) {
+	    if(ev.code == KeyEvent.VK_UP && (ev.mods & (KeyMatch.C | KeyMatch.M)) == 0) {
+		List<? extends ListMarker> rows = items();
+		int row = rows.indexOf(sel) - 1;
+		// Moving up from the first child must not reselect it via its group header.
+		if(row >= 0 && rows.get(row) == groupOf.get(sel)) {
+		    if(row > 0) {
+			change(rows.get(row - 1));
+			display(sel);
+		    }
+		    return true;
+		}
+	    }
+	    return super.keydown(ev);
+	}
+
+	private void reveal(ListMarker marker) {
+	    if(!query.isEmpty() && !searchmatch(marker, query))
+		tool.markerSearch.settext("");
+	    allitems();
+	    MarkerGroup group = groupOf.get(marker);
+	    if(group != null && expandedGroups.add(group.name)) visibleMarkers = null;
 	}
 
 	public boolean searchmatch(ListMarker marker, String text) {
-	    return hearthborn.map.MapFilterModel.searchText(MarkerQuality.caption(marker.mark))
-		.contains(hearthborn.map.MapFilterModel.searchText(text));
+	    String needle = hearthborn.map.MapFilterModel.searchText(text);
+	    if(marker instanceof MarkerGroup)
+		return ((MarkerGroup)marker).members.stream().anyMatch(member -> searchmatch(member, text));
+	    return hearthborn.map.MapFilterModel.searchText(MarkerQuality.caption(marker.mark)).contains(needle)
+		|| hearthborn.map.MapFilterModel.searchText(marker.mark.nm).contains(needle);
 	}
 
 	private void filterMarkers(String text) {
@@ -799,7 +868,13 @@ public class MapWnd extends Window implements Console.Directory {
 	    }
 
 	    protected BufferedImage img() {throw(new RuntimeException());}
-	    protected String text() {return(MarkerQuality.caption(lm.mark) + hearthborn.map.CaveLevels.markerSuffix(lm.mark.seg));}
+	    protected String text() {
+		if(lm instanceof MarkerGroup) {
+		    MarkerGroup group = (MarkerGroup)lm;
+		    return (expandedGroups.contains(group.name) ? "▾ " : "▸ ") + group.name + " (" + group.members.size() + ")";
+		}
+		return MarkerQuality.caption(lm.mark) + hearthborn.map.CaveLevels.markerSuffix(lm.mark.seg);
+	    }
 	    protected Text.Forge foundry() {return MARKER_NAMES;}
 	    public Object tooltip(Coord c, Widget prev) {return text();}
 	    protected boolean valid(String text) {return(Utils.eq(text, text()));}
@@ -816,6 +891,10 @@ public class MapWnd extends Window implements Console.Directory {
 	    }
 
 	    public boolean mousedown(MouseDownEvent ev) {
+		if(lm instanceof MarkerGroup) {
+		    if(ev.b == 1) toggleGroup((MarkerGroup)lm);
+		    return true;
+		}
 		if(ev.c.x < sz.y) {
 		    toggletype(lm.type);
 		    return(true);
@@ -826,7 +905,8 @@ public class MapWnd extends Window implements Console.Directory {
 
 	public Widget makeitem(ListMarker lm, int idx, Coord sz) {
 	    Widget ret = new ItemWidget<ListMarker>(this, sz, lm);
-	    ret.add(new Item(sz, lm), Coord.z);
+	    int indent = groupOf.containsKey(lm) ? UI.scale(12) : 0;
+	    ret.add(new Item(sz.sub(indent, 0), lm), Coord.of(indent, 0));
 	    return(ret);
 	}
 
@@ -837,6 +917,8 @@ public class MapWnd extends Window implements Console.Directory {
 	}
 
 	public void change(ListMarker lm) {
+	    if(lm instanceof MarkerGroup) lm = ((MarkerGroup)lm).members.get(0);
+	    if(lm != null) reveal(lm);
 	    change2(lm);
 	    if(lm != null)
 		view.center(new SpecLocator(lm.mark.seg, lm.mark.tc));
@@ -863,8 +945,12 @@ public class MapWnd extends Window implements Console.Directory {
 		    tool.namesel = tool.add(new TextEntry(UI.scale(200), "") {
 			    {dshow = true;}
 			    public void activate(String text) {
-				mark.nm = text;
-				view.file.update(mark);
+				if(!eq(mark.nm, text)) {
+				    mark.nm = text;
+				    if(mark instanceof SMarker)
+					((SMarker)mark).customName = true;
+				    view.file.update(mark);
+				}
 				commit();
 				change2(null);
 			    }
@@ -989,25 +1075,17 @@ public class MapWnd extends Window implements Console.Directory {
 	return true;
     }
 
-    /** Remember the place a stretch started from. Later stretches keep that same place. */
-    public void cornerPressed() {
-	if(restSz != null) return;
-	Coord saved = Utils.getprefc("hearthborn/map/corner-sz", null);
-	Coord savedAt = Utils.getprefc("hearthborn/map/corner-c", null);
-	if(saved != null && savedAt != null) {restSz = saved; restC = savedAt; return;}
-	restSz = csz();
-	restC = new Coord(c);
-	Utils.setprefc("hearthborn/map/corner-sz", restSz);
-	Utils.setprefc("hearthborn/map/corner-c", restC);
-    }
-
     public void cornerDragged() {cornerClickable = false;}
 
-    public void cornerReleased(Coord before) {
-	Coord now = csz();
-	boolean grew = now.x > before.x + 1 || now.y > before.y + 1;
-	if(!grew && restSz != null && now.x <= restSz.x + 1 && now.y <= restSz.y + 1)
-	    clearCorner();
+    /** Save the state before the latest completed resize, never before a click without resizing. */
+    public void cornerReleased(Coord before, Coord origin) {
+	if(csz().equals(before))
+	    return;
+	cornerDragged();
+	restSz = new Coord(before);
+	restC = new Coord(origin);
+	Utils.setprefc("hearthborn/map/corner-sz", restSz);
+	Utils.setprefc("hearthborn/map/corner-c", restC);
     }
 
     private void clearCorner() {
@@ -1220,11 +1298,12 @@ public class MapWnd extends Window implements Console.Directory {
 				view.file.add(mark);
 			    } else {
 				mark = prev;
-				if(!Arrays.equals(prev.data, data) || (prev.seg != info.seg) || !eq(prev.tc, sc) || !eq(prev.nm, rnm)) {
+				String name = prev.customName ? prev.nm : rnm;
+				if(!Arrays.equals(prev.data, data) || (prev.seg != info.seg) || !eq(prev.tc, sc) || !eq(prev.nm, name)) {
 				    prev.data = data;
 				    prev.seg = info.seg;
 				    prev.tc = sc;
-				    prev.nm = rnm;
+				    prev.nm = name;
 				    view.file.update(prev);
 				}
 			    }

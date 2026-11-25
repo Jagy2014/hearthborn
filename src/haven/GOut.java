@@ -323,13 +323,23 @@ public class GOut {
     }
 
     public void rect2(Coord ul, Coord br) {
-	ul = ul.add(tx); br = br.add(tx);
+	Coord first = ul.add(tx), last = br.add(tx);
+	if(!first.isect2(this.ul, this.br) || !last.isect2(this.ul, this.br)) {
+	    // Clip each side, not the rectangle's dimensions: a clipped edge must not draw a new border.
+	    frect2(ul, Coord.of(br.x + 1, ul.y + 1));
+	    if(br.y > ul.y)
+		frect2(Coord.of(ul.x, br.y), br.add(1, 1));
+	    frect2(ul.add(0, 1), Coord.of(ul.x + 1, br.y));
+	    if(br.x > ul.x)
+		frect2(Coord.of(br.x, ul.y + 1), Coord.of(br.x + 1, br.y));
+	    return;
+	}
 	float h = 0.5f;
-	float[] data = {ul.x + h, ul.y + h,
-			br.x + h, ul.y + h,
-			br.x + h, br.y + h,
-			ul.x + h, br.y + h,
-			ul.x + h, ul.y + h};
+	float[] data = {first.x + h, first.y + h,
+			last.x + h, first.y + h,
+			last.x + h, last.y + h,
+			first.x + h, last.y + h,
+			first.x + h, first.y + h};
 	drawp(Model.Mode.LINE_STRIP, data);
     }
 

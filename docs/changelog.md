@@ -2,6 +2,65 @@
 
 All notable changes to **Hearthborn Client** are listed here, newest first.
 
+## v1.3.0
+
+### Map
+
+- **Grouped markers:** Markers with the same name start collapsed in the full map and the separate map window. Click the group to see individual markers. Search still finds markers by name, number or quality.
+- **Russian map labels:** Fixed English names on saved natural markers, from burrows and reefs to springs and mineral deposits. Manual marker names are unchanged.
+- **Map display settings:** Removed duplicate herb icons while keeping visibility and sound settings. Wetland water and land now have distinct names, as do other different objects that shared a Russian label.
+- **Credo gathering objectives:** Click the item icon next to a supported objective, such as gathering Waybroad, and choose **Show on map**. This highlights biomes where the item can be found.
+- **Dungeon entrances:** Wolf and bat lairs and other supported entrances have map icon settings and stay marked after you leave. Ant dungeons are separate from ordinary anthills. Rock Crystal can be enabled before you discover it.
+- **Icon visibility:** Individual checkboxes now hide saved markers as well. Natural resources and dungeon entrances are enabled by default without overriding existing choices. Marker names can be hidden automatically when zoomed out. Hover over an icon in map settings to see its English name.
+- **Road markers:** Stone and wooden road signs and posts remain visible on the map once discovered. Each type has its own visibility checkbox, and names appear only on hover.
+- Updated map icons for mine entrances, ladders up, gems, squirrel caches, and hearth fires. The mine level is still shown on the map and in the marker list, but no longer appears in a circle next to icons.
+- **Map indoors:** General settings now lets you choose **Regular map**, **Room plan**, or **World map**. World map keeps the outdoor view and marks where you entered with a gold dot. On the regular map, updating the current room no longer erases previously saved tiles for neighboring houses and cellars.
+- Round map buttons have no backing strip, with or without gold frames. Double-click a map resize corner to restore the size before the last resize rather than the size at login.
+- **Village plans:** A new plan no longer inherits the name of another village you belong to. The village idol is labeled separately from the claim.
+
+### Notifications
+
+- The Lady’s Mantle indicator disappears silently when the gathering window ends. The start alert is unchanged.
+- Battering rams and wrecking balls alert once per session. Entering and leaving a house or mine does not reset the alert: later sightings show only the arrow and map cross. To suppress repeat alerts after logging back in too, turn on **Do not repeat ram alerts after relogging** in General settings.
+- Auto-drink now recognizes spring water in flasks and other supported containers.
+
+### Farming
+
+- **Field card:** Running field processing from a saved field opens its own compact card with crop readiness, recent harvest, and controls. The full list remains available with Shift or the All fields button.
+- Interrupted field work can be resumed from the field card.
+- Milk collection now reports total liters and volume-weighted average quality at the end of each pen. The character also looks for a path around obstacles before trying to lift the barrel.
+
+### Production and timers
+
+- Server wait times create timers for village idol readiness and personal claim expansion.
+- Resource inspection shows real-world time alongside in-game refill time and uses the server's more precise estimate when available. The Timers window opens correctly after switching characters.
+- An open gridiron takes priority over carried bags when transferring matching meat, including from stacks. Gridirons have numbered cooking timers and a completion notification.
+- Added a **Salt all** button next to **Eat** on tables. It can use salt from your backpack or an open barrel nearby.
+- The cheese chart now has a translucent background in the dark theme.
+
+### Combat
+
+- **Sword auto-combat:** The existing auto-combat toggle recognizes your sword even if you equip it mid-fight. With the required moves in the active deck, it builds initiative and attacks with the sword. If a move is missing, the client tells you once. It pauses only after three consecutive moves go unconfirmed, not after the first one.
+- **Target selection before combat:** Ctrl+K marks the wild animal under the cursor, Ctrl+J and Ctrl+Shift+J cycle to the next and previous animal, and Ctrl+L attacks the marked target. Selecting a target does not start combat, and livestock are skipped. These shortcuts can be reassigned in **Keybindings → Additional**. You can also shoot the marked target or use a separate action to attack the nearest wild animal without marking it first.
+- **Draw bow / Draw sword:** Two occupied hands are cleared safely, using one cell per item in the belt and then the backpack when needed. Switching back restores the sword and shield to their previous hands if they are still carried.
+- Combat pursuit buttons fit within the panel, and Tab switches combat targets again.
+- Added **Keep interface visible in combat** to Combat settings. Alt+Space can still toggle the compact interface manually.
+
+### Interface
+
+- The language selector is now at the top of Interface display settings.
+- **Docked windows:** Resize the map, chat, and quest tracker as a single stack by dragging the bottom corner of the lowest window. Docked chat and quest windows no longer have separate title bars, and their close buttons move into the content row. Both windows use a translucent background in the dark theme.
+- Interface display settings can hide the gold frames around the portrait, speed controls, minimap, chat, and quest tracker. The frame around the heart stays visible.
+- The Equipment, Character Sheet, and separate Study windows now have translucent backgrounds in the dark theme.
+- Sand now falls in the hourglass while an action is in progress.
+- The “…” buttons next to the additional toolbars take you directly to their keyboard shortcuts.
+- Hotkey and equipment toolbars now always use the compact style without a backing plate. The Clean toolbars checkbox has been removed.
+- Crafting controls take up less space, and picking a recipe from crafting history keeps the window in place. Detailed action and inventory tooltips wait one second.
+- Added an option to keep the study widget visible when every slot is occupied. The right pane of the character sheet now grows with the window.
+- Fixed additional Russian credo objectives, quest icons, experience descriptions, item names, wounds, and server messages. Original objective names are available for looking them up. Trade invitations and additional variants of party and kinship invitations now have Russian translations.
+
+---
+
 ## v1.2.1
 
 ### Map and quests

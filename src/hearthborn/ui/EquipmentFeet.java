@@ -22,7 +22,6 @@ import java.awt.Color;
  * @author Jagy2014
  */
 public final class EquipmentFeet {
-    private static final Text.Foundry FONT=new Text.Foundry(Text.sans,12).aa(true);
     private final Equipory equipment;
     private double elapsed;
     private String shown="";
@@ -73,7 +72,7 @@ public final class EquipmentFeet {
         if(text.isEmpty()){lines=new Tex[0];return;}
         String[] rows=text.split("\n");
         lines=new Tex[rows.length];
-        for(int i=0;i<rows.length;i++)lines[i]=new TexI(hearthborn.QualityOverlay.styled(FONT.render(rows[i],Color.WHITE).img));
+        for(int i=0;i<rows.length;i++)lines[i]=new TexI(hearthborn.QualityOverlay.styled(Text.std.render(rows[i],Color.WHITE).img));
     }
     public void paint(GOut g){
         if(lines.length==0)return;

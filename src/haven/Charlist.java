@@ -147,6 +147,7 @@ public class Charlist extends Widget {
 
     public void wdgmsg(String message,Object... args){
         if(message.equals("play")&&args.length>0)synchronized(chars){
+            hearthborn.ui.NearbySiegeCheck.startLogin(ui.sess);
             for(Char character:chars)if(character.name.equals(args[0])){hearthborn.ui.WorldIdentity.select(ui.sess,character.disc);break;}
             ui.root.enteringWorld();
         }

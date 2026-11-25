@@ -46,7 +46,7 @@ public final class ActionStrip extends Widget {
     public static void onRight(boolean value){menuOnRight=value;Utils.setprefb("hearthborn/toolbar/actions-right",value);}
     private static final String[] NAMES={
         "Adventure","Build","Craft","Emotions","Government","Help","Rite and Magic",
-        "Xtensions","History","Favorites","Attack","Push!","Shoot","Search actions"
+        "Xtensions","History","Favorites","Attack","Push!","Shoot","Game Journal","Search actions"
     };
     private static final String[][] PATHS={
         {"/act/adv","/act/adventure"},
@@ -62,6 +62,7 @@ public final class ActionStrip extends Widget {
         {"/act/atk","/act/attack"},
         {"/act/push"},
         {"/act/shoot"},
+        {"/game-journal"},
         {"/action-search"}
     };
     /** Used only when the exact name is absent. Recent actions stands in for History. */
@@ -76,6 +77,7 @@ public final class ActionStrip extends Widget {
         {},
         {"recent actions"},
         {"favourites"},
+        {},
         {},
         {},
         {},

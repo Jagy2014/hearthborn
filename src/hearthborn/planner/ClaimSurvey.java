@@ -80,6 +80,7 @@ public final class ClaimSurvey {
     static final class Plan implements Serializable {
         private static final long serialVersionUID=1;
         String id,name,tag;long grid;int x,y;
+        boolean manualName;
         boolean interior; // Legacy room records are excluded when loading saved claims.
         java.util.List<GridRecord> snapshot;
         java.util.List<NamedArea> areas=new ArrayList<>();
@@ -120,6 +121,7 @@ public final class ClaimSurvey {
     private static final Map<Long,GridRecord> records=new HashMap<>();
     private static String region;
     private static int generation;
+    private static int villageNamesRevision;
     static String region(){return region;}
     static int generation(){load();return generation;}
     private static boolean loaded;private static double next,bordersNext;private static Glob context;
@@ -225,7 +227,10 @@ public final class ClaimSurvey {
             ObjectRecord object=new ObjectRecord();object.resource=resource;object.type=type;object.footprint=ClaimPlan.footprint(gob);object.name=ObjectNames.name(gob);if(type.equals("Rack"))object.number=ObjectNames.automaticNumber(gob);hearthborn.quality.RosterStore.Rec quality=hearthborn.quality.RosterStore.trackedGob(gob);if(quality!=null)object.quality=quality.q;object.icon=ContainerContents.rememberedIcon(gob);object.x=gob.rc.x-grid.ul.x*MCache.tilesz.x;object.y=gob.rc.y-grid.ul.y*MCache.tilesz.y;object.seen=System.currentTimeMillis();
             if(type.equals("Rack"))changed|=reconcileRack(record,object);
             String key=object.key();ObjectRecord old=record.objects.get(key);if(object.quality<=0&&old!=null)object.quality=old.quality;
-            if(old==null||Double.compare(old.quality,object.quality)!=0||!Objects.equals(old.number,object.number)||!Objects.equals(old.type,object.type)||!Objects.equals(old.name,object.name)||!Objects.equals(old.icon,object.icon)||!Arrays.equals(old.footprint,object.footprint)||object.seen-old.seen>60000){record.objects.put(key,object);changed=true;}
+            if(old==null||Double.compare(old.quality,object.quality)!=0||!Objects.equals(old.number,object.number)||!Objects.equals(old.type,object.type)||!Objects.equals(old.name,object.name)||!Objects.equals(old.icon,object.icon)||!Arrays.equals(old.footprint,object.footprint)||object.seen-old.seen>60000){
+                if(villageIdol(resource)&&(old==null||!Objects.equals(old.name,object.name))) villageNamesRevision++;
+                record.objects.put(key,object);changed=true;
+            }
         }catch(Loading ignored){}}
         // Absence from the object cache is not evidence of removal: objects unload or are still loading.
         for(Map.Entry<Long,byte[]> entry:ground.entrySet()){GridRecord record=records.get(entry.getKey());if(!Arrays.equals(record.terrain,entry.getValue())){record.terrain=entry.getValue();changed=true;}}
@@ -294,7 +299,10 @@ public final class ClaimSurvey {
         load();boolean changed=false;
         for(GridRecord grid:records.values())for(ObjectRecord object:grid.objects.values()){
             Coord local=new Coord2d(object.x,object.y).floor(OCache.posres);
-            if(owner.equals(object.resource+":"+grid.id+":"+local.x+":"+local.y)&&!Objects.equals(name,object.name)){object.name=name;changed=true;}
+            if(owner.equals(object.resource+":"+grid.id+":"+local.x+":"+local.y)&&!Objects.equals(name,object.name)){
+                if(villageIdol(object.resource)) villageNamesRevision++;
+                object.name=name;changed=true;
+            }
         }
         if(changed){generation++;save();}
     }
@@ -309,6 +317,33 @@ public final class ClaimSurvey {
     static String defaultPlanName(String tag,int number){
         return hearthborn.L10n.tr("vlg".equals(tag)?"Village claim":"Personal claim")+" · "+number;
     }
+
+    static boolean villageIdol(String resource) {
+        return resource != null && resource.endsWith("/villageidol");
+    }
+
+    private static final java.util.regex.Pattern UNNAMED_VILLAGE = java.util.regex.Pattern.compile(
+        "^(?:Village [Cc]laim|Владения деревни)\\s*(?:·\\s*)?[0-9]+$");
+
+    /** Take only the explicit label of the single idol inside this connected claim. */
+    static boolean adoptVillageName(Plan plan, Collection<GridRecord> grids, Set<Coord> territory) {
+        if(!"vlg".equals(plan.tag) || plan.manualName ||
+           (plan.name != null && !UNNAMED_VILLAGE.matcher(plan.name).matches())) return false;
+        ObjectRecord ownIdol = null;
+        for(GridRecord grid : grids) {
+            for(ObjectRecord object : grid.objects.values()) {
+                if(!villageIdol(object.resource)) continue;
+                Coord tile = new Coord2d(object.x, object.y).floor(MCache.tilesz).add(grid.x, grid.y);
+                if(!territory.contains(tile)) continue;
+                if(ownIdol != null) return false;
+                ownIdol = object;
+            }
+        }
+        if(ownIdol == null || ownIdol.name == null || ownIdol.name.trim().isEmpty()) return false;
+        plan.name = ownIdol.name;
+        return true;
+    }
+
     private static void rememberClaim(GameUI gui,String tag){
         Gob player=gui.map.player();if(player==null)return;Coord here=player.rc.floor(MCache.tilesz);
         Collection<GridRecord> grids=records();boolean claimed=false;long fingerprint=1;
@@ -318,15 +353,20 @@ public final class ClaimSurvey {
             fingerprint+=Objects.hash(grid.id,grid.x,grid.y,mask);
         }
         if(!claimed)return;
+        if("vlg".equals(tag)) fingerprint=31*fingerprint+villageNamesRevision;
         String memoKey=region+":"+tag;ClaimMemo memo=claimMemos.get(memoKey);
         if(memo!=null&&memo.fingerprint==fingerprint&&memo.tiles.contains(here))for(Plan plan:plans())if(plan.id.equals(memo.plan))return;
         Set<Coord> tiles=new HashSet<>();
         for(GridRecord grid:grids){BitSet mask=tag.equals("vlg")?grid.village:grid.personal;for(int cell=mask.nextSetBit(0);cell>=0;cell=mask.nextSetBit(cell+1))tiles.add(Coord.of(grid.x+cell%100,grid.y+cell/100));}
         if(!tiles.contains(here))return;Set<Coord> selected=ClaimPlan.component(tiles,here);
         java.util.List<Plan> all=plans();
-        for(Plan plan:all)if(plan.snapshot==null&&tag.equals(plan.tag))for(GridRecord grid:grids)if(grid.id==plan.grid&&selected.contains(Coord.of(grid.x+plan.x,grid.y+plan.y))){claimMemos.put(memoKey,new ClaimMemo(fingerprint,selected,plan.id));return;}
+        for(Plan plan:all)if(plan.snapshot==null&&tag.equals(plan.tag))for(GridRecord grid:grids)if(grid.id==plan.grid&&selected.contains(Coord.of(grid.x+plan.x,grid.y+plan.y))){
+            if(adoptVillageName(plan,grids,selected)) savePlans(all);
+            claimMemos.put(memoKey,new ClaimMemo(fingerprint,selected,plan.id));return;
+        }
         MCache.Grid grid=player.glob.map.getgridt(here);Plan plan=new Plan();plan.id=UUID.randomUUID().toString();plan.tag=tag;plan.grid=grid.id;plan.x=here.x-grid.ul.x;plan.y=here.y-grid.ul.y;
-        plan.name=defaultPlanName(tag,all.size()+1);all.add(plan);savePlans(all);claimMemos.put(memoKey,new ClaimMemo(fingerprint,selected,plan.id));
+        plan.name=defaultPlanName(tag,all.size()+1);adoptVillageName(plan,grids,selected);
+        all.add(plan);savePlans(all);claimMemos.put(memoKey,new ClaimMemo(fingerprint,selected,plan.id));
     }
     static final class EntryPoint {
         String region;long grid;double x,y,until;

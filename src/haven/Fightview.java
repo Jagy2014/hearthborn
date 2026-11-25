@@ -38,6 +38,9 @@ public class Fightview extends Widget {
     public static final Coord cavac = new Coord(width - Avaview.dasz.x - UI.scale(10), UI.scale(10));
     public static final Coord cgivec = new Coord(cavac.x - UI.scale(35), cavac.y);
     public static final Coord cpursc = new Coord(cavac.x - UI.scale(75), cgivec.y + UI.scale(35));
+    private static final String PURSUE = "Pursue target";
+    private static final int PURSUE_MIN = UI.scale(70);
+    private static final int ROW_GAP = UI.scale(5);
     public final LinkedList<Relation> lsrel = new LinkedList<Relation>();
     public final Bufflist buffs = add(new Bufflist()); {buffs.hide();}
     public final Map<Long, Widget> obinfo = new HashMap<>();
@@ -50,6 +53,14 @@ public class Fightview extends Widget {
     public Mainrel curdisp;
     private List<Relation> nonmain = Collections.emptyList();
 
+    private static int relationWidth() {
+	int button = Math.max(PURSUE_MIN, Button.minimumWidth(PURSUE));
+	return Math.max(bg.sz().x, button + 2 * ROW_GAP);
+    }
+
+    private static int relationHeight() {
+	return bg.sz().y + Button.hl + ROW_GAP;
+    }
     public class Relation {
         public final long gobid;
 	public final Bufflist buffs = add(new Bufflist()); {buffs.hide();}
@@ -86,16 +97,20 @@ public class Fightview extends Widget {
 	public final Button purs;
 
 	public Relbox(Relation rel) {
-	    super(bg.sz());
+	    this(rel, relationWidth());
+	}
+
+	private Relbox(Relation rel, int width) {
+	    super(Coord.of(width, relationHeight()));
 	    this.rel = rel;
-	    Widget avaf = adda(Frame.with(ava = new Avaview(avasz, rel.gobid, "avacam"), true), UI.scale(25), sz.y / 2, 0.0, 0.5);
+	    adda(Frame.with(ava = new Avaview(avasz, rel.gobid, "avacam"), true), width / 2, bg.sz().y / 2, 0.5, 0.5);
 	    ava.canactivate = true;
 	    add(give = new GiveButton(0, UI.scale(15, 15)), UI.scale(5, 4));
-	    adda(purs = new Button(UI.scale(70), "Pursue target"), avaf.c.x + avaf.sz.x + UI.scale(5), avaf.c.y + (avaf.sz.y / 2), 0.0, 0.5);
+	    adda(purs = new Button(PURSUE_MIN, PURSUE, true), width / 2, bg.sz().y, 0.5, 0.0);
 	}
 
 	public void draw(GOut g) {
-	    g.image(bg, Coord.z);
+	    g.image(bg, Coord.z, sz);
 	    give.state = rel.gst;
 	    super.draw(g);
 	}
@@ -115,7 +130,7 @@ public class Fightview extends Widget {
 
     public class Rellist extends SListBox<Relation, Relbox> {
 	public Rellist(int h) {
-	    super(Coord.of(bg.sz().x, ((bg.sz().y + ymarg) * h) - ymarg), bg.sz().y, ymarg);
+	    super(Coord.of(relationWidth() + Scrollbar.width, ((relationHeight() + ymarg) * h) - ymarg), relationHeight(), ymarg);
 	}
 
 	protected List<Relation> items() {
@@ -123,7 +138,7 @@ public class Fightview extends Widget {
 	}
 
 	protected Relbox makeitem(Relation rel, int idx, Coord sz) {
-	    return(new Relbox(rel));
+	    return(new Relbox(rel, sz.x));
 	}
 
 	protected void drawslot(GOut g, Relation item, int idx, Area area) {
@@ -151,7 +166,7 @@ public class Fightview extends Widget {
 	    Widget avaf = add(Frame.with(ava = new Avaview(Avaview.dasz, rel.gobid, "avacam"), false));
 	    ava.canactivate = true;
 	    adda(give = new GiveButton(0), avaf.pos("ul").subs(5, 0), 1.0, 0.0);
-	    adda(purs = new Button(UI.scale(70), "Pursue target"), give.pos("br").adds(0, 5), 1.0, 0.0);
+	    adda(purs = new Button(PURSUE_MIN, PURSUE, true), avaf.c.x + avaf.sz.x / 2, avaf.c.y + avaf.sz.y + ROW_GAP, 0.5, 0.0);
 	    lpack();
 	}
 
@@ -251,13 +266,16 @@ public class Fightview extends Widget {
     }
 
     private void layout() {
-	Coord pos = Coord.of(sz.x - UI.scale(10), UI.scale(10));
+	int padding = UI.scale(10);
+	int contentWidth = Math.max(lsdisp.sz.x, curdisp == null ? 0 : curdisp.sz.x);
+	int panelWidth = Math.max(width, contentWidth + padding);
+	Coord pos = Coord.of(panelWidth - padding, padding);
 	if(curdisp != null) {
 	    curdisp.move(pos.sub(curdisp.sz.x, 0));
 	    pos = curdisp.pos("br");
 	}
 	lsdisp.move(pos.add(-lsdisp.sz.x, UI.scale(10)));
-	resize(sz.x, lsdisp.c.y + lsdisp.sz.y);
+	resize(panelWidth, lsdisp.c.y + lsdisp.sz.y);
     }
 
     private void updrel() {

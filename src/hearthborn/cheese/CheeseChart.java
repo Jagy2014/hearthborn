@@ -12,6 +12,8 @@
 
 package hearthborn.cheese;
 import hearthborn.L10n;
+import hearthborn.ui.SmallWindowDeco;
+import hearthborn.ui.UiTheme;
 
 import haven.*;
 
@@ -32,7 +34,6 @@ public class CheeseChart extends Window {
     private static final int STAGE_H = UI.scale(22);
     private static final Coord MAX_SZ = UI.scale(960, 620);
     private static final int NAME_MAX = UI.scale(128);
-    private static final Color BG = Color.BLACK;
     private static final Color PLUS2 = new Color(230, 190, 70);
     private static final Color LINE = Color.WHITE;
     private final GameUI gui;
@@ -65,7 +66,7 @@ public class CheeseChart extends Window {
 
     @Override
     protected Deco makedeco() {
-	return(new hearthborn.ui.SmallWindowDeco(this.large).dragsize(true));
+	return(new SmallWindowDeco(this.large).backing(UiTheme.DARK_TOOLTIP_BACKGROUND).dragsize(true));
     }
 
     protected Coord minContentSize() {
@@ -608,13 +609,6 @@ public class CheeseChart extends Window {
 	    view.sx = hsb.val;
 	}
 
-	public void draw(GOut g) {
-	    g.chcolor(BG);
-	    g.frect(Coord.z, sz);
-	    g.chcolor();
-	    super.draw(g);
-	}
-
 	public boolean mousewheel(MouseWheelEvent ev) {
 	    if(ui.modshift)
 		hsb.ch((int)Math.round(ev.s * UI.scale(40)));
@@ -772,9 +766,6 @@ public class CheeseChart extends Window {
 	}
 
 	public void draw(GOut g) {
-	    g.chcolor(BG);
-	    g.frect(Coord.z, sz);
-	    g.chcolor();
 	    if(nodes.isEmpty())
 		return;
 	    drawStageHeads(g);

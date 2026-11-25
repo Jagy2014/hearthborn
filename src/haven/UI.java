@@ -931,12 +931,20 @@ public class UI {
             KeyMatch.traceCapture(key);dispatch(root,key);return;
         }
         GameUI searchGame=root.getchild(GameUI.class);
-        if(key.code==java.awt.event.KeyEvent.VK_ESCAPE)hearthborn.combat.BowCombat.manual(searchGame);
+        if(key.code==java.awt.event.KeyEvent.VK_ESCAPE){
+            boolean cancelledAttack=hearthborn.combat.WildAttack.cancel(searchGame);
+            hearthborn.combat.BowCombat.manual(searchGame);
+            if(hearthborn.combat.TargetPreview.clear(searchGame)||cancelledAttack){
+                hearthborn.scripts.ShortcutRunner.cancel(searchGame);
+                return;
+            }
+        }
         if(key.code==java.awt.event.KeyEvent.VK_ESCAPE && hearthborn.storage.ContainerContents.cancel(searchGame))return;
         if(searchGame!=null&&hearthborn.ui.CombatLayout.KEY.key().match(key)){
             if(compactKeyHeld!=key.code){compactKeyHeld=key.code;searchGame.compactLayout.toggle();}
             spaceHeld=false;return;
         }
+        if(searchGame!=null && Fightsess.cycleTarget(searchGame.fv, key)) return;
         if(searchGame!=null && GameUI.matchesActionSearch(key)
                 && grabs.stream().noneMatch(grab->grab.owner instanceof KeyMatch.Capture)) {
             searchGame.toggleActionSearch();return;

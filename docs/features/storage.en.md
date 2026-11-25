@@ -77,7 +77,7 @@ Hearthborn adds shortcuts for moving matching items while keeping different mate
 | Deposit only the held subtype into a stockpile | **Shift + right-click** an existing stockpile with an item held | Transfers only the subtype held on the cursor. |
 | Deposit all accepted items into a stockpile | **Shift + Ctrl + right-click** an existing stockpile with an item held | Transfers all accepted items, including other subtypes. |
 | Transfer matching items into an open container | **Shift + Ctrl + click** an item (default shortcut) | Transfers items with the same name from the same inventory or bag. **Left-click** starts with the highest quality; **right-click** starts with the lowest. |
-| Fill a feeding trough | **Shift + left-click** the trough (**Shift + Ctrl** acts the same) | The server takes the held item and all suitable seeds from your inventory in one action. |
+| Fill a feeding trough | Hold seeds on the cursor and **Shift + right-click** the trough (**Shift + Ctrl** acts the same) | Deposits the held seeds and matching seeds from your inventory. |
 
 ### Transferring items from stacks
 
@@ -89,7 +89,7 @@ If the destination **cannot accept a stack as a single object**, Hearthborn auto
 
 A stockpile may accept several subtypes, such as different stones or animal entrails. With an item held on the cursor, **Shift + right-click on an existing stockpile** requests only the held subtype; **Shift + Ctrl + right-click** requests all accepted subtypes. Hide piles are the exception described below. To create a new pile, right-click suitable ground with the item, then confirm its placement with **Shift + left-click** for only that subtype, or **Shift + Ctrl + left-click** for all accepted subtypes. The modifier at the placement click selects the filling mode. Planting and placing other objects keep their usual gestures.
 
-**Feeding troughs:** **Shift + click** and **Shift + Ctrl + click** act the same: the item on the cursor and the matching seeds in your inventory go in, but not the other items the trough would accept.
+**Feeding troughs:** With seeds on the cursor, **Shift + right-click** and **Shift + Ctrl + right-click** act the same: the held seeds and matching seeds in your inventory go in, but not the other items the trough would accept.
 
 **Hide piles are the exception:** **Shift + right-click** deposits all accepted hides, so different species and raw/dried hides can share a pile. **Shift + Ctrl + right-click** keeps the held subtype. For a new hide pile, use the corresponding modifiers when confirming placement with left-click.
 
@@ -131,9 +131,9 @@ The inventory header has no drop button. Poor-quality mined items are dropped by
 
 ### Other production interactions
 
-**Tar kiln:** Right-click the kiln and choose **Collect coal** to collect all finished coal in one action. If it is the only menu option, **Ctrl + right-click** can select it immediately when **“Ctrl selects a single menu option”** is enabled in the menu color settings.
+**Tar kiln:** With an empty cursor, **Shift + right-click** the kiln to collect the finished coal into your backpack in one batch, as space allows. **Right-click → Collect coal** also collects the finished coal, but one piece at a time. Neither action collects tar.
 
-**Grain barrel:** **Shift + left-click** transfers only the clicked grain stack. **Shift + Ctrl + left-click** transfers all grain stacks with the same name, provided the barrel is open and the server accepts the transfer. For a reliable single-stack transfer, pick up the stack onto the cursor and **right-click the barrel**: only the held stack is deposited.
+**Grain barrel:** To fill an empty barrel, pick up one grain stack and **Shift + right-click the barrel itself**. Hearthborn deposits the held stack first, then transfers matching stacks from the main inventory as the barrel accepts them. A plain **right-click with a stack on the cursor** deposits only that stack. The open-window **Shift + Ctrl + left-click** shortcut is a separate transfer and may not work on an empty barrel.
 
 [Back to features](../../README.md#features)
 

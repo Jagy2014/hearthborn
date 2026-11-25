@@ -119,13 +119,17 @@ and a select icon, the "Ask about seed quality" check box, one gray hint line an
 A new field takes the first free number; the pencil in the editor title changes it. While a
 map selection runs the editor is hidden and the list shows a single status line with a small
 ✕; Esc cancels too.
-Normally, activating **Process field** while standing inside a configured saved
-field starts it immediately. The **Crop fields** window opens with that field's row
-highlighted, showing its crop, progress and **Pause / Continue** and **Stop**; there is no
-separate run window. The row stays bound while the character visits storage. Reopening the
-action raises the window without restarting work; closing it lets work continue.
-**Shift-click** on the menu action opens the list without starting work. Outside saved fields, or when settings are incomplete, management
-opens instead. Overlapping fields require an explicit choice from the list.
+Activating **Process field** while standing inside a configured saved field
+starts it immediately and opens that field’s compact card. The card shows the
+crop, readiness grid and progress, with **Pause / Continue** and **Stop**.
+It stays on the same field when the character visits storage. Using the command
+again raises the card without restarting work; closing it lets work continue.
+
+If work was interrupted, use **Continue** to resume the saved phase and mode. When there is no interrupted cycle, use **Harvest only** or **Sow**. Sowing fills empty tiles without
+harvesting plants already there. **All fields** or **Shift-click** on the menu
+action opens the full list without starting work. Outside a saved field the
+list opens; an unconfigured field opens its editor. For overlapping fields,
+choose one explicitly from the list.
 An unfinished cycle keeps its progress and Harvest only mode; a completed field
 starts a fresh Process cycle on the next launch.
 If map data is still arriving after a selection, keep the window open: the client

@@ -31,25 +31,30 @@ public final class MapFilterModel {
 
     public final class Entry {
         public final GobIcon.Setting setting;
-        public final String resource,name,group;
+        public final String resource,name,englishName,group;
         public final hearthborn.world.PlayerRelations.Kind playerKind;
         private final String hay;
 
         private Entry(GobIcon.Setting setting){
             this.setting=setting;playerKind=null;resource=setting.res.name;
-            String original=setting.icon.name();
-            name=L10n.text("tooltip",original);group=IconCategories.classify(resource).id;
-            Resource.Tooltip tooltip=setting.icon.res.layer(Resource.tooltip);
-            hay=searchText(name+" "+original+" "+(tooltip==null?"":tooltip.original)+" "+resource);
+            String iconName=setting.icon.name();
+            // The wooden plow's game tooltip incorrectly says "Metal Plow".
+            String canonicalName=resource.equals("paginae/bld/woodenplow")?"Wooden Plow":RadarIcons.roadSignEnglishName(resource);
+            englishName=canonicalName==null?englishIconName(setting.icon.res,iconName):canonicalName;
+            name=canonicalName==null?L10n.text("tooltip",iconName):L10n.resource("tooltip",resource,canonicalName);
+            group=IconCategories.classify(resource).id;
+            hay=searchText(name+" "+(canonicalName==null?iconName+" ":"")+englishName+" "+resource);
         }
         private Entry(String resource,String group){
             setting=null;playerKind=null;this.resource=resource;this.group=group;
             name=TerrainHighlight.name(resource);
-            hay=searchText(name+" "+TerrainHighlight.englishName(resource)+" "+resource);
+            englishName=TerrainHighlight.englishName(resource);
+            hay=searchText(name+" "+englishName+" "+resource);
         }
         private Entry(hearthborn.world.PlayerRelations.Kind kind){
             setting=null;playerKind=kind;resource="hearthborn/player/"+kind.name().toLowerCase(Locale.ROOT);group="players";
-            name=L10n.tr(kind.title);hay=searchText(name+" "+kind.title+" "+resource);
+            englishName=kind.title;
+            name=L10n.tr(englishName);hay=searchText(name+" "+englishName+" "+resource);
         }
         public Type type(){return setting==null&&playerKind==null?Type.TILES:Type.OBJECTS;}
         public java.awt.image.BufferedImage image(){return playerKind!=null?PlayerMarkers.image(playerKind):setting==null?null:setting.icon.image();}
@@ -66,6 +71,15 @@ public final class MapFilterModel {
         public boolean soundChecked(){return setting!=null&&(setting.notify||questSearch());}
         public boolean corpse(){return setting!=null&&hearthborn.world.GobMarks.corpse(setting.icon.id());}
         public boolean soundEditable(){return setting!=null&&(corpse()||!hearthborn.world.GobMarks.hasDedicatedIconSound(resource));}
+    }
+
+    private static String englishIconName(Resource resource,String fallback){
+        Resource.Tooltip tooltip=resource.layer(Resource.tooltip);
+        if(tooltip!=null&&!tooltip.original.trim().isEmpty())return tooltip.original;
+        String radarName=RadarIcons.englishName(resource.name);
+        if(radarName!=null)return radarName;
+        Resource.AButton action=resource.layer(Resource.action);
+        return action==null||action.name.trim().isEmpty()?fallback:action.name;
     }
 
     public final GobIcon.Settings settings;

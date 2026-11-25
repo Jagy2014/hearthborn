@@ -37,6 +37,7 @@ public final class UiTheme {
     private static final Color ENTRY_GOLD=new Color(174,143,76),ENTRY_FOCUS=new Color(232,192,105);
     private static final Color ENTRY_TEXT=new Color(236,232,218),ENTRY_DIRTY=new Color(255,205,109);
     private static final Color DARK_BACKGROUND=new Color(0,0,0,255);
+    public static final Color DARK_TOOLTIP_BACKGROUND=new Color(35,35,35,192);
     private static final Color DARK_SLOT=new Color(191,166,101,150),BLUE_SLOT=new Color(0x3C,0x7E,0xAE,150),BLUE_HATCH=new Color(0x3C,0x7E,0xAE,170);
     private static final Color DARK_CLOSED=new Color(6,7,6,220);
     private static final Color DARK_HATCH=new Color(191,166,101,170);
@@ -118,6 +119,10 @@ public final class UiTheme {
         }
         return false;
     }
+    /** Panes inside the dark character sheet share the window's backing. */
+    public static boolean characterGlass(Widget widget){
+        return !light()&&widget.getparent(Window.class) instanceof haven.CharWnd;
+    }
     private static void apply(boolean next,boolean save){
         light=next;generation++;
         BACKGROUND=next?PARCHMENT:DARK_BACKGROUND;
@@ -152,11 +157,17 @@ public final class UiTheme {
     /** Gold cell outline used by the equipment strip and inventory grids. */
     public static void slot(GOut g,Coord at,Coord size){g.chcolor(SLOT);g.rect(at,size);g.chcolor();}
     public static void cells(GOut g,Coord grid,boolean[] mask){
+        cells(g,grid,mask,true);
+    }
+    public static void cells(GOut g,Coord grid,boolean[] mask,boolean opaqueDark){
         Coord c=new Coord();int i=0;Coord step=Inventory.sqsz,cell=Inventory.invsq.sz();
         for(c.y=0;c.y<grid.y;c.y++)for(c.x=0;c.x<grid.x;c.x++){
             Coord at=c.mul(step);
             if(mask!=null&&mask[i++])g.image(closed(cell),at);
-            else {panel(g,at,cell);slot(g,at,cell);}
+            else {
+                if(opaqueDark||light())panel(g,at,cell);
+                slot(g,at,cell);
+            }
         }
     }
     /** Blocked inventory cells: a darker fill and a gold hatch, so they stay visible on the panel. */

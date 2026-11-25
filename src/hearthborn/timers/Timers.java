@@ -34,10 +34,13 @@ public final class Timers {
                 ? L10n.format("%s: forecast elapsed; impact has not been confirmed.",name)
                 : item.source!=null && item.source.startsWith("cheese:")
                     ? L10n.format("%s: cheese is ready.",name)
-                    : L10n.format("Timer %s finished.",name);
+                    : NaturalResourceTimers.isRefill(item.source)
+                        ? L10n.format("%s: estimated refill time elapsed. Inspect the resource to check.",name)
+                        : item.source!=null && item.source.startsWith("grill:")
+                            ? L10n.format("%s: estimated cooking time elapsed. Check the grill.",name)
+                            : L10n.format("Timer %s finished.",name);
             gui.ui.msg(message);
         }
-        TimerWindow.refresh(now);
     }
 
     public static void track(String source,String name,long deadline) { TimerService.track(source,name,deadline); }

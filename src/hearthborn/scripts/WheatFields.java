@@ -36,6 +36,7 @@ final class WheatFields implements Serializable {
         SavedArea land,seeds,straw;
         Phase phase=Phase.READY;
         boolean harvestOnly;
+        long lastHarvest;
         final BitSet harvested=new BitSet(),planted=new BitSet();
         double[] plantedMinQ,plantedMaxQ;
         int pending=-1;

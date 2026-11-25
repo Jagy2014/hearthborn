@@ -136,11 +136,18 @@ public class Button extends SIWidget {
 	text = foundry.render(shown, custom != null ? custom : hearthborn.ui.PillSkin.ink(inkLight));
 	cont = text.img;
 	/* A caption that does not fit grows its button instead of running over the ends; a roomy button keeps its width. */
-	int pad = UI.scale(8);
-	int need = Utils.imgsz(cont).x + pad * 2;
+	int need = captionWidth(Utils.imgsz(cont).x);
 	if(need > sz.x) resize(new Coord(need, sz.y));
 	Color dark = custom != null ? null : hearthborn.ui.PillSkin.shade(inkLight);
 	if(dark != null) shade = foundry.render(shown, dark);
+    }
+
+    private static int captionWidth(int textWidth) {
+	return(textWidth + UI.scale(8) * 2);
+    }
+
+    static int minimumWidth(String text) {
+	return(captionWidth(tf.strsize(hearthborn.L10n.text("button", text)).x));
     }
 
     public Button action(Runnable action) {

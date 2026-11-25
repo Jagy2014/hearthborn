@@ -17,8 +17,12 @@ import hearthborn.assets.Assets;
 import java.awt.*;
 import java.awt.font.GlyphVector;
 import java.awt.geom.AffineTransform;
+import java.awt.geom.Area;
 import java.awt.geom.Arc2D;
 import java.awt.geom.Ellipse2D;
+import java.awt.geom.Line2D;
+import java.awt.geom.Path2D;
+import java.awt.geom.Rectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
 import java.util.Locale;
@@ -33,7 +37,9 @@ public class ActionProgress extends Widget {
     private static final double SIZE=1.5;
     private static final Color OUTLINE=new Color(30,22,12,240),TRACK=new Color(105,81,42,230);
     private static final Color GOLD=new Color(218,166,67),HIGHLIGHT=new Color(255,224,142),INK=new Color(255,247,220);
+    private static final Color SAND_LIGHT=new Color(255,214,123),SAND_DARK=new Color(183,105,34);
     private static final BufferedImage ART=art();
+    private static final Shape UPPER_BULB=upperBulb();
     public double prog;
     private TexI image;
     private int rendered=-1;
@@ -41,7 +47,7 @@ public class ActionProgress extends Widget {
 
     public ActionProgress(double progress){super(UI.scale((int)(WIDTH*SIZE),(int)(HEIGHT*SIZE)));set(progress);}
     private static BufferedImage art(){
-        try{return Assets.image("icons/meters/action-hourglass.png");}
+        try{return Assets.image("icons/meters/action-hourglass-empty.png");}
         catch(IOException error){throw new ExceptionInInitializerError(error);}
     }
     public void set(double progress){
@@ -77,7 +83,7 @@ public class ActionProgress extends Widget {
             g.setStroke(new BasicStroke(2.5f,BasicStroke.CAP_ROUND,BasicStroke.JOIN_ROUND));
             g.draw(new Arc2D.Double(x,y,diameter,diameter,90,-360*value,Arc2D.OPEN));
         }
-        g.drawImage(ART,(WIDTH-ICON)/2,6,ICON,ICON,null);
+        drawHourglass(g,value);
         int percent=Utils.clip((int)Math.floor(value*100),0,100);
         Font font=Text.sans.deriveFont(Font.BOLD,(float)FONT_SIZE);
         GlyphVector glyphs=font.createGlyphVector(g.getFontRenderContext(),percent+"%");
@@ -90,6 +96,53 @@ public class ActionProgress extends Widget {
         down.setRenderingHint(RenderingHints.KEY_INTERPOLATION,RenderingHints.VALUE_INTERPOLATION_BICUBIC);
         down.drawImage(sampled,0,0,pixels.x,pixels.y,null);down.dispose();
         return out;
+    }
+    /** Interior of the upper bulb in coordinates of the 128×128 artwork. */
+    private static Shape upperBulb(){
+        Path2D path=new Path2D.Double();
+        path.moveTo(40,24);
+        path.curveTo(33,42,48,53,62,61);
+        path.quadTo(64,63,66,61);
+        path.curveTo(80,53,95,42,88,24);
+        path.closePath();
+        return path;
+    }
+
+    private static void drawHourglass(Graphics2D target,double progress){
+        Graphics2D glass=(Graphics2D)target.create();
+        glass.translate((WIDTH-ICON)/2.0,6);
+        glass.scale(ICON/128.0,ICON/128.0);
+        glass.drawImage(ART,0,0,128,128,null);
+
+        if(progress<1){
+            double surface=28+35*progress;
+            Area upper=new Area(UPPER_BULB);
+            upper.intersect(new Area(new Rectangle2D.Double(0,surface,128,63-surface)));
+            glass.setPaint(new GradientPaint(0,(float)surface,SAND_LIGHT,0,63,SAND_DARK));
+            glass.fill(upper);
+        }
+
+        double amount=Math.sqrt(progress);
+        double peak=105-28*amount;
+        if(progress>0){
+            double spread=23*amount;
+            Path2D pile=new Path2D.Double();
+            pile.moveTo(64-spread,105);
+            pile.curveTo(64-spread*.75,105-7*amount,59,peak+2,64,peak);
+            pile.curveTo(69,peak+2,64+spread*.75,105-7*amount,64+spread,105);
+            pile.closePath();
+            glass.setPaint(new GradientPaint(0,(float)peak,SAND_LIGHT,0,105,SAND_DARK));
+            glass.fill(pile);
+        }
+        if(progress>0&&progress<1){
+            glass.setColor(new Color(222,149,55,185));
+            glass.setStroke(new BasicStroke(1.8f,BasicStroke.CAP_ROUND,BasicStroke.JOIN_ROUND));
+            glass.draw(new Line2D.Double(64,64,64,peak));
+            double grain=64+(peak-64)*((progress*12)%1);
+            glass.setColor(SAND_LIGHT);
+            glass.fill(new Ellipse2D.Double(62.6,grain-1.4,2.8,2.8));
+        }
+        glass.dispose();
     }
     public void draw(GOut g){updateImage();g.image(image,Coord.z,sz);}
     public boolean checkhit(Coord at){

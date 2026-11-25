@@ -28,11 +28,27 @@ public final class NaturalResourceTimers {
     private static final Pattern REFILL = Pattern.compile(
         "(?i)\\bwill\\s+refill\\s+in\\s+([0-9]+(?:[.,][0-9]+)?)\\s+(second|minute|hour|day|week)s?\\b");
 
+    static boolean isRefill(String source) {
+        return source != null && source.startsWith(PREFIX);
+    }
+
     public static long remainingMillis(String message) {
+        return remainingMillis(message, false);
+    }
+
+    private static long remainingMillis(String message, boolean allowRounding) {
         if(message == null) return 0;
         Matcher match = REFILL.matcher(message);
         if(!match.find()) return 0;
-        double count = Double.parseDouble(match.group(1).replace(',', '.'));
+        String amount = match.group(1).replace(',', '.');
+        double count = Double.parseDouble(amount);
+        if(count <= 0) return 0;
+        if(allowRounding) {
+            // The server sends a displayed duration, not a timestamp. Allow one
+            // step of its reported precision rather than treating it as exact.
+            int dot = amount.indexOf('.');
+            count += dot < 0 ? 1 : Math.pow(10, dot + 1 - amount.length());
+        }
         int unit;
         switch(match.group(2).toLowerCase(Locale.ROOT)) {
             case "week": unit = 604800; break;
@@ -51,8 +67,17 @@ public final class NaturalResourceTimers {
         if(remaining <= 0) return false;
         MapFile.SMarker marker = MarkerQuality.naturalMarker(gob);
         if(marker == null) return false;
-        if(TimerSettings.automatic())
-            Timers.track(PREFIX + MarkerQuality.number(marker), marker.nm, System.currentTimeMillis() + remaining);
+        if(TimerSettings.automatic()) {
+            long now = System.currentTimeMillis();
+            long upperEstimate = remainingMillis(message, true);
+            if(upperEstimate <= 0 || upperEstimate > Long.MAX_VALUE - now) return false;
+            String source = PREFIX + MarkerQuality.number(marker);
+            long deadline = Timers.deadline(source);
+            // Repeating the same rounded duration must not postpone a still
+            // plausible deadline. A more precise or later report can replace it.
+            if(deadline < now + remaining || deadline > now + upperEstimate)
+                Timers.track(source, marker.nm, now + upperEstimate);
+        }
         return true;
     }
 

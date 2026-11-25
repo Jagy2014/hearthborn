@@ -39,6 +39,7 @@ public final class FieldWindow extends Window {
     private final Label selectionTitle;
     private final FieldIcon cancelIcon;
     private FieldEditor editor;
+    private FieldCard card;
     private Window numberPrompt;
     private String cropFilter;
     private Runnable cancelSelection;
@@ -59,21 +60,24 @@ public final class FieldWindow extends Window {
     private String lastClickedField;
     private double lastClickedAt;
     private static final String ALL="";
-    public static void open(GameUI gui){
+    public static void open(GameUI gui){open(gui,null);}
+    private static void open(GameUI gui,WheatFields.Field focused){
         if(gui==null)return;
         FieldWindow existing=gui.getchild(FieldWindow.class);
         if(existing!=null&&(!java.util.Objects.equals(existing.scope,SavedArea.key(gui,"wheat-fields"))||!existing.visible())){existing.destroy();existing=null;}
-        if(existing!=null){existing.show();existing.raise();return;}
+        if(existing!=null){existing.focusField(focused);existing.show();existing.raise();return;}
         try{
             FieldTask active=FieldTask.current(gui);
-            gui.add(new FieldWindow(gui,active!=null?active.book:WheatFields.load(gui)),UI.scale(120,100));
+            FieldWindow window=gui.add(new FieldWindow(gui,active!=null?active.book:WheatFields.load(gui)),UI.scale(120,100));
+            window.focusField(focused);
         }
         catch(IllegalStateException failure){gui.error(L10n.tr(failure.getMessage()));}
     }
     public static void activate(GameUI gui,boolean settings){
         if(gui==null)return;
-        // The list shows the running field in its own row, so there is no separate progress window.
-        if(settings||FieldTask.current(gui)!=null){open(gui);return;}
+        if(settings){open(gui);return;}
+        FieldTask active=FieldTask.current(gui);
+        if(active!=null){open(gui,active.field);return;}
         if(ScriptRunner.running(gui)){gui.error(L10n.tr("Stop the current script first."));return;}
         FieldWindow existing=gui.getchild(FieldWindow.class);
         if(existing!=null&&existing.cancelSelection!=null){existing.show();existing.raise();return;}
@@ -84,10 +88,13 @@ public final class FieldWindow extends Window {
             if(field==null){open(gui);return;}
             book.selected=field.id;book.save(gui);
             if(!configured(field)){
-                open(gui);FieldWindow window=gui.getchild(FieldWindow.class);window.list.change(window.book.selected());window.openEditor();return;
+                open(gui,field);
+                FieldWindow window=gui.getchild(FieldWindow.class);
+                if(window!=null) window.openEditor();
+                return;
             }
             FieldTask.launch(gui,book,field,unfinished(field)&&field.harvestOnly);
-            open(gui);
+            open(gui,field);
         }catch(IllegalStateException failure){open(gui);gui.error(L10n.tr(failure.getMessage()));}
     }
     static boolean unfinished(WheatFields.Field field){return field.phase!=WheatFields.Phase.READY&&field.phase!=WheatFields.Phase.DONE;}
@@ -199,8 +206,131 @@ public final class FieldWindow extends Window {
         catch(IllegalStateException invalid){gui.error(L10n.tr(invalid.getMessage()));}
         return false;
     }
+    private void focusField(WheatFields.Field field) {
+        if(card!=null && card.field==field) return;
+        if(card!=null) {card.destroy();card=null;}
+        if(field!=null) {
+            book.selected=field.id;
+            WheatFields.Field current=book.selected();
+            if(current!=null) {
+                card=add(new FieldCard(current),Coord.z);
+                chcap(current.summary());
+            }
+        } else {
+            chcap("Crop fields");
+        }
+        refresh();
+        layoutControls();
+        if(field==null) list.display(book.selected());
+    }
+
+    private final class FieldCard extends Widget {
+        final WheatFields.Field field;
+        final Label ready, growing, status;
+        final Button harvest, plant, edit, pause, stop;
+        byte[] cells=new byte[0];
+        double scan;
+
+        FieldCard(WheatFields.Field field) {
+            super(UI.scale(302,223));
+            this.field=field;
+            ready=add(new Label(""),UI.scale(135,12));
+            add(new Label("Ready to harvest"),UI.scale(135,33));
+            growing=add(new Label(""),UI.scale(135,57));
+            settip("Field tiles: bright green is ripe, dark green is growing, brown is empty, gold is another crop.");
+            status=add(new Label(""),UI.scale(0,129));
+            harvest=add(new Button(UI.scale(302),"Harvest only",false,()->launch(field,!unfinished(field)||field.harvestOnly)),UI.scale(0,153));
+            pause=add(new Button(UI.scale(148),"Pause",false,()->{
+                FieldTask task=FieldTask.current(gui);
+                if(task!=null&&task.field==field)task.paused=!task.paused;
+            }),UI.scale(0,153));
+            stop=add(new Button(UI.scale(148),"Stop",false,()->ScriptRunner.cancel(gui)),UI.scale(154,153));
+            plant=add(new Button(UI.scale(100),"Sow",false,()->{
+                if(busy()||cancelSelection!=null)return;
+                closeEditor();FieldTask.launchPlanting(gui,book,field);
+            }),UI.scale(0,191));
+            edit=add(new Button(UI.scale(100),"Edit",false,FieldWindow.this::openEditor),UI.scale(107,191));
+            add(new Button(UI.scale(88),"All fields",false,()->focusField(null)),UI.scale(214,191));
+        }
+
+        private void sample() {
+            cells=new byte[0];
+            int ripe=0, young=0;
+            try {
+                Area area=field.land==null||gui.ui.sess==null?null:field.land.resolve(gui.ui.sess.glob.map);
+                if(area!=null) {
+                    byte[] drawn=new byte[field.tiles()];
+                    CropProfile profile=CropProfile.get(field.cropId);
+                    for(Gob gob:gui.ui.sess.glob.oc.snapshot()) {
+                        if(gob.removed||gob.rc==null)continue;
+                        Coord tile=gob.rc.floor(MCache.tilesz);
+                        if(!area.contains(tile))continue;
+                        String crop=CropProfile.plantResource(gob);
+                        if(crop==null)continue;
+                        int index=(tile.y-area.ul.y)*field.land.width+tile.x-area.ul.x;
+                        byte value=(byte)(profile!=null&&!profile.crop.equals(crop)?3:ScriptRunner.mature(gob)?2:1);
+                        drawn[index]=value;
+                    }
+                    for(byte cell:drawn) {if(cell==2)ripe++;else if(cell==1)young++;}
+                    cells=drawn;
+                }
+            } catch(Loading pending) {}
+            ready.settext(cells.length==0?L10n.tr("Field data loading"):ripe+" / "+cells.length);
+            growing.settext(cells.length==0?"":L10n.format("Still growing: %d",young));
+        }
+
+        public void tick(double dt) {
+            super.tick(dt);
+            if((scan-=dt)<=0){scan=1;sample();}
+            FieldTask task=FieldTask.current(gui);
+            boolean active=task!=null&&task.field==field, blocked=selecting()||ScriptRunner.running(gui);
+            harvest.show(!active);pause.show(active);stop.show(active);
+            boolean interrupted=unfinished(field);
+            String action=L10n.text("button",interrupted?"Continue":"Harvest only");
+            if(!harvest.text.text.equals(action))harvest.change(action);
+            harvest.disable(blocked||!configured(field));
+            plant.disable(blocked||!configured(field)||interrupted);
+            edit.disable(blocked);
+            if(active){
+                String text=L10n.tr(task.paused?"Continue":"Pause");
+                if(!pause.text.text.equals(text))pause.change(text);
+                pause.disable(task.waitingForQuality());
+            }
+            String text=active?task.progress():interrupted?FieldTask.describe(field):field.lastHarvest==0?"":L10n.format("Last harvest: %s",
+                new java.text.SimpleDateFormat("dd.MM.yyyy HH:mm").format(new java.util.Date(field.lastHarvest)));
+            text=fit(text,sz.x);
+            if(!text.equals(status.texts))status.settext(text);
+            String title=field.summary();
+            if(!title.equals(cap))chcap(title);
+        }
+
+        public void draw(GOut g) {
+            if(cells.length>0) {
+                int block=Math.max(1,Math.min(UI.scale(122)/field.land.width,UI.scale(122)/field.land.height));
+                for(int i=0;i<cells.length;i++){
+                    switch(cells[i]){
+                        case 1:g.chcolor(62,86,40,255);break;
+                        case 2:g.chcolor(110,149,59,255);break;
+                        case 3:g.chcolor(151,118,55,255);break;
+                        default:g.chcolor(53,47,32,255);
+                    }
+                    g.frect(Coord.of(i%field.land.width,i/field.land.width).mul(block),Coord.of(Math.max(1,block-1)));
+                }
+                g.chcolor();
+            }
+            super.draw(g);
+        }
+    }
+
     private void layoutControls(){
         if(list==null||empty==null||selectionHint==null)return;
+        filter.show(card==null);add.show(card==null);list.show(card==null);
+        if(card!=null){
+            empty.hide();
+            if(selectionHint.visible())selectionHint.move(Coord.of(0,card.sz.y+UI.scale(4)));
+            fitContents();
+            return;
+        }
         int gap=UI.scale(4);
         int top=Math.max(filter.sz.y,add.sz.y);
         filter.move(Coord.of(0,(top-filter.sz.y)/2));add.move(Coord.of(UI.scale(WIDTH)-add.sz.x,(top-add.sz.y)/2));
@@ -215,6 +345,9 @@ public final class FieldWindow extends Window {
         Coord listSize=Coord.of(UI.scale(WIDTH),UI.scale(rows*ROW));if(!list.sz.equals(listSize))list.resize(listSize);
         list.move(Coord.of(0,y));empty.move(Coord.of(UI.scale(8),y+UI.scale(8)));
         empty.show(book.fields.isEmpty());
+        fitContents();
+    }
+    private void fitContents(){
         if(!contentsz().equals(csz())){
             pack();
             if(parent!=null)move(c.min(parent.sz.sub(hearthborn.ui.HudInterfaceScale.size(this)).max(Coord.z)).max(Coord.z));

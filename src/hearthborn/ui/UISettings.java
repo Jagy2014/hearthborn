@@ -33,6 +33,14 @@ public final class UISettings extends Window {
         if(options!=null){options.show();options.raise();}
         reqdestroy();
     }
+    void openToolbarKeys(String id) {
+        GameUI gui=getparent(GameUI.class);
+        OptWnd target=options!=null?options:gui!=null?gui.opts:null;
+        if(target!=null){
+            reqdestroy();
+            target.openToolbarKeys(id);
+        }
+    }
     /** The same controls as a section of the options window. */
     public static OptWnd.Panel panel(OptWnd options){
         OptWnd.Panel panel=options.new Panel();

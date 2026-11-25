@@ -22,9 +22,9 @@ import java.util.regex.*;
  * @author Jagy2014
  */
 public final class DrinkSupply {
-    private static final Pattern CONTENT=Pattern.compile("([0-9]+(?:\\.[0-9]+)?) (?:l|liters?|litres?) of (Water|Tea)",Pattern.CASE_INSENSITIVE);
+    private static final Pattern CONTENT=Pattern.compile("([0-9]+(?:\\.[0-9]+)?) (?:l|liters?|litres?) of (Water|Spring Water|Tea)",Pattern.CASE_INSENSITIVE);
     public double water,tea,capacity;
-    public boolean loading;
+    public boolean loading, springWater;
     public static double capacity(String resource) {
         if(resource.contains("/bucket"))return 10;
         if(resource.endsWith("/glassjug"))return 5;
@@ -33,14 +33,19 @@ public final class DrinkSupply {
         if(resource.contains("/kuksa"))return .8;
         return 0;
     }
-    private static double[] contents(java.util.List<ItemInfo> info) {
+    private static final class Liquid {
+        final String name;
+        final double liters;
+        Liquid(String name, double liters) {this.name=name;this.liters=liters;}
+    }
+    private static Liquid contents(java.util.List<ItemInfo> info) {
         for(ItemInfo tip:info) {
             if(tip instanceof ItemInfo.Contents) {
-                double[] found=contents(((ItemInfo.Contents)tip).sub);if(found!=null)return found;
+                Liquid found=contents(((ItemInfo.Contents)tip).sub);if(found!=null)return found;
             }
             if(tip instanceof ItemInfo.Name) {
                 Matcher match=CONTENT.matcher(((ItemInfo.Name)tip).str.text);
-                if(match.matches())return new double[]{match.group(2).equalsIgnoreCase("Water") ? 0 : 1,Double.parseDouble(match.group(1))};
+                if(match.matches())return new Liquid(match.group(2),Double.parseDouble(match.group(1)));
             }
         }
         return null;
@@ -54,8 +59,14 @@ public final class DrinkSupply {
                 max=((Number)tip.getClass().getField("max").get(tip)).doubleValue()/100;
             } catch(ReflectiveOperationException ignored) {}
         }
-        double[] content=contents(info);
-        if(content!=null) {if(content[0]==0)water+=content[1];else tea+=content[1];}
+        Liquid content=contents(info);
+        if(content!=null) {
+            if(content.name.equalsIgnoreCase("Tea")) tea+=content.liters;
+            else {
+                water+=content.liters;
+                springWater |= content.name.equalsIgnoreCase("Spring Water");
+            }
+        }
         else if(ItemInfo.find(ItemInfo.Contents.class,info)!=null)return;
         capacity+=max;
     }

@@ -84,7 +84,7 @@ public class Inventory extends Widget implements DTarget {
 
     public void draw(GOut g) {
 	g=hearthborn.inventory.InventoryScale.graphics(g,sqsz.mul(isz).add(1,1),viewScale);
-	hearthborn.ui.UiTheme.cells(g, isz, sqmask);
+	hearthborn.ui.UiTheme.cells(g, isz, sqmask, !hearthborn.ui.StudyProgress.isStudy(this));
 	super.draw(g);
     }
 	

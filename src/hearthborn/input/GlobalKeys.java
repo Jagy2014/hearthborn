@@ -69,6 +69,10 @@ public final class GlobalKeys {
         add("AGGRO_ONE_PVE","Aggro closest non-player to cursor",0,0);
         add("AGGRO_ONE_PVP","Aggro closest player to cursor",0,0);
         add("AGGRO_ALL","Aggro all creatures near player",0,0);
+        add("TARGET_PREVIEW_NEXT","Mark next wild animal",KeyEvent.VK_J,KeyMatch.C);
+        add("TARGET_PREVIEW_PREVIOUS","Mark previous wild animal",KeyEvent.VK_J,KeyMatch.C|KeyMatch.S);
+        add("TARGET_PREVIEW_CURSOR","Mark wild animal under cursor",KeyEvent.VK_K,KeyMatch.C);
+        add("TARGET_PREVIEW_ATTACK","Attack marked wild animal",KeyEvent.VK_L,KeyMatch.C);
         add("EQUIP_BOW","Equip Bow",0,0);
         add("EQUIP_SPEAR","Equip Boar Spear",0,0);
         add("EQUIP_SWORD_N_BOARD","Equip Sword & Shield",0,0);
@@ -174,9 +178,22 @@ public final class GlobalKeys {
   }
   return PanelKeys.handle(gui,event);
  }
- public static OptWnd.Panel panel(OptWnd options) {
-  OptWnd.Panel panel=options.new Panel();Tabs tabs=new Tabs(Coord.of(0,UI.scale(32)),UI.scale(400,380),panel);
-  Tabs.Tab original=tabs.add(),general=tabs.add(),toolbars=tabs.add(),combat=tabs.add();
+ public static BindingsPanel panel(OptWnd options) {
+  return new BindingsPanel(options);
+ }
+
+ public static final class BindingsPanel extends OptWnd.Panel {
+  private final Tabs.Tab toolbars;
+  private final Scrollport bars;
+  private final Map<String, Label> toolbarHeadings = new HashMap<>();
+
+  private BindingsPanel(OptWnd options) {
+  options.super();
+  OptWnd.Panel panel=this;
+  Tabs tabs=new Tabs(Coord.of(0,UI.scale(32)),UI.scale(400,380),panel);
+  Tabs.Tab original=tabs.add(),general=tabs.add();
+  toolbars=tabs.add();
+  Tabs.Tab combat=tabs.add();
   Button[] tabButtons={
    panel.add(new Button(UI.scale(96),"Original",false).action(()->tabs.showtab(original)),Coord.z),
    panel.add(new Button(UI.scale(96),"Additional",false).action(()->tabs.showtab(general)),Coord.z),
@@ -200,10 +217,12 @@ public final class GlobalKeys {
   Scrollport scroll=general.add(new Scrollport(UI.scale(400,350)),Coord.z);int y=0;
   for(Action action:actions)if(!action.id.equals("ACT_SHOOT")){y=row(scroll.cont,action.name,action.binding,y);}
   scroll.cont.pack();
-  Scrollport bars=toolbars.add(new Scrollport(UI.scale(400,350)),Coord.z);y=0;
+  bars=toolbars.add(new Scrollport(UI.scale(400,350)),Coord.z);
+  y=0;
   for(String id:PanelKeys.PANELS){
-   Widget heading=bars.cont.add(new Label(hearthborn.L10n.tr(PanelKeys.title(id))),Coord.of(UI.scale(5),y+UI.scale(4)));
-   y+=heading.sz.y+UI.scale(10);
+   Label heading=bars.cont.add(new Label(PanelKeys.title(id)),Coord.of(UI.scale(5),y+UI.scale(4)));
+   toolbarHeadings.put(id,heading);
+   y=heading.pos("bl").adds(0,6).y;
    for(int i=0;i<PanelKeys.count(id);i++)y=row(bars.cont,String.format("Button %d",i+1),PanelKeys.binding(id,i),y);
    y+=UI.scale(8);
   }
@@ -230,7 +249,13 @@ public final class GlobalKeys {
    back.move(Coord.z);
    panel.pack();
   });
-  return panel;
+  }
+
+  public void showToolbar(String id) {
+   toolbars.showtab();
+   Label heading=toolbarHeadings.get(id);
+   if(heading!=null)bars.bar.ch((heading.c.y-UI.scale(4))-bars.bar.val);
+  }
  }
  private static int row(Widget parent,String name,KeyBinding binding,int y) {
   Text text=Text.std.renderwrap(hearthborn.L10n.tr(name),UI.scale(200));

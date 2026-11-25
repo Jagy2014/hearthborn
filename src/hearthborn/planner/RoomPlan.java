@@ -95,8 +95,26 @@ public final class RoomPlan {
     private static Coord2d tileCenter(Coord tile){return new Coord2d((tile.x+.5)*MCache.tilesz.x,(tile.y+.5)*MCache.tilesz.y);}
     public RoomPlan(MiniMap map){this((Widget)map);}
     public RoomPlan(Widget map){this.map=map;}
-    public static boolean enabled(){return Utils.getprefb("hearthborn/map/room-plan",true);}
-    public static void enabled(boolean enabled){Utils.setprefb("hearthborn/map/room-plan",enabled);}
+    public enum MapMode {
+        REGULAR("Regular map"), PLAN("Room plan"), WORLD("World map");
+
+        private static final String PREF = "hearthborn/map/indoor-view";
+        public final String label;
+
+        MapMode(String label) { this.label = label; }
+
+        public static MapMode current() {
+            String saved = Utils.getpref(PREF, "");
+            for(MapMode mode : values())
+                if(mode.name().equalsIgnoreCase(saved))
+                    return mode;
+            return Utils.getprefb("hearthborn/map/room-plan", true) ? PLAN : REGULAR;
+        }
+
+        public void select() { Utils.setpref(PREF, name()); }
+    }
+
+    private static boolean enabled(){return MapMode.current() == MapMode.PLAN;}
     static boolean empty(String tile){return tile==null||tile.equals("gfx/tiles/nil")||tile.equals("gfx/tiles/notile");}
     private String tile(MCache cache,Coord at){Resource res=cache.tilesetr(cache.gettile(at));return res==null?null:res.name;}
     /** Bounded flood fill rejects the overworld and large cave systems. */
@@ -132,7 +150,7 @@ public final class RoomPlan {
     }
     private void refresh(){
         GameUI gui=map.getparent(GameUI.class);if(gui==null||gui.map==null)return;
-        Gob current=gui.map.player();if(current==null){active=false;return;}
+        Gob current=gui.map.player();if(current==null){active=false;locationKnown=false;return;}
         MCache cache=current.glob.map;MCache.Grid grid;
         try{grid=cache.getgridt(current.rc.floor(MCache.tilesz));}
         catch(Loading pending){active=false;locationKnown=false;return;}
@@ -141,7 +159,9 @@ public final class RoomPlan {
         refreshed=now;playerId=current.id;player=current;active=false;locationKnown=false;markers.clear();
         sourceGrid=grid;sourceGridId=grid.id;sourceGridSeq=grid.seq;
         try{
-            Set<Coord> next=room(current.rc.floor(MCache.tilesz),at->tile(cache,at));
+            Coord start = current.rc.floor(MCache.tilesz);
+            if(empty(tile(cache, start))) return;
+            Set<Coord> next=room(start,at->tile(cache,at));
             if(next.isEmpty()){locationKnown=true;roomIdentity=null;arrival=null;return;}
             floor=next;int minX=Integer.MAX_VALUE,minY=minX,maxX=Integer.MIN_VALUE,maxY=maxX;
             boolean cellar=false;for(Coord at:floor){minX=Math.min(minX,at.x);minY=Math.min(minY,at.y);maxX=Math.max(maxX,at.x);maxY=Math.max(maxY,at.y);cellar|=tile(cache,at).contains("cellar");}

@@ -242,6 +242,8 @@ dragging their menu icons onto a slot; right-click a shortcut to remove it.
 
 Press **Alt+Space** to toggle compact UI. During combat, the client can automatically hide nonessential windows and toolbars to keep the action visible. The shortcut also works outside combat. You can restore the full interface without losing your preferred layout.
 
+To turn off automatic hiding, enable **Keep interface visible in combat** under **Options → Combat settings**.
+
 **Compact UI:**
 
 ![Compact interface with nonessential panels hidden](../images/compact%20ui.png)

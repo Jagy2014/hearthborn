@@ -176,7 +176,7 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
                 GameUI gui = pag.scm.getparent(GameUI.class);
                 if(gui != null) hearthborn.navigation.Walking.abandon(gui.map);
             }
-	    Object[] eact = new Object[] {pag.scm.ui.modflags()};
+	    Object[] eact = new Object[] {iact.modflags};
 	    if(iact.mc != null) {
 		eact = Utils.extend(eact, iact.mc.floor(OCache.posres));
 		if(iact.click != null)
@@ -542,28 +542,31 @@ public class MenuGrid extends Widget implements KeyBinding.Bindable {
 	}
     }
 
-    private PagButton curttp = null;
-    private boolean curttl = false;
-    private Tex curtt = null;
+    private static final double FULL_TOOLTIP_DELAY = 1.0;
+    private PagButton hovered, tooltipButton;
+    private boolean tooltipExpanded;
+    private Tex tooltipTexture;
     private double hoverstart;
+
     public Object tooltip(Coord c, Widget prev) {
-	PagButton pag = bhit(c);
+	PagButton button = bhit(c);
 	double now = Utils.rtime();
-	if(pag != null) {
-	    if(prev != this)
-		hoverstart = now;
-	    boolean ttl = hearthborn.ui.XtensionsMenu.isScript(pag.res.name) || (now - hoverstart) > 0.5;
-	    if((pag != curttp) || (ttl != curttl)) {
-		BufferedImage ti = pag.rendertt(ttl);
-		curtt = (ti == null) ? null : new TexI(ti);
-		curttp = pag;
-		curttl = ttl;
-	    }
-	    return(curtt);
-	} else {
+	if(prev != this || button != hovered) {
+	    hovered = button;
 	    hoverstart = now;
-	    return(null);
 	}
+	if(button == null)
+	    return null;
+	boolean expanded = now - hoverstart >= FULL_TOOLTIP_DELAY;
+	if(button != tooltipButton || expanded != tooltipExpanded) {
+	    BufferedImage tip = button.rendertt(expanded);
+	    if(tooltipTexture != null)
+		tooltipTexture.dispose();
+	    tooltipTexture = tip == null ? null : new TexI(tip);
+	    tooltipButton = button;
+	    tooltipExpanded = expanded;
+	}
+	return tooltipTexture;
     }
 
     private PagButton bhit(Coord c) {

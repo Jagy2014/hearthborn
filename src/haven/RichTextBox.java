@@ -80,7 +80,7 @@ public class RichTextBox extends Widget {
     }
 
     public void draw(GOut g) {
-	if(bg != null) {
+	if(bg != null && !hearthborn.ui.UiTheme.characterGlass(this)) {
 	    g.chcolor(bg);
 	    g.frect(Coord.z, sz);
 	    g.chcolor();

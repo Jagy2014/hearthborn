@@ -22,7 +22,8 @@ import haven.*;
 public class RightStretch extends Widget {
     private final Window window;
     private UI.Grab grab;
-    private Coord from, size;
+    private MagneticWindows.StackResize stack;
+    private Coord from, size, origin;
 
     public RightStretch(Window window) {
         super(UI.scale(20,20));this.window=window;z(2);
@@ -37,29 +38,34 @@ public class RightStretch extends Widget {
     protected void added(){place();}
     public void presize(){place();}
     public boolean checkhit(Coord at){return enabled()&&at.isect(Coord.z,sz);}
-    public void draw(GOut g){if(enabled())ResizeMarks.draw(g,sz,false);}
+    public void draw(GOut g){if(enabled())ResizeMarks.draw(g,sz.sub(HudFrames.sideInset(window.deco,true),0),false);}
     public boolean mousedown(MouseDownEvent event){
         if(event.b!=1||!checkhit(event.c))return false;
-        if(window instanceof MapWnd){
-            MapWnd map=(MapWnd)window;
-            if(map.cornerClick())return true;
-            map.cornerPressed();
+        stack=MagneticWindows.resizeStack(window,false);
+        if(stack!=null){
+            from=parentpos(window.parent,event.c);
+            grab=ui.grabmouse(this);window.raise();return true;
         }
+        if(window instanceof MapWnd&&((MapWnd)window).cornerClick())return true;
         from=parentpos(window.parent,event.c);size=window.csz();
+        origin=new Coord(window.c);
         if(window instanceof QuestHelper)((QuestHelper)window).magneticMove(new Coord(window.c));
         MagneticWindows.forget(window);grab=ui.grabmouse(this);window.raise();return true;
     }
     public void mousemove(MouseMoveEvent event){
         if(grab==null)return;
-        Coord delta=HudInterfaceScale.fromParent(window,parentpos(window.parent,event.c).sub(from));
+        Coord travel=parentpos(window.parent,event.c).sub(from);
+        if(stack!=null){stack.resize(travel);return;}
+        Coord delta=HudInterfaceScale.fromParent(window,travel);
         if(window instanceof MapWnd&&(Math.abs(delta.x)>UI.scale(3)||Math.abs(delta.y)>UI.scale(3)))
             ((MapWnd)window).cornerDragged();
         window.resize(size.add(delta));
     }
     public boolean mouseup(MouseUpEvent event){
         if(grab==null||event.b!=1)return false;
+        if(stack!=null){stack.finish();stack=null;release();return true;}
         release();
-        if(window instanceof MapWnd){MapWnd map=(MapWnd)window;map.cornerReleased(size);map.storePlace();}
+        if(window instanceof MapWnd){MapWnd map=(MapWnd)window;map.cornerReleased(size,origin);map.storePlace();}
         if(window instanceof QuestHelper)((QuestHelper)window).magneticRemember();
         ChatUI chat=window.getchild(ChatUI.class);if(chat!=null)chat.rememberPlace();
         return true;

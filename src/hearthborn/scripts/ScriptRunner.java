@@ -294,9 +294,14 @@ public final class ScriptRunner {
             &&args[1] instanceof Number&&((Number)args[1]).intValue()==0)return;
         Task issued=issuing.get();
         if(task instanceof ScoutScripts.Task&&issued!=null&&issued==((ScoutScripts.Task)task).probe)return;
-        if((task instanceof FieldTask||task instanceof ButcherScripts.Task||task instanceof ShearScripts.Task||task instanceof WaterScripts.Task||task instanceof DigScripts.Task||task instanceof ScoutScripts.Task||task instanceof TrellisTask&&((TrellisTask)task).working())&&issued!=task)cancel(gui);
+        if((task instanceof FieldTask||task instanceof ButcherScripts.Task||task instanceof ShearScripts.Task||task instanceof WaterScripts.Task||task instanceof DigScripts.Task||task instanceof ScoutScripts.Task||task instanceof TableSalting.Task||task instanceof TrellisTask&&((TrellisTask)task).working())&&issued!=task)cancel(gui);
     }
-    public static boolean hideFuelCursor(GameUI gui,GItem item){Task task=active.get(gui);return task!=null&&((task.fuelRun&&matchesFuel(item,task.fuelResource))||(task.cheeseRun&&resource(item).equals(task.curdResource)));}
+    public static boolean hideScriptCursor(GameUI gui,GItem item){
+        Task task=active.get(gui);
+        return task!=null&&((task.fuelRun&&matchesFuel(item,task.fuelResource))
+            ||(task.cheeseRun&&resource(item).equals(task.curdResource))
+            ||task instanceof TableSalting.Task&&((TableSalting.Task)task).ownsSalt(item));
+    }
     public static boolean running(GameUI gui){return active.containsKey(gui);}
     static Task current(GameUI gui){return active.get(gui);}
     static void start(Task task){

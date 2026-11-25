@@ -90,6 +90,17 @@ public final class Walking {
         return true;
     }
     public static boolean scriptRunning(MapView map){Walking walk=active.get(map);return walk!=null&&walk.scriptControlled;}
+    /** Approach an object's accessible side even when its center is less than a tile away. */
+    public static boolean startScriptApproach(MapView map,Gob target,Runnable arrived){
+        Coord2d goal=target.rc;
+        Object[] click={Coord.z,goal.floor(OCache.posres),1,enabled()?0:UI.MOD_CTRL};
+        if(!start(map,goal,click,target,true))return false;
+        Walking walk=active.get(map);
+        if(walk==null)return false;
+        walk.scriptControlled=true;
+        walk.arrived=arrived;
+        return true;
+    }
     public static void tickScript(MapView map){
         Walking walk=active.get(map);if(walk==null||!walk.scriptControlled)return;
         GameUI gui=map.getparent(GameUI.class);
@@ -97,6 +108,9 @@ public final class Walking {
         walk.update();
     }
     public static boolean start(MapView map,Coord2d destination,Object[] args,Gob target) {
+        return start(map,destination,args,target,false);
+    }
+    private static boolean start(MapView map,Coord2d destination,Object[] args,Gob target,boolean closeApproach) {
         // A progress bar is the current action. A plain ground click must reach the server and stop it.
         GameUI gui=map.getparent(GameUI.class);
         if(gui!=null && gui.prog!=null){cancel(map);return false;}
@@ -132,7 +146,7 @@ public final class Walking {
             catch(Loading loading){return false;}
         }
         if(inCombat(map)||!ordinaryCursor(map)||!requested(((Number)args[3]).intValue())||player==null||player.rc.dist(destination)>440)return false;
-        if(target!=null && player.rc.dist(destination)<=MCache.tilesz.x)return false;
+        if(target!=null && !closeApproach && player.rc.dist(destination)<=MCache.tilesz.x)return false;
         cancel(map);Object[] click=args.clone();if(!enabled())click[3]=0;Walking walk=new Walking(map,destination,click,target);active.put(map,walk);walk.plan();return true;
     }
     private static boolean creature(Gob target) {
@@ -344,7 +358,7 @@ public final class Walking {
         // A chosen menu action must not be lost with the route: the server walks to the object on its own, as in the plain game.
         Runnable action=arrived;arrived=null;cancelled=null;
         cancel(map);
-        if(action!=null){action.run();return;}
+        if(action!=null){if(!scriptControlled)action.run();return;}
         Gob player=movementBody(map);
         if(player!=null)map.wdgmsg("click",Coord.z,player.rc.floor(OCache.posres),3,0);
         // A failed local route is routine during repeated map clicks. Its owner

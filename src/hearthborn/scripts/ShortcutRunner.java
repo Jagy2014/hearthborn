@@ -14,6 +14,7 @@ package hearthborn.scripts;
 import haven.*;
 import hearthborn.ui.DrinkSupply;
 import hearthborn.util.GameObjects;
+import java.lang.ref.WeakReference;
 import java.util.*;
 import java.util.function.*;
 /**
@@ -23,6 +24,7 @@ import java.util.function.*;
  */
 public final class ShortcutRunner {
  private static final Map<GameUI,ShortcutRunner> active=new WeakHashMap<>();
+ private static final Map<GameUI,MeleeSet> meleeSets=new WeakHashMap<>();
  private final GameUI gui;final Deque<Step> steps=new ArrayDeque<>();private boolean issued,weaponSwitch,executing;private double deadline;private Gob selectedHorse;
  private static class Step {Runnable action;BooleanSupplier ready;double timeout;Step(Runnable action,BooleanSupplier ready,double timeout){this.action=action;this.ready=ready;this.timeout=timeout;}}
  ShortcutRunner(GameUI gui){this.gui=gui;}
@@ -99,6 +101,7 @@ public final class ShortcutRunner {
     try{bot.switchBow();}catch(Loading waiting){gui.ui.msg(hearthborn.L10n.tr("Items are still loading. Try again."));return;}
     break;
    case "AGGRO_ONE_PVE":case "AGGRO_ONE_PVP":case "AGGRO_ALL":bot.aggro(action);break;
+   case "AGGRO_NEAREST_WILD":bot.aggroNearestWild();break;
    default:throw new IllegalArgumentException("Unknown global action "+action);
   }
   if(!bot.steps.isEmpty())active.put(gui,bot);
@@ -132,7 +135,24 @@ public final class ShortcutRunner {
  public static void manualWeaponInput(GameUI gui){ShortcutRunner bot=active.get(gui);if(bot!=null&&bot.weaponSwitch&&!bot.executing)cancel(gui);}
  private static boolean isBow(GItem item){String name=item.getres().basename();return name.equals("huntersbow")||name.equals("rangersbow");}
  private static boolean isSword(GItem item){String name=item.getres().basename();return name.equals("bronzesword")||name.equals("fyrdsword")||name.equals("hirdsword");}
+ public static boolean swordInHands(GameUI gui){
+  WItem left=HandEquip.hand(gui,HandEquip.LEFT),right=HandEquip.hand(gui,HandEquip.RIGHT);
+  return left!=null&&isSword(left.item)||right!=null&&isSword(right.item);
+ }
+ private static boolean isShield(GItem item){return Arrays.asList(HandGear.SHIELDS).contains(item.getres().basename());}
  private static String weaponResource(GItem item){return item.getres().name.replace("gfx/invobjs/small/","gfx/invobjs/");}
+ private static final class MeleeSet {
+  final String sword,shield;
+  final int swordSlot,shieldSlot;
+  WeakReference<GItem> bow;
+  MeleeSet(WItem left,WItem right){
+   boolean swordOnLeft=isSword(left.item);
+   sword=weaponResource(swordOnLeft?left.item:right.item);
+   shield=weaponResource(swordOnLeft?right.item:left.item);
+   swordSlot=swordOnLeft?HandEquip.LEFT:HandEquip.RIGHT;
+   shieldSlot=swordOnLeft?HandEquip.RIGHT:HandEquip.LEFT;
+  }
+ }
  private static GItem handBow(GameUI gui){
   Equipory gear=gui.equipment();if(gear==null)return null;
   for(WItem view:gear.children(WItem.class))if((view.c.equals(Equipory.ecoords[6].add(1,1))||view.c.equals(Equipory.ecoords[7].add(1,1)))&&isBow(view.item))return view.item;
@@ -140,6 +160,10 @@ public final class ShortcutRunner {
  }
  private static GItem carriedWeapon(GameUI gui,boolean bow){
   for(GItem item:owned(gui))if(item.parent instanceof Inventory&&(bow?isBow(item):isSword(item)))return item;
+  return null;
+ }
+ private GItem carriedResource(String resource){
+  for(GItem item:owned(gui))if(item.parent instanceof Inventory&&weaponResource(item).equals(resource))return item;
   return null;
  }
  public static String bowSwitchLabel(GameUI gui){
@@ -150,9 +174,14 @@ public final class ShortcutRunner {
   }catch(Loading waiting){return "Switch weapon";}
  }
  private Pair<Inventory,Coord> weaponSpace(Inventory preferred,Coord size){
-  List<Inventory> bags=new ArrayList<>();if(preferred!=null&&preferred.parent!=null)bags.add(preferred);
+  Inventory belt=HandEquip.belt(gui);
+  if(belt!=null){
+   Coord free=new HandEquip.Space(belt,null,Coord.z,true).reserve(size,null);
+   if(free!=null)return new Pair<>(belt,free);
+  }
+  List<Inventory> bags=new ArrayList<>();if(preferred!=null&&preferred!=belt&&preferred.parent!=null)bags.add(preferred);
   if(gui.maininv!=null&&!bags.contains(gui.maininv))bags.add(gui.maininv);
-  for(GItem item:owned(gui))if(item.contents instanceof Inventory&&!bags.contains(item.contents))bags.add((Inventory)item.contents);
+  for(GItem item:owned(gui))if(item.contents instanceof Inventory&&item.contents!=belt&&!bags.contains(item.contents))bags.add((Inventory)item.contents);
   for(Inventory bag:bags){Coord free=hearthborn.inventory.BagTransfers.free(bag,size);if(free!=null)return new Pair<>(bag,free);}
   return null;
  }
@@ -179,6 +208,33 @@ public final class ShortcutRunner {
    String resource=weaponResource(bow);GItem[] held={null};
    add(()->bow.wdgmsg("take",Coord.z),()->{try{if(gui.vhand==null||!weaponResource(gui.vhand.item).equals(resource))return false;held[0]=gui.vhand.item;return true;}catch(Loading waiting){return false;}},3);
    add(()->{if(gui.vhand==null||gui.vhand.item!=held[0])throw new IllegalStateException("Held weapon changed.");putWeapon(gui.maininv);},()->gui.vhand==null,3);return;
+  }
+  WItem left=HandEquip.hand(gui,HandEquip.LEFT),right=HandEquip.hand(gui,HandEquip.RIGHT);
+  if(bow==null&&left!=null&&right!=null&&left.item!=right.item){
+   boolean swordAndShield=isSword(left.item)&&isShield(right.item)||isShield(left.item)&&isSword(right.item);
+   MeleeSet previous=swordAndShield?new MeleeSet(left,right):null;
+   if(HandEquip.queueBowWithBothHandsOccupied(this,gui,next))add(()->{
+    meleeSets.remove(gui);
+    GItem drawnBow=handBow(gui);
+    if(previous!=null&&drawnBow!=null){
+     previous.bow=new WeakReference<>(drawnBow);
+     meleeSets.put(gui,previous);
+    }
+   });
+   return;
+  }
+  MeleeSet previousMelee=meleeSets.get(gui);
+  if(bow!=null&&previousMelee!=null&&previousMelee.bow.get()==bow){
+   GItem sword=carriedResource(previousMelee.sword);
+   if(HandEquip.queue(this,gui,sword==null?next:sword,previousMelee.swordSlot)){
+    afterPrevious(()->{
+     if(HandEquip.hand(gui,previousMelee.shieldSlot)==null){
+      GItem shield=carriedResource(previousMelee.shield);
+      if(shield!=null)HandEquip.queue(this,gui,shield,previousMelee.shieldSlot);
+     }
+    });
+   }
+   return;
   }
   Set<String> previous=new HashSet<>();
   for(WItem view:gui.equipment().children(WItem.class))if(view.c.equals(Equipory.ecoords[6].add(1,1))||view.c.equals(Equipory.ecoords[7].add(1,1)))previous.add(weaponResource(view.item));
@@ -211,7 +267,7 @@ public final class ShortcutRunner {
   if(source==null&&water==null){gui.ui.msg(hearthborn.L10n.tr("You must be near tile or barrel with fresh water to refill drinks!"));return;}
   Gob barrel=source;Coord2d target=barrel==null?water:barrel.rc;
   for(GItem item:owned(gui))try {
-   if(!(item.parent instanceof Inventory))continue;DrinkSupply supply=new DrinkSupply();supply.add(item);if(supply.capacity<=0||supply.tea>0||supply.water>=supply.capacity)continue;
+   if(!(item.parent instanceof Inventory))continue;DrinkSupply supply=new DrinkSupply();supply.add(item);if(supply.capacity<=0||supply.tea>0||supply.springWater||supply.water>=supply.capacity)continue;
    Inventory inventory=(Inventory)item.parent;Coord cell=null;for(Widget w=inventory.child;w!=null;w=w.next)if(w instanceof WItem&&((WItem)w).item==item)cell=w.c.sub(1,1).div(Inventory.sqsz);
    if(cell==null)continue;Coord original=cell;int[] sequence={item.infoseq};
    add(()->item.wdgmsg("take",Coord.z),()->gui.vhand!=null&&gui.vhand.item==item,2);
@@ -222,6 +278,34 @@ public final class ShortcutRunner {
  private static class ContainerLookProbe {
   Gob gob;ContainerLookProbe(Gob gob){this.gob=gob;}
   boolean water(){Object look=gob.getattr(hearthborn.storage.ContainerLook.class);String contents=GameObjects.field(look,"observedContents",String.class);return contents!=null&&(contents.toLowerCase(Locale.ROOT).contains("water")||contents.toLowerCase(Locale.ROOT).contains("вода"));}
+ }
+ public static boolean wildTarget(GameUI gui,Gob gob) {
+  if(gob==null||gob.removed||gob.rc==null||gob.getattr(Following.class)!=null||gui.ui.sess.glob.party.memb.containsKey(gob.id))return false;
+  String path=name(gob);
+  if(!path.startsWith("gfx/kritter/")||path.startsWith("gfx/kritter/tick/")||
+      path.startsWith("gfx/kritter/chicken/")||path.startsWith("gfx/kritter/dog/")||path.startsWith("gfx/kritter/cat/"))return false;
+  GobHealth health=gob.getattr(GobHealth.class);
+  if(health!=null&&health.hp<=0||!ScriptRunner.standing(gob))return false;
+  try {
+   if(hearthborn.map.RadarIcons.domestic(gob)!=null)return false;
+   // Cattle and sheep share a body between wild and domestic animals; wait for the identifying model.
+   if(path.equals("gfx/kritter/cattle/cattle"))
+    return hearthborn.map.RadarIcons.identity(gob).contains("gfx/kritter/cattle/aurochs");
+   if(path.equals("gfx/kritter/sheep/sheep"))
+    return hearthborn.map.RadarIcons.identity(gob).contains("gfx/kritter/sheep/mouflon");
+   return true;
+  } catch(Loading pending) {
+   return false;
+  }
+ }
+ private void aggroNearestWild() {
+  List<Gob> animals=near(gob->wildTarget(gui,gob),Double.POSITIVE_INFINITY);
+  if(animals.isEmpty()){
+   gui.ui.msg(hearthborn.L10n.tr("No wild animal nearby."));
+   return;
+  }
+  Gob target=animals.get(0);
+  add(()->hearthborn.combat.WildAttack.request(gui,target));
  }
  private void aggro(String action) {
   boolean all=action.equals("AGGRO_ALL"),players=action.equals("AGGRO_ONE_PVP");

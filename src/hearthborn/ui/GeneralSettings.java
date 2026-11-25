@@ -12,6 +12,7 @@
 
 package hearthborn.ui;
 import hearthborn.meteor.StarFall;
+import hearthborn.planner.RoomPlan.MapMode;
 import hearthborn.storage.ContainerSettings;
 import hearthborn.timers.Timers;
 
@@ -61,32 +62,14 @@ public final class GeneralSettings {
 
     private static OptWnd.Panel panel(OptWnd options) {
         OptWnd.Panel panel = options.new Panel().resettable("hearthborn/world/","hearthborn/siege/","hearthborn/walking/","hearthborn/timers/","hearthborn/protection/","hearthborn/speed/","hearthborn/login/","hearthborn/login-toggles/","hearthborn/chat/","hearthborn/star-fall","hearthborn/dewy-notification","hearthborn/pickup-");
-        panel.add(new Label("Language:"), UI.scale(0, 4));
-        SDropBox<String, Widget> languages = new SDropBox<String, Widget>(UI.scale(160), UI.scale(48), UI.scale(24)) {
-            protected boolean listautoscroll() { return false; }
-            protected List<? extends String> items() { return Arrays.asList("en", "ru"); }
-            protected Widget makeitem(String language, int index, Coord size) {
-                Widget row = new Widget(size);
-                Label label = new Label(language.equals("ru") ? "Russian" : "English");
-                row.add(label, Coord.of(UI.scale(3), (size.y - label.sz.y) / 2));
-                return row;
-            }
-            public void change(String language) {
-                super.change(language);
-                if(language != null) {
-                    L10n.setLanguage(language);
-                    if(!language.equals(L10n.language()) && options.ui != null) options.ui.msg(L10n.tr("The language applies after you close the client window completely and start it again (logging out to the character screen is not enough)."));
-                }
-            }
-        };
-        languages.change(L10n.language());
-        panel.add(languages, UI.scale(245, 0));
-        Widget siege=panel.add(new CheckBox("Check for siege engines on login").state(LoginSiegeCheck::enabled).set(LoginSiegeCheck::enabled),Coord.of(0,languages.c.y+languages.sz.y+UI.scale(14)));
+        Widget siege=panel.add(new CheckBox("Check for siege engines on login").state(LoginSiegeCheck::enabled).set(LoginSiegeCheck::enabled),Coord.z);
         siege.settip("Ask the server whether your claims are under siege when entering the game.");
         Widget nearby=panel.add(new CheckBox("Detect nearby siege machines").state(NearbySiegeCheck::enabled).set(NearbySiegeCheck::enabled),siege.pos("bl").adds(0,5));
-        nearby.settip("Reports and highlights loaded rams, catapults and wrecking balls, including your own. Does not scan distant claims or check drying readiness.");
+        nearby.settip("Reports each nearby ram or wrecking ball once per session. Also detects nearby catapults, including your own.");
+        Widget rememberRams=panel.add(new CheckBox("Do not repeat ram alerts after relogging").state(NearbySiegeCheck::rememberRams).set(NearbySiegeCheck::rememberRams),nearby.pos("bl").adds(UI.scale(16),5));
+        rememberRams.settip("Known rams and wrecking balls keep their arrow and map cross, but play no sound and show no message after you log back in.");
         Widget dewy = panel.add(new CheckBox("Lady's Mantle notification") {{a=DewyTime.enabled();}}.changed(DewyTime::enabled),
-            nearby.pos("bl").adds(0,5));
+            Coord.of(0,rememberRams.pos("bl").adds(0,5).y));
         dewy.settip("Sound at dawn and a Lady's Mantle status icon with a countdown (04:45-07:15 game time).");
         Widget star=panel.add(new CheckBox("Falling star indicator").state(StarFall::enabled).set(StarFall::enabled),dewy.pos("bl").adds(0,5));
         star.settip("Shows starfall as the first status icon, with a login message and sound. Use Star Gaze at night to add the forecast to the icon and Timers. During the event, shooting stars appear inside the calendar at night.");
@@ -148,7 +131,7 @@ public final class GeneralSettings {
         chatNotice.settip("When the chat stays closed, each new message appears on the notice line. System lines already appear there, and your own lines stay in the chat.");
         Widget preview=panel.add(new CheckBox("Container previews only with Shift").state(ContainerPreviews::shiftOnly).set(ContainerPreviews::shiftOnly),chatNotice.pos("bl").adds(0,5));
         preview.settip("Hold Shift to show the contents of stacks, belts and bags on hover.");
-        Widget room=panel.add(new CheckBox("Show room plan indoors").state(hearthborn.planner.RoomPlan::enabled).set(hearthborn.planner.RoomPlan::enabled),preview.pos("bl").adds(0,5));
+        Widget room=panel.add(indoorMap(),preview.pos("bl").adds(0,5));
         Widget biome=panel.add(new CheckBox("Show biome tooltip on minimap") {{a=Utils.getprefb("hearthborn/map/biome-tooltip",true);}}.changed(v->Utils.setprefb("hearthborn/map/biome-tooltip",v)),room.pos("bl").adds(0,5));
         Widget tileName=panel.add(new CheckBox("Hide current tile name on minimap").state(hearthborn.map.MapDisplay::hideTerrainName).set(hearthborn.map.MapDisplay::hideTerrainName),biome.pos("bl").adds(0,5));
         Widget partyNames=panel.add(new CheckBox("Show party member names").state(hearthborn.map.PlayerMarkers::partyNames).set(hearthborn.map.PlayerMarkers::partyNames),tileName.pos("bl").adds(0,5));
@@ -172,6 +155,31 @@ public final class GeneralSettings {
         previous.settip("Small circles under critters and arrows on the ground. Right-click a critter circle to chase it; click an arrow circle to pick the arrow up.");
         return previous;
     }
+    private static Widget indoorMap() {
+        Widget row = new Widget();
+        Label label = row.add(new Label("Map indoors:"), Coord.z);
+        label.settip("World map shows where you entered the building.");
+        SDropBox<MapMode,Widget> selector = new SDropBox<MapMode,Widget>(UI.scale(180), UI.scale(96), UI.scale(16)) {
+            { super.change(MapMode.current()); }
+            protected List<MapMode> items() { return Arrays.asList(MapMode.values()); }
+            protected Widget makeitem(MapMode mode, int index, Coord size) {
+                Widget item = new Widget(size);
+                Label name = new Label(mode.label);
+                item.add(name, Coord.of(UI.scale(3), (size.y - name.sz.y) / 2));
+                return item;
+            }
+            public void change(MapMode mode) {
+                super.change(mode);
+                if(mode != null)
+                    mode.select();
+            }
+        };
+        row.add(selector, Coord.of(Math.max(UI.scale(160), label.sz.x + UI.scale(8)), 0));
+        label.move(Coord.of(0, (selector.sz.y - label.sz.y) / 2));
+        row.pack();
+        return row;
+    }
+
     private static SDropBox<Integer,Widget> speedSelector(boolean horse) {
         SDropBox<Integer,Widget> box=new SDropBox<Integer,Widget>(UI.scale(180),UI.scale(80),UI.scale(16)) {
             protected boolean listautoscroll(){return false;}

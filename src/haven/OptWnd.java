@@ -33,6 +33,7 @@ import java.util.function.*;
 
 public class OptWnd extends Window {
     public final Panel main;
+    private final PButton keybindings;
     /** False on the login screen, where windows that belong to a running game cannot open. */
     public final boolean ingame;
     public Panel current;
@@ -40,6 +41,17 @@ public class OptWnd extends Window {
     /** The scrolling pane of the sidebar layout, or null in the classic one-panel-at-a-time window. */
     public Scrollport pane;
     private hearthborn.ui.SettingsSearch search;
+
+    public void openToolbarKeys(String toolbar) {
+        if(!visible())
+            show();
+        hearthborn.input.GlobalKeys.BindingsPanel bindings =
+            (hearthborn.input.GlobalKeys.BindingsPanel)keybindings.panel();
+        chpanel(bindings);
+        bindings.showToolbar(toolbar);
+        raise();
+        parent.setfocus(this);
+    }
 
     public void chpanel(Panel p) {
         chcap(p==main || p.sectionTitle==null || hearthborn.ui.SettingsSidebar.enabled()?hearthborn.L10n.tr("Options"):
@@ -974,7 +986,9 @@ public class OptWnd extends Window {
 	y = main.add(new PButton(UI.scale(200), "Interface scale", 'i', () -> new InterfacePanel(main)), 0, y).pos("bl").adds(0, 5).y;
 	y = main.add(new PButton(UI.scale(200), "Video settings", 'v', () -> new VideoPanel(ui, main)), 0, y).pos("bl").adds(0, 5).y;
 	y = main.add(new PButton(UI.scale(200), "Sound and notices", 'a', () -> new AudioPanel(ui, main)), 0, y).pos("bl").adds(0, 5).y;
-	y = main.add(new PButton(UI.scale(200), "Keybindings", 'k', () -> hearthborn.input.GlobalKeys.panel(this)), 0, y).pos("bl").adds(0, 5).y;
+	keybindings = main.add(new PButton(UI.scale(200), "Keybindings", 'k',
+	    () -> hearthborn.input.GlobalKeys.panel(this)), 0, y);
+	y = keybindings.pos("bl").adds(0, 5).y;
         int customBottom = hearthborn.ui.GeneralSettings.addButton(this, search.bottom());
         y = Math.max(y,customBottom);
 	y += UI.scale(60);

@@ -107,21 +107,23 @@ public final class SystemButtonSkin {
         try{
             g.setRenderingHint(RenderingHints.KEY_ANTIALIASING,RenderingHints.VALUE_ANTIALIAS_ON);
             g.setRenderingHint(RenderingHints.KEY_INTERPOLATION,RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-            float line=Math.max(1,UI.scale(2));
-            Ellipse2D disk=new Ellipse2D.Double(line,line,side-line*2,side-line*2);
-            // A dark rim keeps the medallion legible where it overlaps a frame, then face and ring.
-            g.setColor(EDGE_SHADOW);g.fill(new Ellipse2D.Double(0,0,side,side));
-            // The cog sits on the same wood-brown face as the other medallions.
-            Color face=active?FACE_LIT:FACE;
-            g.setPaint(new java.awt.GradientPaint(0,line,lighter(face,26),0,side-line,darker(face,18)));g.fill(disk);
-            g.setStroke(new BasicStroke(line));
-            g.setColor(ring(hover));g.draw(disk);
+            paintDisk(g,side,active,hover);
             double fraction=settings?.7:.72;
             double scale=(side*fraction)/Math.max(glyph.getWidth(),glyph.getHeight());
             int width=Math.max(1,(int)Math.round(glyph.getWidth()*scale)),height=Math.max(1,(int)Math.round(glyph.getHeight()*scale));
             g.drawImage(glyph,(side-width)/2,(side-height)/2,width,height,null);
         }finally{g.dispose();}
         return result;
+    }
+    /** Draw the shared medallion without its glyph. */
+    public static void paintDisk(Graphics2D g,int side,boolean active,boolean hover){
+        float line=Math.max(1,UI.scale(2));
+        Ellipse2D disk=new Ellipse2D.Double(line,line,side-line*2,side-line*2);
+        g.setColor(EDGE_SHADOW);g.fill(new Ellipse2D.Double(0,0,side,side));
+        Color face=active?FACE_LIT:FACE;
+        g.setPaint(new java.awt.GradientPaint(0,line,lighter(face,26),0,side-line,darker(face,18)));g.fill(disk);
+        g.setStroke(new BasicStroke(line));
+        g.setColor(ring(hover));g.draw(disk);
     }
     private static Color lighter(Color c,int by){return new Color(Math.min(255,c.getRed()+by),Math.min(255,c.getGreen()+by),Math.min(255,c.getBlue()+by));}
     private static Color darker(Color c,int by){return new Color(Math.max(0,c.getRed()-by),Math.max(0,c.getGreen()-by),Math.max(0,c.getBlue()-by));}

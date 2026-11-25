@@ -21,15 +21,10 @@ import haven.render.*;
  * @author Jagy2014
  */
 public final class ToolbarScale {
-    /** Floating F-key, numeric and additional strips. */
-    public static final double SCALE=1.40;
     /** Toolbar pinned under the chat, against the bottom edge. */
     public static final double DOCK=1.40;
-    public static final double CLEAN=1.0;
-    /** Magnification of the floating strips in the current style, times the panel scale. */
-    public static double scale(){return (Toolbars.clean()?CLEAN:SCALE)*HudInterfaceScale.current();}
-    /** Magnification of the equipment strip, a little smaller than the roomy hotkey strips. */
-    public static double equipment(){return (Toolbars.clean()?CLEAN:EquipmentStrip.SCALE)*HudInterfaceScale.current();}
+    /** The compact strips use the panel scale without additional magnification. */
+    public static double scale(){return HudInterfaceScale.current();}
     public static Coord size(Coord size){return size(size,scale());}
     public static Coord size(Coord size,double scale){return Coord.of((int)Math.ceil(size.x*scale),(int)Math.ceil(size.y*scale));}
     public static Coord logical(Coord point){return logical(point,scale());}

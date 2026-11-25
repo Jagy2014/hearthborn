@@ -36,21 +36,13 @@ public final class DewyTime extends Widget {
     public static double remaining(double dayFraction) {
         return Math.max(0,(END-dayFraction*24*60)*60/StudyProgress.GAME_SECONDS_PER_REAL_SECOND);
     }
-    public enum Notice { NONE, START, END }
+    public enum Notice { NONE, START }
     public static final class Transition {
-        private String startedDay,endedDay;
-        private boolean wasActive;
+        private String startedDay;
         public Notice update(boolean active,String day,boolean enabled) {
-            boolean ended=wasActive&&!active;
-            wasActive=active;
-            if(!enabled)return Notice.NONE;
-            if(active&&!day.equals(startedDay)) {
+            if(active && enabled && !day.equals(startedDay)) {
                 startedDay=day;
                 return Notice.START;
-            }
-            if(ended&&day.equals(startedDay)&&!day.equals(endedDay)) {
-                endedDay=day;
-                return Notice.END;
             }
             return Notice.NONE;
         }
@@ -67,9 +59,9 @@ public final class DewyTime extends Widget {
         boolean active=active(astronomy.dt);
         String day=(long)Math.floor(astronomy.years)+":"+(long)Math.floor(astronomy.ym)+":"+(long)Math.floor(astronomy.md);
         Notice notice=transition.update(active,day,enabled());
-        if(notice!=Notice.NONE) {
+        if(notice==Notice.START) {
             ui.sfx(Resource.local().loadwait("sfx/hud/mmap/bell1"));
-            ui.msg(L10n.tr(notice==Notice.START?"Dewy Lady's Mantle time has begun.":"Dewy Lady's Mantle time has ended."),new Color(100,230,255),null);
+            ui.msg(L10n.tr("Dewy Lady's Mantle time has begun."),new Color(100,230,255),null);
         }
         if(!enabled() || !active || gui.buffs==null) {clear();return;}
         left=remaining(astronomy.dt);

@@ -204,6 +204,10 @@ public final class ObjectTimers {
         Kind kind = Kind.of(caption);
         if(kind == null || kind == Kind.TAR_KILN)
             return;
+        if(kind == Kind.GRILL) {
+            observeGrill(window, gui);
+            return;
+        }
         Gob gob = hearthborn.util.ObjectWindows.target(window,gui,target -> kind.matches(resource(target)));
         if(gob == null)
             return;
@@ -232,6 +236,46 @@ public final class ObjectTimers {
             return;
         waiting.remove(key);
         track(kind, key, seconds);
+    }
+
+    private static void observeGrill(Window window, GameUI gui) {
+        if(!TimerSettings.automatic()) return;
+        Long objectId = window.objectId();
+        Gob gob = objectId == null ? null : gui.ui.sess.glob.oc.getgob(objectId);
+        if(gob == null)
+            gob = hearthborn.util.ObjectWindows.target(window, gui, target -> {
+                String name = resource(target);
+                return "gfx/terobjs/pow".equals(name) || "gfx/terobjs/brazier".equals(name)
+                    || "gfx/terobjs/gridiron".equals(name);
+            });
+        if(gob == null || gob.removed) return;
+        String source = key(Kind.GRILL, gob);
+        if(source == null) return;
+
+        long deadline = 0;
+        for(WItem view : window.children(WItem.class)) {
+            deadline = Math.max(deadline, grillDeadline(view.item));
+        }
+        if(deadline <= System.currentTimeMillis()) return;
+        ObjectNames.bind(source, gob);
+        Timers.track(source, grillName(source), deadline);
+    }
+
+    static String grillName(String source) {
+        return L10n.text("window", "Gridiron") + " " + ObjectNames.processNumber(source, "grill");
+    }
+
+    private static long grillDeadline(GItem item) {
+        long latest = grillDeadline(meter(item), item.meterUpdated);
+        if(item.contents != null && item.contents.getClass().getName().endsWith("ItemStack"))
+            for(GItem child : item.contents.children(GItem.class))
+                latest = Math.max(latest, grillDeadline(meter(child), child.meterUpdated));
+        return latest;
+    }
+
+    static long grillDeadline(double progress, long observedAt) {
+        int seconds = grillSeconds(progress);
+        return observedAt > 0 && seconds > 0 ? observedAt + seconds * 1000L : 0;
     }
 
     /** Full fuel lasts 12 hours; every server-confirmed refill refreshes the deadline. */
@@ -340,12 +384,16 @@ public final class ObjectTimers {
     public static boolean furnaceItem(WItem view){
         Window window=view.getparent(Window.class);if(window==null)return false;
         Kind kind=Kind.of(window.cap);
-        return kind==Kind.SMELTER||kind==Kind.STACK||kind==Kind.FINERY||kind==Kind.KILN||kind==Kind.STEEL||kind==Kind.OVEN;
+        return kind==Kind.SMELTER||kind==Kind.STACK||kind==Kind.FINERY||kind==Kind.KILN||kind==Kind.STEEL||kind==Kind.OVEN||kind==Kind.GRILL;
     }
     public static int itemRemaining(WItem view){
         Window window=view.getparent(Window.class);if(window==null)return -1;
         Kind kind=Kind.of(window.cap);
-        if(kind!=Kind.SMELTER&&kind!=Kind.STACK&&kind!=Kind.FINERY&&kind!=Kind.KILN&&kind!=Kind.OVEN)return -1;
+        if(kind!=Kind.SMELTER&&kind!=Kind.STACK&&kind!=Kind.FINERY&&kind!=Kind.KILN&&kind!=Kind.OVEN&&kind!=Kind.GRILL)return -1;
+        if(kind == Kind.GRILL) {
+            int nested = nestedSeconds(kind, view.item, false);
+            return nested >= 0 ? nested : seconds(kind, view.item, false);
+        }
         GameUI gui=view.getparent(GameUI.class);
         Gob gob=gui==null?null:hearthborn.util.ObjectWindows.target(window,gui,target->kind.matches(resource(target)));
         boolean running=gob==null||lit(gob,kind);
@@ -393,6 +441,8 @@ public final class ObjectTimers {
                 case OVEN:
                     minutes = bakeMinutes(name);
                     break;
+                case GRILL:
+                    return grillSeconds(meter);
                 case TABLE:
                     if("gfx/invobjs/treepot-s".equals(name))
                         return elapsed(item,real(4 * 3600, meter));
@@ -415,6 +465,11 @@ public final class ObjectTimers {
         } catch(Loading e) {
             return -1;
         }
+    }
+
+    // Gridiron roasting: https://ringofbrodgar.com/wiki/Gridiron
+    static int grillSeconds(double progress) {
+        return progress > 0 && progress < 1 ? (int)Math.ceil(549 * (1 - progress)) : -1;
     }
 
     private static int elapsed(GItem item,int seconds) {
@@ -655,6 +710,7 @@ public final class ObjectTimers {
         STACK("stack", "Stack furnace", "Stack Furnace"),
         STEEL("steel", "Steelbox", "Steel Crucible"),
         OVEN("oven", "Oven"),
+        GRILL("grill", "Gridiron"),
         TABLE("table", "Herbalist Table"),
         CUPBOARD("cupboard", "Cupboard");
 

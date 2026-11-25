@@ -32,7 +32,6 @@ public final class CaveLevels {
         new Color(186, 120, 255), new Color(90, 220, 140), new Color(255, 110, 170)
     };
     private static final Map<Integer, Tex> labels = new HashMap<>();
-    private static final Map<Integer, Tex> badges = new HashMap<>();
     private static final Map<Long, Boolean> caves = new HashMap<>();
     private static final Map<MiniMap, Area> hits = Collections.synchronizedMap(new WeakHashMap<MiniMap, Area>());
     private static final Map<String, Integer> stored = new HashMap<>();
@@ -114,20 +113,6 @@ public final class CaveLevels {
         fromSurface = false;
         labels.clear();
         return true;
-    }
-
-    public static void badge(GOut g, MiniMap.DisplayMarker marker) {
-        if(!showFor(marker.m.seg))
-            return;
-        int level = of(marker.m.seg);
-        Coord at = marker.sc.add(UI.scale(7), UI.scale(-7));
-        int radius = UI.scale(7);
-        g.chcolor(0, 0, 0, 200);
-        g.fellipse(at, Coord.of(radius + 1, radius + 1));
-        g.chcolor(color(level));
-        g.fellipse(at, Coord.of(radius, radius));
-        g.chcolor();
-        g.aimage(badge(level), at, 0.5, 0.5);
     }
 
     public static String markerSuffix(long seg) {
@@ -244,10 +229,6 @@ public final class CaveLevels {
 
     private static Tex label(int level) {
         return labels.computeIfAbsent(level, value -> text(caption(value), color(value > 0 ? value : 1)));
-    }
-
-    private static Tex badge(int level) {
-        return badges.computeIfAbsent(level, value -> text(Integer.toString(value), Color.WHITE));
     }
 
     private static Tex text(String value, Color color) {

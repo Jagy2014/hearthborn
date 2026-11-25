@@ -24,7 +24,8 @@ public final class IconCategoryPanel extends Widget {
     public static synchronized Tex image(IconCategories.Category category) {
         Tex image=ART.get(category);
         if(image==null) {
-            try(java.io.InputStream in=IconCategoryPanel.class.getResourceAsStream(category==IconCategories.Category.ALL ? "/hearthborn/assets/icons/common/all.png" : "/hearthborn/assets/icons/categories/"+category.id+".png")) {
+            String art = category == IconCategories.Category.DUNGEONS ? "resources" : category.id;
+            try(java.io.InputStream in=IconCategoryPanel.class.getResourceAsStream(category==IconCategories.Category.ALL ? "/hearthborn/assets/icons/common/all.png" : "/hearthborn/assets/icons/categories/"+art+".png")) {
                 image=new TexI(PUtils.uiscale(ImageIO.read(in),UI.scale(18,18)));ART.put(category,image);
             } catch(java.io.IOException e){throw new RuntimeException(e);}
         }
